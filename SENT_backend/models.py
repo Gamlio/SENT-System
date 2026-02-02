@@ -3,6 +3,15 @@ import datetime
 from sqlalchemy import Column, Integer, String, ForeignKey, JSON, DateTime, Boolean
 from database import Base
 
+# models.py cập nhật
+class Role(Base):
+    __tablename__ = "roles"
+    id = Column(Integer, primary_key=True)
+    name = Column(String) # Ví dụ: "Kỹ thuật viên", "Người xem log"
+    # Quyền hạn lưu dạng JSON: {"can_approve_agent": true, "view_all_regions": false}
+    permissions = Column(JSON) 
+    level_context = Column(Integer) # Role này dành cho Level 2 hay Level 4
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True) # [cite: 6]
 # 1. Công ty khách hàng (SME)
 class Organization(Base):
     __tablename__ = 'organizations'
@@ -28,6 +37,7 @@ class User(Base):
     level = Column(Integer) # 1: SENT Admin, 2: SME Admin, 3: Operator, 4: Viewer
     org_id = Column(Integer, ForeignKey('organizations.id'), nullable=True)
     two_fa_secret = Column(String, nullable=True) # Lưu mã 2FA
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
 
 # 4. Máy trạm (Agent)
 class Agent(Base):

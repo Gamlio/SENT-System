@@ -8,12 +8,14 @@ const Sidebar = () => {
     const location = useLocation();
 
     const menuItems = [
-        { name: 'Tổng quan', path: '/', icon: <LayoutDashboard size={20}/> },
-        { name: 'Máy trạm', path: '/agents', icon: <Monitor size={20}/> },
-        { name: 'Cảnh báo', path: '/alerts', icon: <ShieldAlert size={20}/> },
-        { name: 'Vùng quản lý', path: '/regions', icon: <Globe size={20}/> },
-    ];
-
+       ...(user.level === 1 ? [{ name: 'Quản lý SME', path: '/admin/orgs' }] : []),
+  
+  // Level 3 & 4: Chỉ thấy Agent thuộc Org mình [cite: 7, 50, 52]
+  ...(user.level >= 3 ? [{ name: 'Máy trạm', path: '/agents' }] : []),
+  
+  // Logic dựa trên Rules (Ví dụ: quyền quản lý Role)
+  ...(user.permissions?.can_manage_roles ? [{ name: 'Thiết lập Rules', path: '/roles' }] : [])
+];
     return (
         <div className="w-72 bg-[#1e293b] h-screen flex flex-col border-r border-slate-800 shadow-2xl sticky top-0">
             <div className="p-8">
