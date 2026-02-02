@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # 1. DATABASE (PostgreSQL)
+  db:
+    image: postgres:16
+    container_name: sent_db_container
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Thanh@123
+      POSTGRES_DB: sent_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. BACKEND (FastAPI)
+  backend:
+    build: ./SENT_backend
+    container_name: sent_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./SENT_backend/.env
+    depends_on:
+      - db
+
+  # 3. FRONTEND (React)
+  frontend:
+    build: ./sent-frontend
+    container_name: sent_frontend
+    ports:
+      - "3000:3000"
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:
