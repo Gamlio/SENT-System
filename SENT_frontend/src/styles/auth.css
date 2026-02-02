@@ -1,0 +1,102 @@
+/* Container chính chia đôi màn hình */
+
+.auth-container {
+    display: flex;
+    height: 100vh;
+    background-color: #0f172a; /* Màu nền Deep Navy của SENT */
+    overflow: hidden;
+}
+
+/* Phần ảnh nền bên trái */
+.auth-side-bg {
+    display: none; /* Ẩn trên điện thoại */
+    position: relative;
+    width: 60%;
+}
+
+@media (min-width: 1024px) {
+    .auth-side-bg {
+        display: flex;
+    }
+}
+
+.auth-side-bg img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Lớp phủ gradient cho ảnh để làm nổi bật chữ */
+.auth-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom right, rgba(6, 78, 59, 0.8), rgba(15, 23, 42, 0.9));
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 5rem;
+}
+
+/* Card Đăng nhập bên phải */
+.auth-card-container {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+@media (min-width: 1024px) {
+    .auth-card-container {
+        width: 40%;
+    }
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+    background: rgba(255, 255, 255, 0.05); /* Hiệu ứng kính mờ */
+    backdrop-filter: blur(16px);
+    padding: 2.5rem;
+    border-radius: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Nút bấm Gradient đẹp */
+.btn-primary-sent {
+    width: 100%;
+    background: linear-gradient(to r, #10b981, #0d9488);
+    color: white;
+    padding: 1rem;
+    border-radius: 1rem;
+    font-weight: 700;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3);
+}
+
+.btn-primary-sent:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 25px -5px rgba(16, 185, 129, 0.4);
+    filter: brightness(1.1);
+}
+
+/* Tùy chỉnh các ô nhập liệu */
+.auth-input {
+    width: 100%;
+    padding: 1rem 1rem 1rem 3rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid #334155;
+    border-radius: 1rem;
+    color: white;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.auth-input:focus {
+    border-color: #10b981;
+}
