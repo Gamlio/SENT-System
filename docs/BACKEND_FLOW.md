@@ -1,9 +1,23 @@
-Vai trò Mediator: Tiếp nhận mọi yêu cầu từ Agent (Go) và Frontend (React), sau đó điều phối vào Database PostgreSQL.
+Luồng Xử lý Backend (BACKEND_FLOW.md)
+Cơ chế Mediator (Điều phối):
 
-Luồng Đăng nhập (Auth Flow):
-- Tiếp nhận thông tin định danh: username, password, captcha, và otp (Mã tạm 000000).
-- Xác thực mật khẩu: Sử dụng thư viện bcrypt thuần để kiểm tra mật khẩu đã băm (Fix lỗi 72 bytes trên Python 3.13).
-- Cấp quyền: Trả về JWT Token kèm theo level (1: Global Admin, 2: SME Admin) và org_id.
-Luồng Đa công ty (Multi-tenancy):
-- Mọi truy vấn dữ liệu đều phải lọc qua org_id để đảm bảo tính cô lập (Logic Isolation).
-- Admin Level 1 có quyền truy cập toàn bộ organizations, trong khi Level 2 chỉ thấy dữ liệu thuộc công ty của mình.
+Backend Go đóng vai trò là "Trạm kiểm soát" trung tâm.
+
+Mọi dữ liệu từ máy trạm (Go Agent) đẩy về đều phải qua lớp Middleware xác thực trước khi được đưa vào xử lý tại service.
+
+Xác thực Đa tầng (Security Flow):
+
+
+Bảo mật 1: Xác thực Username/Password bằng bcrypt (Native Go).
+
+
+Bảo mật 2: Yêu cầu mã TOTP (2FA) cho các tài khoản quản trị (Level 1, 2, 3).
+
+
+Cấp quyền: Trả về JWT Token chứa thông tin level và org_id.
+
+Cô lập Dữ liệu (Multi-tenancy):
+
+Sử dụng cơ chế lọc cứng tại lớp repository.
+
+Mọi câu lệnh SQL đều tự động đính kèm điều kiện WHERE org_id = ? dựa trên dữ liệu trích xuất từ Token.

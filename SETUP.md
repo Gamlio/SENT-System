@@ -1,14 +1,11 @@
-Bước 1: Chuẩn bị Database
-Cài đặt PostgreSQL và tạo database tên là sent_db.
+Bước 1: Database: Tạo database sent_db trong PostgreSQL (Port 5432).
 
-Chạy lệnh khởi tạo dữ liệu: python init_db.py.
+Bước 2: Khởi chạy Backend Go:
 
-Bước 2: Chạy Backend
-Cài đặt thư viện: pip install -r requirements.txt.
+cd SENT_backend
 
-Chạy server: uvicorn main:app --reload.
+go mod tidy (Cài đặt dependencies: Gin, Gorm, Bcrypt).
 
-Bước 3: Chạy Frontend
-Cài đặt: npm install.
+go run cmd/server/main.go (Server sẽ tự động tạo bảng và Super Admin Level 1).
 
-Khởi động: npm start.
+Bước 3: Frontend: npm install và npm start tại thư mục SENT_frontend.
