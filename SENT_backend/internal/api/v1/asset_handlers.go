@@ -1,41 +1,59 @@
+// internal/api/v1/asset_handlers.go
 package v1
 
 import (
-	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// PushDataFromAgent: API dành riêng cho Go Agent đẩy thông tin
-func PushDataFromAgent(c *gin.Context) {
-	var req models.Agent
+func PushDataHandler(c *gin.Context) {
+	var req struct {
+		EnrollToken string                 `json:"enroll_token"`
+		HWID        string                 `json:"hwid"`
+		Hostname    string                 `json:"hostname"`
+		OSInfo      string                 `json:"os_info"`
+		NetworkInfo map[string]interface{} `json:"network_info"`
+		USBDevices  []interface{}          `json:"usb_devices"`
+	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu Agent sai định dạng"})
+		c.JSON(400, gin.H{"error": "Dữ liệu sai định dạng"})
 		return
 	}
 
-	// Cập nhật hoặc tạo mới dựa trên HWID
-	var agent models.Agent
-	result := database.DB.Where("hwid = ?", req.HWID).First(&agent)
+	var asset models.Asset
+	// 1. Kiểm tra xem Agent này đã tồn tại chưa
+	result := database.DB.Where("hwid = ?", req.HWID).First(&asset)
 
 	if result.Error != nil {
-		database.DB.Create(&req) // Tạo mới nếu chưa có
-	} else {
-		database.DB.Model(&agent).Updates(req) // Cập nhật thông số mới nhất
+		// 2. Nếu là máy mới, tra cứu org_id từ EnrollToken
+		var region models.Region
+		if err := database.DB.Where("enroll_token = ?", req.EnrollToken).First(&region).Error; err != nil {
+			c.JSON(401, gin.H{"error": "Mã Enrollment không hợp lệ"})
+			return
+		}
+
+		// 3. Tự động gán đúng công ty (Multi-tenant)
+		asset = models.Asset{
+			HWID:     req.HWID,
+			Hostname: req.Hostname,
+			OrgID:    region.OrgID, // Tự động định danh công ty
+			RegionID: region.ID,
+		}
+		database.DB.Create(&asset)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "Dữ liệu đã được tiếp nhận"})
-}
+	// 4. Cập nhật thông số mới nhất từ máy trạm
+	database.DB.Model(&asset).Updates(map[string]interface{}{
+		"os_info":      req.OSInfo,
+		"network_info": req.NetworkInfo,
+		"usb_devices":  req.USBDevices,
+		"status":       "online",
+		"last_seen":    time.Now(),
+	})
 
-// GetAssetsHandler: Lấy danh sách máy trạm (Có lọc theo OrgID)
-func GetAssetsHandler(c *gin.Context) {
-	// Lấy OrgID từ Middleware (người dùng đang đăng nhập)
-	userOrgID := c.GetUint("org_id")
-
-	var assets []models.Agent
-	database.DB.Where("org_id = ?", userOrgID).Find(&assets) // Cô lập dữ liệu SME
-
-	c.JSON(http.StatusOK, assets)
+	c.JSON(200, gin.H{"status": "Dữ liệu đã được cập nhật cho OrgID: ", "org": asset.OrgID})
 }
