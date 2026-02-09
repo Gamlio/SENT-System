@@ -1,49 +1,149 @@
-// internal/models/models.go
 package models
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
+// --- NHÓM 1: TỔ CHỨC & QUẢN TRỊ GLOBAL (4 bảng) ---
 type Organization struct {
-	ID        uint      `gorm:"primaryKey"`
-	Name      string    `gorm:"unique;not null"`
-	CreatedAt time.Time `gorm:"autoCreateTime"`
+	gorm.Model
+	Name              string `gorm:"unique;not null"`
+	EnrollTokenPrefix string `gorm:"unique;not null"`
 }
 
-type Role struct {
-	ID           uint   `gorm:"primaryKey"`
-	Name         string `gorm:"not null"`   // Ví dụ: "Kỹ thuật viên"
-	Permissions  string `gorm:"type:jsonb"` // Lưu Rules dạng JSON
-	LevelContext int    `gorm:"not null"`
-	OrgID        *uint  `gorm:"index"`
+type LicensePlan struct {
+	gorm.Model
+	Name      string
+	MaxAgents int // Giới hạn số máy trạm
+	Price     float64
 }
 
+type LicenseAssignment struct {
+	gorm.Model
+	OrgID    uint
+	PlanID   uint
+	ExpireAt time.Time
+}
+
+type SystemLog struct {
+	gorm.Model
+	AdminID uint   // ID của R1/R2 thực hiện thao tác
+	Action  string // Ví dụ: "Tạo công ty mới"
+	Details string
+}
+
+// --- NHÓM 2: NGƯỜI DÙNG & PHÂN QUYỀN (4 bảng) ---
 type User struct {
-	ID             uint   `gorm:"primaryKey"`
-	Username       string `gorm:"uniqueIndex;not null"`
-	HashedPassword string `gorm:"not null"`
-	Level          int    `gorm:"not null"` // 1: Master, 2: Admin, 3: Staff, 4: Viewer
-	OrgID          *uint  `gorm:"index"`
-	RoleID         *uint  `gorm:"index"`
+	gorm.Model
+	Username     string `gorm:"unique;not null"`
+	PasswordHash string `gorm:"not null"`
+	RoleLevel    int    // 1: Global Admin, 3: SME Admin, 4: SME Staff
+	OrgID        *uint  // NULL nếu là Level 1, 2
+	TOTPSecret   string
+}
+
+type UserPermission struct {
+	gorm.Model
+	UserID       uint
+	RegionID     uint // R4 chỉ được quản lý vùng này
+	CanApprove   bool
+	CanViewLogs  bool
+	CanManageUSB bool
 }
 
 type Region struct {
-	ID          uint   `gorm:"primaryKey"`
-	OrgID       uint   `gorm:"index"`
-	Name        string `gorm:"not null"`
-	EnrollToken string `gorm:"uniqueIndex"` // Token cho Agent cài đặt
+	gorm.Model
+	OrgID       uint
+	Name        string
+	EnrollToken string `gorm:"unique"` // Token riêng cho từng vùng
 }
 
+type Department struct {
+	gorm.Model
+	OrgID uint
+	Name  string
+}
+
+// --- NHÓM 3: THIẾT BỊ & TUÂN THỦ (6 bảng) ---
 type Agent struct {
-	ID         uint      `gorm:"primaryKey"`
-	HWID       string    `gorm:"uniqueIndex"` // ID phần cứng từ Go Agent
-	Hostname   string    `gorm:"not null"`
-	OrgID      uint      `gorm:"index"`
-	RegionID   uint      `gorm:"index"`
-	Status     string    `gorm:"default:'pending'"` // pending, approved, blocked
-	OSInfo     string    `gorm:"type:varchar(100)"`
-	CustomData string    `gorm:"type:jsonb"`        // Chứa IP, MAC, USB Info linh hoạt
-	Manager    string    `gorm:"type:varchar(255)"` // Điền thủ công
-	LastSeen   time.Time `gorm:"autoUpdateTime"`
+	HWID     string `gorm:"primaryKey"`
+	OrgID    uint
+	RegionID uint
+	Hostname string
+	Status   string
+	LastSeen time.Time
+}
+
+type AgentInventory struct {
+	gorm.Model
+	AgentHWID  string `gorm:"unique"`
+	CPUModel   string
+	RAMTotalGB int
+	OSInfo     string
+}
+
+type SoftwareItem struct {
+	gorm.Model
+	AgentHWID    string
+	SoftwareName string
+	Version      string
+}
+
+type AgentSnapshot struct {
+	AgentHWID        string `gorm:"primaryKey"`
+	LastSoftwareHash string // Phục vụ Differential Reporting
+	LastPortHash     string
+}
+
+type USBWhitelist struct {
+	gorm.Model
+	OrgID        uint
+	DeviceID     string `gorm:"not null"` // VID_PID_Serial thực tế
+	FriendlyName string
+	AssignedTo   string // Truy cứu trách nhiệm nhân viên
+}
+
+type SoftwarePolicy struct {
+	gorm.Model
+	OrgID        uint
+	SoftwareName string `gorm:"not null"`
+	IsProhibited bool   `gorm:"default:false"`
+	MinVersion   string
+}
+
+// --- NHÓM 4: GIÁM SÁT & CẢNH BÁO (4 bảng) ---
+type SecurityAlert struct {
+	gorm.Model
+	OrgID       uint
+	HWID        string
+	AlertType   string // USB_UNAUTHORIZED, SOFTWARE_VIOLATION
+	Title       string
+	Description string
+	Severity    string // Low, Medium, High, Critical
+	IsResolved  bool   `gorm:"default:false"`
+}
+
+type OpenPort struct {
+	gorm.Model
+	AgentHWID   string
+	Port        int
+	ProcessName string
+}
+
+type USBLog struct {
+	gorm.Model
+	AgentHWID     string
+	DeviceName    string
+	DeviceID      string
+	IsWhitelisted bool
+	EventType     string // "plugged" hoặc "unplugged"
+}
+
+type SecurityEvent struct {
+	gorm.Model
+	AgentHWID string
+	EventID   int
+	Message   string // Nội dung từ Windows Event Log
 }

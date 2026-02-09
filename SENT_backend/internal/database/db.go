@@ -1,4 +1,3 @@
-// internal/database/db.go
 package database
 
 import (
@@ -20,28 +19,60 @@ func InitDB() {
 		panic("Failed to connect to database!")
 	}
 
-	// 1. Tự động tạo bảng (Auto Migration)
-	db.AutoMigrate(&models.Organization{}, &models.Role{}, &models.User{}, &models.Region{}, &models.Agent{})
+	// 1. Tự động tạo toàn bộ hệ thống bảng (Auto Migration)
+	fmt.Println("⏳ Đang đồng bộ hóa cơ sở dữ liệu...")
+	err = db.AutoMigrate(
+		// Nhóm Tổ chức & Phân quyền
+		&models.Organization{},
+		&models.Region{},
+		&models.User{},
+		&models.UserPermission{},
 
-	// 2. Logic Init System (Tương tự init_db.py)
+		// Nhóm Quản lý Thiết bị & Tuân thủ
+		&models.Agent{},
+		&models.AgentInventory{},
+		&models.SoftwareItem{},
+		&models.AgentSnapshot{},
+		&models.USBWhitelist{},
+		&models.SoftwarePolicy{},
+
+		// Nhóm Log & Cảnh báo an ninh
+		&models.SecurityAlert{},
+		&models.OpenPort{},
+		&models.USBLog{},
+		&models.SecurityEvent{},
+	)
+
+	if err != nil {
+		fmt.Printf("❌ Lỗi Migration: %v\n", err)
+	} else {
+		fmt.Println("✅ Đã đồng bộ hóa 18+ bảng dữ liệu")
+	}
+
+	// 2. Khởi tạo Tổ chức Hệ thống mặc định
 	var org models.Organization
 	if err := db.Where("name = ?", "SENT Global System").First(&org).Error; err != nil {
-		org = models.Organization{Name: "SENT Global System"}
+		org = models.Organization{
+			Name:              "SENT Global System",
+			EnrollTokenPrefix: "SENT-GLOBAL", // Dùng cho Admin hệ thống
+		}
 		db.Create(&org)
 		fmt.Println("✅ Đã tạo Org hệ thống")
 	}
 
+	// 3. Khởi tạo Super Admin (R1)
 	var admin models.User
 	if err := db.Where("username = ?", "Admin").First(&admin).Error; err != nil {
+		// Lưu ý: Password nên lấy từ .env, ở đây dùng mặc định của Thanh
 		hashed, _ := bcrypt.GenerateFromPassword([]byte("Thanh@123"), 12)
 		admin = models.User{
-			Username:       "Admin",
-			HashedPassword: string(hashed),
-			Level:          1,
-			OrgID:          &org.ID,
+			Username:     "Admin",
+			PasswordHash: string(hashed),
+			RoleLevel:    1, // Cấp độ cao nhất (Global Admin)
+			OrgID:        &org.ID,
 		}
 		db.Create(&admin)
-		fmt.Println("✅ Đã tạo Super Admin")
+		fmt.Println("✅ Đã tạo Super Admin (R1)")
 	}
 
 	DB = db

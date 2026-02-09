@@ -1,9 +1,10 @@
-// internal/api/v1/asset_handlers.go
 package v1
 
 import (
+	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+	"sent_backend/internal/service" // Import Service vừa viết
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,49 +12,51 @@ import (
 
 func PushDataHandler(c *gin.Context) {
 	var req struct {
-		EnrollToken string                 `json:"enroll_token"`
-		HWID        string                 `json:"hwid"`
-		Hostname    string                 `json:"hostname"`
-		OSInfo      string                 `json:"os_info"`
-		NetworkInfo map[string]interface{} `json:"network_info"`
-		USBDevices  []interface{}          `json:"usb_devices"`
+		LogType     string      `json:"log_type"`
+		EnrollToken string      `json:"enroll_token"`
+		HWID        string      `json:"hwid"`
+		Hostname    string      `json:"hostname"` // Agent v3.1 có gửi kèm hostname
+		Data        interface{} `json:"data"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Dữ liệu sai định dạng"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
-	var asset models.Asset
-	// 1. Kiểm tra xem Agent này đã tồn tại chưa
-	result := database.DB.Where("hwid = ?", req.HWID).First(&asset)
+	var agent models.Agent
+	// 1. Tìm Agent trong DB
+	result := database.DB.Where("hwid = ?", req.HWID).First(&agent)
 
 	if result.Error != nil {
-		// 2. Nếu là máy mới, tra cứu org_id từ EnrollToken
+		// 2. Đăng ký máy mới (Silent Enrollment)
 		var region models.Region
 		if err := database.DB.Where("enroll_token = ?", req.EnrollToken).First(&region).Error; err != nil {
-			c.JSON(401, gin.H{"error": "Mã Enrollment không hợp lệ"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Enrollment Token không hợp lệ"})
 			return
 		}
 
-		// 3. Tự động gán đúng công ty (Multi-tenant)
-		asset = models.Asset{
+		agent = models.Agent{
 			HWID:     req.HWID,
-			Hostname: req.Hostname,
-			OrgID:    region.OrgID, // Tự động định danh công ty
+			OrgID:    region.OrgID,
 			RegionID: region.ID,
+			Hostname: req.Hostname, // Lưu hostname lúc đăng ký
+			Status:   "online",
+			LastSeen: time.Now(),
 		}
-		database.DB.Create(&asset)
+		database.DB.Create(&agent)
 	}
 
-	// 4. Cập nhật thông số mới nhất từ máy trạm
-	database.DB.Model(&asset).Updates(map[string]interface{}{
-		"os_info":      req.OSInfo,
-		"network_info": req.NetworkInfo,
-		"usb_devices":  req.USBDevices,
-		"status":       "online",
-		"last_seen":    time.Now(),
-	})
+	// 3. Gọi Service xử lý logic nghiệp vụ
+	switch req.LogType {
+	case "inventory":
+		service.ProcessInventory(agent, req.Data)
+	case "telemetry":
+		service.ProcessTelemetry(agent, req.Data)
+	case "software":
+		service.ProcessSoftware(agent, req.Data)
+		// case "event_security": service.ProcessEvents(...) // Nếu bạn làm tiếp phần Event
+	}
 
-	c.JSON(200, gin.H{"status": "Dữ liệu đã được cập nhật cho OrgID: ", "org": asset.OrgID})
+	c.JSON(http.StatusOK, gin.H{"status": "processed", "type": req.LogType})
 }

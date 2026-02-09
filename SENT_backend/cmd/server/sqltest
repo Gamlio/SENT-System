@@ -1,0 +1,6 @@
+INSERT INTO software_policies (created_at, updated_at, org_id, software_name, is_prohibited)
+VALUES (NOW(), NOW(), 1, 'Terraria', true);
+
+-- 2. Whitelist một cái USB "Hợp lệ" (Còn lại sẽ bị coi là lạ)
+INSERT INTO usb_whitelists (created_at, updated_at, org_id, device_id, friendly_name, assigned_to)
+VALUES (NOW(), NOW(), 1, 'USB\VID_0951&PID_1666\SERIAL_NUMBER_CUA_BAN', 'Kingston IT', 'Nguyen Van A');
