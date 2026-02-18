@@ -15,25 +15,26 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. BACKEND (FastAPI)
+  # 2. BACKEND (Go Gin)
   backend:
     build: ./SENT_backend
     container_name: sent_backend
     ports:
       - "8000:8000"
-    env_file:
-      - ./SENT_backend/.env
+    environment:
+      # Kết nối trực tiếp tới container 'db'
+      - DATABASE_URL=postgres://postgres:Thanh@123@db:5432/sent_db?sslmode=disable
     depends_on:
       - db
 
   # 3. FRONTEND (React)
   frontend:
-    build: ./sent-frontend
+    build: ./SENT_frontend
     container_name: sent_frontend
     ports:
       - "3000:3000"
-    stdin_open: true
-    tty: true
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

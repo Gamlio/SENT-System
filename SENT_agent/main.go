@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -16,29 +19,34 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// Quản lý trạng thái dữ liệu cũ để so sánh sai khác
+// --- CẤU HÌNH ---
+const (
+	SERVER_URL   = "http://localhost:8000/api/v1/agents/push"
+	ENROLL_TOKEN = "SENT-TOKEN-SME-01"
+)
+
 var (
 	lastHashes = make(map[string]string)
 	hashMutex  sync.Mutex
 )
 
+// SỬA 1: Thêm trường Hostname vào struct để Backend nhận diện
 type SecurityLog struct {
 	LogType        string      `json:"log_type"`
 	EnrollToken    string      `json:"enroll_token"`
 	HWID           string      `json:"hwid"`
+	Hostname       string      `json:"hostname"` // Quan trọng!
 	ScanTimestamp  int64       `json:"scan_timestamp"`
-	IsDifferential bool        `json:"is_diff"` // Đánh dấu đây là bản gửi do có thay đổi
+	IsDifferential bool        `json:"is_diff"`
 	Data           interface{} `json:"data"`
 }
 
-// Hàm băm dữ liệu để so sánh
 func getHash(data interface{}) string {
 	b, _ := json.Marshal(data)
 	hash := sha256.Sum256(b)
 	return hex.EncodeToString(hash[:])
 }
 
-// Kiểm tra xem dữ liệu có thay đổi không
 func hasChanged(logType string, newData interface{}) bool {
 	hashMutex.Lock()
 	defer hashMutex.Unlock()
@@ -50,18 +58,20 @@ func hasChanged(logType string, newData interface{}) bool {
 	return true
 }
 
-// --- CÁC HÀM THU THẬP DỮ LIỆU (Giữ nguyên logic của bạn) ---
-// Note: collectSoftware và collectEvents hiện tại chỉ chạy trên Windows
-
 func collectInventory() interface{} {
 	hInfo, _ := host.Info()
 	cpuInfo, _ := cpu.Info()
 	vMem, _ := mem.VirtualMemory()
+
+	model := "Unknown CPU"
+	if len(cpuInfo) > 0 {
+		model = cpuInfo[0].ModelName
+	}
+
 	return map[string]interface{}{
-		"os_info":      runtime.GOOS + " " + runtime.GOARCH,
-		"cpu_model":    cpuInfo[0].ModelName,
+		"os_info":      runtime.GOOS + " " + hInfo.PlatformVersion,
+		"cpu_model":    model,
 		"ram_total_gb": vMem.Total / 1024 / 1024 / 1024,
-		"kernel":       hInfo.KernelVersion,
 	}
 }
 
@@ -72,7 +82,7 @@ func collectSoftware() []string {
 	var softwareList []string
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, registry.ENUMERATE_SUB_KEYS|registry.QUERY_VALUE)
 	if err != nil {
-		return []string{"Error Accessing Registry"}
+		return []string{}
 	}
 	defer k.Close()
 	names, _ := k.ReadSubKeyNames(-1)
@@ -87,58 +97,81 @@ func collectSoftware() []string {
 	return softwareList
 }
 
+// SỬA 2: Telemetry trả về danh sách Port chi tiết thay vì chỉ đếm số lượng
 func collectTelemetry() interface{} {
-	vMem, _ := mem.VirtualMemory()
 	connections, _ := psnet.Connections("tcp")
-	// Logic lấy port... (lược bỏ cho gọn)
+
+	var openPorts []map[string]interface{}
+	for _, conn := range connections {
+		// Chỉ lấy các cổng đang lắng nghe (LISTEN)
+		if conn.Status == "LISTEN" {
+			openPorts = append(openPorts, map[string]interface{}{
+				"port":         conn.Laddr.Port,
+				"process_name": "system", // Tạm thời để system (lấy tên process cần quyền Admin cao hơn)
+			})
+		}
+	}
+
+	// Trả về đúng cấu trúc Backend mong đợi
 	return map[string]interface{}{
-		"ram_used_percent": vMem.UsedPercent,
-		"open_ports_count": len(connections),
+		"open_ports": openPorts,
 	}
 }
 
-func send(logType string, token string, hwid string, payload interface{}, force bool) {
-	// Chỉ gửi nếu dữ liệu thay đổi HOẶC là lần chạy đầu tiên (force=true)
+// Hàm gửi dữ liệu
+func send(logType string, hwid string, hostname string, payload interface{}, force bool) {
+	// Kiểm tra thay đổi trước khi gửi
 	if !force && !hasChanged(logType, payload) {
-		// fmt.Printf(">>> [%s] Không có thay đổi, bỏ qua gửi.\n", logType)
 		return
 	}
 
 	entry := SecurityLog{
-		LogType: logType, EnrollToken: token, HWID: hwid,
-		ScanTimestamp: time.Now().Unix(), Data: payload,
+		LogType:        logType,
+		EnrollToken:    ENROLL_TOKEN,
+		HWID:           hwid,
+		Hostname:       hostname, // Gửi kèm tên máy
+		ScanTimestamp:  time.Now().Unix(),
+		Data:           payload,
 		IsDifferential: !force,
 	}
-	out, _ := json.MarshalIndent(entry, "", "  ")
-	fmt.Printf("\n>>> SENDING [%s] AT %s\n%s\n", logType, time.Now().Format("15:04:05"), string(out))
+
+	jsonData, _ := json.Marshal(entry)
+	resp, err := http.Post(SERVER_URL, "application/json", bytes.NewBuffer(jsonData))
+
+	if err != nil {
+		fmt.Printf("❌ Lỗi kết nối Server: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		fmt.Printf("🚀 [%s] Đã gửi thành công (Size: %d bytes)\n", logType, len(jsonData))
+	} else {
+		fmt.Printf("⚠️ Server trả về lỗi: %d\n", resp.StatusCode)
+	}
 }
 
 func main() {
 	hInfo, _ := host.Info()
 	hwid := hInfo.HostID
-	token := "SENT-TOKEN-SME-01"
+	hostname, _ := os.Hostname() // Lấy tên máy từ OS
 
-	fmt.Println("🛡️ SENT Agent v3.1: Chế độ Differential Reporting đã kích hoạt.")
+	fmt.Printf("🛡️ SENT Agent v3.2 đang chạy trên: %s (HWID: %s)\n", hostname, hwid)
+	fmt.Println("--------------------------------------------------")
 
-	// Khởi tạo Tickers
-	telemetryTicker := time.NewTicker(1 * time.Minute)
-	softwareTicker := time.NewTicker(6 * time.Hour)
-	inventoryTicker := time.NewTicker(24 * time.Hour)
+	// 1. Gửi Inventory ngay lập tức (Để đăng ký máy)
+	fmt.Println("📢 Đang gửi thông tin đăng ký máy...")
+	send("inventory", hwid, hostname, collectInventory(), true)
 
-	// CƠ CHẾ KHỞI ĐỘNG: Gửi toàn bộ dữ liệu lần đầu tiên (force = true)
-	fmt.Println("📢 Lần đầu khởi động: Đang đẩy toàn bộ snapshot lên Server...")
-	send("inventory", token, hwid, collectInventory(), true)
-	send("software", token, hwid, collectSoftware(), true)
-	send("telemetry", token, hwid, collectTelemetry(), true)
+	// 2. Gửi dữ liệu lần đầu (Force = true)
+	send("software", hwid, hostname, collectSoftware(), true)
+	send("telemetry", hwid, hostname, collectTelemetry(), true)
 
-	for {
-		select {
-		case <-telemetryTicker.C:
-			send("telemetry", token, hwid, collectTelemetry(), false)
-		case <-softwareTicker.C:
-			send("software", token, hwid, collectSoftware(), false)
-		case <-inventoryTicker.C:
-			send("inventory", token, hwid, collectInventory(), false)
-		}
+	// 3. Vòng lặp gửi định kỳ
+	ticker := time.NewTicker(30 * time.Second) // Check mỗi 30 giây cho nhanh thấy kết quả
+	for range ticker.C {
+		// Chỉ gửi nếu có thay đổi (Force = false)
+		send("telemetry", hwid, hostname, collectTelemetry(), false)
+		send("software", hwid, hostname, collectSoftware(), false)
 	}
 }

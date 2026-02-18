@@ -1,174 +1,171 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"errors"
+	"log"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"time"
+
+	"gorm.io/gorm"
 )
 
-// --- CÁC STRUCT HỨNG DỮ LIỆU JSON TỪ AGENT V3.1 ---
-// (Dùng để ép kiểu dữ liệu interface{} sang struct có nghĩa)
-
-type InventoryPayload struct {
-	CPUModel   string `json:"cpu_model"`
-	RAMTotalGB int    `json:"ram_total_gb"`
-	OSInfo     string `json:"os_info"`
+// --- Helper: Tính toán Hash của dữ liệu JSON ---
+func calculateHash(data interface{}) string {
+	bytes, _ := json.Marshal(data)
+	hash := sha256.Sum256(bytes)
+	return hex.EncodeToString(hash[:])
 }
 
-type TelemetryPayload struct {
-	RAMUsedPercent float64               `json:"ram_used_percent"`
-	OpenPorts      []models.OpenPort     `json:"open_ports"`
-	USBDevices     []models.USBWhitelist `json:"usb_devices"` // Agent gửi về name & id
-}
-
-// --- LOGIC XỬ LÝ CHÍNH ---
-
-// 1. Xử lý Inventory (Thông tin phần cứng)
+// 1. Xử lý Inventory (Phần cứng)
 func ProcessInventory(agent models.Agent, data interface{}) {
-	var payload InventoryPayload
+	var payload models.AgentInventory
 	if err := mapToStruct(data, &payload); err != nil {
-		fmt.Println("❌ Lỗi parse Inventory:", err)
 		return
 	}
 
-	// Cập nhật hoặc tạo mới thông tin phần cứng
-	inventory := models.AgentInventory{
-		AgentHWID:  agent.HWID,
-		CPUModel:   payload.CPUModel,
-		RAMTotalGB: payload.RAMTotalGB,
-		OSInfo:     payload.OSInfo,
-	}
+	// Logic cập nhật thông thường (Inventory ít thay đổi, có thể update thẳng)
+	payload.AgentHWID = agent.HWID
 
-	// Sử dụng Save để Insert hoặc Update
+	// Tìm xem đã có chưa để lấy ID (tránh tạo mới liên tục)
 	var existing models.AgentInventory
-	if err := database.DB.Where("agent_hwid = ?", agent.HWID).First(&existing).Error; err == nil {
-		inventory.ID = existing.ID // Giữ ID cũ để update
+	if err := database.DB.Where("agent_hw_id = ?", agent.HWID).First(&existing).Error; err == nil {
+		payload.ID = existing.ID
+		payload.CreatedAt = existing.CreatedAt
 	}
-	database.DB.Save(&inventory)
+
+	database.DB.Save(&payload)
 }
 
-// 2. Xử lý Software (Kiểm tra tuân thủ phần mềm)
-func ProcessSoftware(agent models.Agent, data interface{}) {
-	// Dữ liệu Software từ Agent là mảng string []string
-	softwareList, ok := data.([]interface{})
-	if !ok {
-		return
-	}
-
-	// Xóa danh sách cũ (Làm mới Inventory)
-	database.DB.Where("agent_hwid = ?", agent.HWID).Delete(&models.SoftwareItem{})
-
-	var violations []string
-
-	for _, item := range softwareList {
-		name := item.(string)
-
-		// A. Lưu vào DB
-		database.DB.Create(&models.SoftwareItem{
-			AgentHWID:    agent.HWID,
-			SoftwareName: name,
-			Version:      "Detected",
-		})
-
-		// B. CHECK COMPLIANCE: Kiểm tra xem có nằm trong danh sách cấm không?
-		var policy models.SoftwarePolicy
-		// Tìm xem công ty này có cấm phần mềm này không
-		err := database.DB.Where("org_id = ? AND software_name = ? AND is_prohibited = ?", agent.OrgID, name, true).First(&policy).Error
-		if err == nil {
-			violations = append(violations, name)
-		}
-	}
-
-	// C. Tạo Cảnh báo nếu có vi phạm
-	if len(violations) > 0 {
-		CreateAlert(agent, "SOFTWARE_VIOLATION", "High",
-			fmt.Sprintf("Phát hiện %d phần mềm bị cấm: %v", len(violations), violations))
-	}
-}
-
-// 3. Xử lý Telemetry (RAM, Port, USB - QUAN TRỌNG NHẤT)
+// 2. Xử lý Telemetry (Port, USB) - CÓ SỬ DỤNG SNAPSHOT ĐỂ TỐI ƯU
 func ProcessTelemetry(agent models.Agent, data interface{}) {
-	var payload TelemetryPayload
-	if err := mapToStruct(data, &payload); err != nil {
-		return
-	}
-
-	// A. Cập nhật trạng thái RAM & LastSeen
+	// Cập nhật trạng thái "Online" cho Agent
 	database.DB.Model(&agent).Updates(map[string]interface{}{
 		"status":    "online",
 		"last_seen": time.Now(),
 	})
 
-	// B. Lưu Open Ports (Xóa cũ nạp mới cho realtime)
-	database.DB.Where("agent_hwid = ?", agent.HWID).Delete(&models.OpenPort{})
-	for _, p := range payload.OpenPorts {
-		p.AgentHWID = agent.HWID
-		database.DB.Create(&p)
+	// Tính Hash dữ liệu mới
+	newHash := calculateHash(data)
+
+	// Kiểm tra Snapshot cũ
+	var snapshot models.AgentSnapshot
+	err := database.DB.Where("agent_hw_id = ?", agent.HWID).First(&snapshot).Error
+
+	// NẾU HASH GIỐNG NHAU -> DỪNG LẠI (TIẾT KIỆM DB)
+	if err == nil && snapshot.LastPortHash == newHash {
+		// Log nhẹ để biết là đã bỏ qua (khi Dev), Production thì comment lại
+		// log.Println("⚡ Telemetry không đổi, bỏ qua update DB.")
+		return
 	}
 
-	// C. XỬ LÝ USB & WHITELIST (TRUY CỨU TRÁCH NHIỆM)
-	for _, usb := range payload.USBDevices {
-		// Bỏ qua các thiết bị hệ thống (Root Hub) để đỡ rác log
-		if usb.DeviceID == "" {
-			continue
+	// Nếu khác, bắt đầu xử lý
+	var payload struct {
+		OpenPorts []models.OpenPort `json:"open_ports"`
+	}
+	if err := mapToStruct(data, &payload); err != nil {
+		return
+	}
+
+	// Transaction để đảm bảo toàn vẹn dữ liệu
+	database.DB.Transaction(func(tx *gorm.DB) error {
+		// Xóa dữ liệu cũ
+		tx.Where("agent_hw_id = ?", agent.HWID).Delete(&models.OpenPort{})
+
+		// Thêm dữ liệu mới
+		for _, p := range payload.OpenPorts {
+			p.AgentHWID = agent.HWID
+			tx.Create(&p)
 		}
 
-		// 1. Kiểm tra Whitelist
-		var whitelist models.USBWhitelist
-		var isAllowed bool = false
+		// Cập nhật Snapshot Hash mới
+		snapshot.AgentHWID = agent.HWID
+		snapshot.LastPortHash = newHash
+		tx.Save(&snapshot)
+		return nil
+	})
+}
 
-		// Tìm xem USB này (DeviceID) có được phép trong Org này không
-		err := database.DB.Where("org_id = ? AND device_id = ?", agent.OrgID, usb.DeviceID).First(&whitelist).Error
+// 3. Xử lý Software - CÓ TỐI ƯU & CHẶN LOG RÁC
+func ProcessSoftware(agent models.Agent, data interface{}) {
+	softwareList, ok := data.([]interface{})
+	if !ok {
+		return
+	}
 
-		if err == nil {
-			isAllowed = true
-		} else {
-			// 2. Nếu KHÔNG tìm thấy -> BẮN CẢNH BÁO NGAY!
-			CreateAlert(agent, "USB_UNAUTHORIZED", "Critical",
-				fmt.Sprintf("Phát hiện USB lạ: %s (%s)", usb.FriendlyName, usb.DeviceID))
+	// 1. TỐI ƯU: So sánh Hash trước
+	newHash := calculateHash(softwareList)
+	var snapshot models.AgentSnapshot
+	err := database.DB.Where("agent_hw_id = ?", agent.HWID).First(&snapshot).Error
+
+	if err == nil && snapshot.LastSoftwareHash == newHash {
+		// log.Println("⚡ Software không đổi, bỏ qua update DB.")
+		return
+	}
+
+	// 2. Nếu có thay đổi -> Xử lý
+	database.DB.Transaction(func(tx *gorm.DB) error {
+		// Xóa danh sách cũ
+		tx.Where("agent_hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
+
+		for _, item := range softwareList {
+			name, _ := item.(string) // Giả sử Agent gửi mảng string tên phần mềm
+
+			// Lưu vào SoftwareItem
+			tx.Create(&models.SoftwareItem{
+				AgentHWID:    agent.HWID,
+				SoftwareName: name,
+				Version:      "Detected",
+			})
+
+			// --- KIỂM TRA CHÍNH SÁCH (Fix log rác ở đây) ---
+			var policy models.SoftwarePolicy
+			// Tìm xem phần mềm này có bị cấm không
+			err := tx.Where("org_id = ? AND software_name = ? AND is_prohibited = ?",
+				agent.OrgID, name, true).First(&policy).Error
+
+			// CHỈ LOG NẾU TÌM THẤY (LÀ CÓ VI PHẠM) HOẶC LỖI DB THỰC SỰ
+			if err == nil {
+				// Tìm thấy Policy cấm -> Tạo Alert
+				createAlert(tx, agent, "SOFTWARE_VIOLATION", "Phần mềm bị cấm: "+name)
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				// Nếu lỗi KHÁC lỗi "Not Found" thì mới in ra console
+				log.Printf("Lỗi DB khi check policy: %v", err)
+			}
+			// Nếu err == RecordNotFound -> Nghĩa là phần mềm sạch, không làm gì cả.
 		}
 
-		// 3. Ghi Log lịch sử cắm
-		database.DB.Create(&models.USBLog{
-			AgentHWID:     agent.HWID,
-			DeviceName:    usb.FriendlyName, // Agent gửi name vào field này
-			DeviceID:      usb.DeviceID,
-			IsWhitelisted: isAllowed,
-			EventType:     "plugged",
+		// Cập nhật Hash mới vào Snapshot
+		snapshot.AgentHWID = agent.HWID
+		snapshot.LastSoftwareHash = newHash
+		tx.Save(&snapshot)
+		return nil
+	})
+}
+
+// Hàm tạo cảnh báo nhanh
+func createAlert(tx *gorm.DB, agent models.Agent, alertType, desc string) {
+	// Kiểm tra xem đã có cảnh báo này chưa (tránh spam alert)
+	var count int64
+	tx.Model(&models.SecurityAlert{}).Where("hw_id = ? AND alert_type = ? AND is_resolved = ?",
+		agent.HWID, alertType, false).Count(&count)
+
+	if count == 0 {
+		tx.Create(&models.SecurityAlert{
+			OrgID:       agent.OrgID,
+			HWID:        agent.HWID,
+			AlertType:   alertType,
+			Title:       "Phát hiện vi phạm tuân thủ",
+			Description: desc,
+			Severity:    "High",
 		})
 	}
 }
 
-// --- HÀM BỔ TRỢ ---
-
-func CreateAlert(agent models.Agent, alertType, severity, desc string) {
-	// Kiểm tra xem đã có alert chưa xử lý chưa để tránh spam DB
-	var exists int64
-	database.DB.Model(&models.SecurityAlert{}).Where(
-		"hwid = ? AND alert_type = ? AND is_resolved = ?",
-		agent.HWID, alertType, false).Count(&exists)
-
-	if exists == 0 {
-		alert := models.SecurityAlert{
-			OrgID:       agent.OrgID,
-			HWID:        agent.HWID,
-			AlertType:   alertType,
-			Title:       fmt.Sprintf("Cảnh báo an ninh tại máy %s", agent.Hostname),
-			Description: desc,
-			Severity:    severity,
-		}
-		database.DB.Create(&alert)
-		fmt.Printf("🚨 ALERT CREATED: %s - %s\n", alertType, desc)
-	}
-}
-
-// Hàm ép kiểu JSON map sang Struct
 func mapToStruct(input interface{}, output interface{}) error {
-	bytes, err := json.Marshal(input)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(bytes, output)
+	b, _ := json.Marshal(input)
+	return json.Unmarshal(b, output)
 }

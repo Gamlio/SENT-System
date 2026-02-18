@@ -4,18 +4,19 @@ import (
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"sent_backend/internal/service" // Import Service vừa viết
+	"sent_backend/internal/service"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
+// PushDataHandler: Tiếp nhận dữ liệu từ Agent v3.1
 func PushDataHandler(c *gin.Context) {
 	var req struct {
 		LogType     string      `json:"log_type"`
 		EnrollToken string      `json:"enroll_token"`
 		HWID        string      `json:"hwid"`
-		Hostname    string      `json:"hostname"` // Agent v3.1 có gửi kèm hostname
+		Hostname    string      `json:"hostname"`
 		Data        interface{} `json:"data"`
 	}
 
@@ -25,14 +26,13 @@ func PushDataHandler(c *gin.Context) {
 	}
 
 	var agent models.Agent
-	// 1. Tìm Agent trong DB
-	result := database.DB.Where("hwid = ?", req.HWID).First(&agent)
+	result := database.DB.Where("hw_id = ?", req.HWID).First(&agent)
 
 	if result.Error != nil {
-		// 2. Đăng ký máy mới (Silent Enrollment)
+		// Silent Enrollment: Đăng ký máy mới qua Token
 		var region models.Region
 		if err := database.DB.Where("enroll_token = ?", req.EnrollToken).First(&region).Error; err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Enrollment Token không hợp lệ"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Mã Enrollment Token không tồn tại hoặc sai"})
 			return
 		}
 
@@ -40,14 +40,14 @@ func PushDataHandler(c *gin.Context) {
 			HWID:     req.HWID,
 			OrgID:    region.OrgID,
 			RegionID: region.ID,
-			Hostname: req.Hostname, // Lưu hostname lúc đăng ký
+			Hostname: req.Hostname,
 			Status:   "online",
 			LastSeen: time.Now(),
 		}
 		database.DB.Create(&agent)
 	}
 
-	// 3. Gọi Service xử lý logic nghiệp vụ
+	// Phân phối dữ liệu vào Service để xử lý logic
 	switch req.LogType {
 	case "inventory":
 		service.ProcessInventory(agent, req.Data)
@@ -55,8 +55,43 @@ func PushDataHandler(c *gin.Context) {
 		service.ProcessTelemetry(agent, req.Data)
 	case "software":
 		service.ProcessSoftware(agent, req.Data)
-		// case "event_security": service.ProcessEvents(...) // Nếu bạn làm tiếp phần Event
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "processed", "type": req.LogType})
+}
+
+// GetAgents: Lấy danh sách máy trạm
+func GetAgents(c *gin.Context) {
+	var agents []models.Agent
+	if err := database.DB.Find(&agents).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu"})
+		return
+	}
+	c.JSON(http.StatusOK, agents)
+}
+
+// GetAgentDetail: Lấy chi tiết kèm Inventory và Software
+func GetAgentDetail(c *gin.Context) {
+	hwid := c.Param("hwid")
+	var agent models.Agent
+	// Cực kỳ quan trọng: Preload để lấy dữ liệu liên kết
+	err := database.DB.Preload("Inventory").Preload("Software").Where("hw_id = ?", hwid).First(&agent).Error
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy máy"})
+		return
+	}
+	c.JSON(http.StatusOK, agent)
+}
+
+// GetStats: Trả về số liệu cho Dashboard
+func GetStats(c *gin.Context) {
+	var total, online, alerts, regions int64
+	database.DB.Model(&models.Agent{}).Count(&total)
+	database.DB.Model(&models.Agent{}).Where("status = ?", "online").Count(&online)
+	database.DB.Model(&models.SecurityAlert{}).Where("is_resolved = ?", false).Count(&alerts)
+	database.DB.Model(&models.Region{}).Count(&regions)
+
+	c.JSON(http.StatusOK, gin.H{
+		"total": total, "online": online, "alerts": alerts, "regions": regions,
+	})
 }

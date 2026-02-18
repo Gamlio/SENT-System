@@ -74,6 +74,15 @@ func InitDB() {
 		db.Create(&admin)
 		fmt.Println("✅ Đã tạo Super Admin (R1)")
 	}
-
+	var region models.Region
+	if err := db.Where("enroll_token = ?", "SENT-TOKEN-SME-01").First(&region).Error; err != nil {
+		region = models.Region{
+			OrgID:       org.ID, // Gán vào Org hệ thống
+			Name:        "Chi nhánh mặc định",
+			EnrollToken: "SENT-TOKEN-SME-01", // Khớp với token trong Agent main.go
+		}
+		db.Create(&region)
+		fmt.Println("✅ Đã tạo Vùng mặc định (Token: SENT-TOKEN-SME-01)")
+	}
 	DB = db
 }

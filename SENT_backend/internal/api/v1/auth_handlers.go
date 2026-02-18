@@ -62,8 +62,8 @@ func LoginHandler(c *gin.Context) {
 
 	token, _ := auth.GenerateToken(user.Username)
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"role":  user.RoleLevel,
-		"org":   user.OrgID,
+		"token":  token,
+		"level":  user.RoleLevel, // Sửa từ Level
+		"org_id": user.OrgID,
 	})
 }
