@@ -1,72 +1,67 @@
 import os
-from dotenv import load_dotenv # <-- Thêm thư viện này
+from dotenv import load_dotenv
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain.tools.retriever import create_retriever_tool
-from langchain_community.vectorstores import Chroma
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.tools import Tool
+from langchain_chroma import Chroma 
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage # <--- Bổ sung định dạng tin nhắn chuẩn
+from langgraph.prebuilt import create_react_agent
 
-# Load các biến môi trường từ file .env
-load_dotenv() 
+from ai_security_agent.agent_policy_rag.core_logic.web_search import web_search_tool 
+
+load_dotenv()
 
 class PolicyRAGAgent:
     def __init__(self, vector_db_path="../vector_db"):
-        # Lấy API key trực tiếp từ biến môi trường đã được load
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            raise ValueError("[LỖI] Không tìm thấy OPENAI_API_KEY trong file .env")
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key:
+            raise ValueError("[LỖI] Không tìm thấy GOOGLE_API_KEY trong file .env")
         
-        # 1. Khởi tạo LLM làm "bộ não" cho Agent
-        self.llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, api_key=openai_api_key)
+        # 1. Khởi tạo LLM 
+        self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, google_api_key=google_api_key)
 
-        # 2. Tool 1: Tìm kiếm Web
-        self.web_search = DuckDuckGoSearchRun()
-        self.web_tool = Tool(
-            name="WebSearch",
-            description="Hữu ích khi cần tìm kiếm các chính sách, luật pháp an ninh mạng quốc gia hoặc thông tin public trên internet.",
-            func=self.web_search.run
-        )
+        # 2. Tool 1: Tìm kiếm web (Luôn có sẵn)
+        self.tools = [web_search_tool]
 
-        self.tools = [self.web_tool]
-
-        # 3. Tool 2: Tìm kiếm tài liệu nội bộ (Policy của công ty)
+        # 3. Tool 2: Tìm kiếm tài liệu nội bộ
         if os.path.exists(vector_db_path):
             try:
-                embeddings = OpenAIEmbeddings(api_key=openai_api_key)
+                embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
                 self.vectorstore = Chroma(persist_directory=vector_db_path, embedding_function=embeddings)
                 self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 3})
-                self.doc_tool = create_retriever_tool(
-                    self.retriever,
-                    "LocalPolicySearch",
-                    "Sử dụng công cụ này ĐẦU TIÊN để tìm kiếm các quy định, chính sách bảo mật nội bộ trong cơ sở dữ liệu."
-                )
-                self.tools.append(self.doc_tool)
-                print("[INFO] Đã tải thành công Local Policy Tool.")
+                
+                @tool
+                def local_policy_tool(query: str) -> str:
+                    """Sử dụng công cụ này ĐẦU TIÊN để tìm kiếm các quy định, chính sách bảo mật nội bộ trong cơ sở dữ liệu."""
+                    docs = self.retriever.invoke(query)
+                    if not docs:
+                        return "Không có dữ liệu trong database nội bộ."
+                    return "\n\n".join([doc.page_content for doc in docs])
+
+                self.tools.append(local_policy_tool)
             except Exception as e:
-                print(f"[WARN] Lỗi tải Vector DB: {e}. Hệ thống sẽ chỉ dùng Web Search.")
-        else:
-            print("[WARN] Chưa có Vector DB nội bộ. Hệ thống sẽ chỉ dùng Web Search.")
+                pass
 
-        # 4. Viết Prompt chỉ đạo Agent
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "Bạn là một AI Security Agent chuyên nghiệp. "
-                       "Nhiệm vụ của bạn là phân tích quy định và chính sách an toàn thông tin. "
-                       "Nếu người dùng hỏi về quy định nội bộ, hãy dùng LocalPolicySearch. "
-                       "Nếu hỏi về luật pháp quốc gia hoặc không tìm thấy ở nội bộ, hãy dùng WebSearch."),
-            ("human", "{input}"),
-            ("placeholder", "{agent_scratchpad}"),
-        ])
-
-        # 5. Khởi tạo Agent và Executor
-        self.agent = create_tool_calling_agent(self.llm, self.tools, prompt)
-        self.agent_executor = AgentExecutor(agent=self.agent, tools=self.tools, verbose=True)
+        # 4. Khởi tạo Agent với System Prompt điều khiển độ dài
+        system_prompt = """Bạn là một Chuyên gia An toàn thông tin cấp cao.
+        Khi trả lời người dùng, hãy tuân thủ quy tắc sau:
+        - Luôn trả lời NGẮN GỌN, SÚC TÍCH, đi thẳng vào vấn đề.
+        - Giới hạn câu trả lời tối đa trong vòng 3-4 câu hoặc 1 đoạn văn ngắn (trừ khi người dùng yêu cầu chi tiết).
+        - Nếu có danh sách, chỉ liệt kê tối đa 3 ý quan trọng nhất.
+        """
+        
+        self.agent_executor = create_react_agent(
+            self.llm, 
+            tools=self.tools, 
+            state_modifier=system_prompt # <--- Nơi gắn luật cho AI
+        )
 
     def chat(self, user_query):
         """Hàm chính để giao tiếp với AI"""
         try:
-            response = self.agent_executor.invoke({"input": user_query})
-            return response["output"]
+            # Gói câu hỏi vào HumanMessage để tránh lỗi API
+            inputs = {"messages": [HumanMessage(content=user_query)]}
+            response = self.agent_executor.invoke(inputs)
+            return response["messages"][-1].content
         except Exception as e:
             return f"Lỗi trong quá trình xử lý: {str(e)}"
