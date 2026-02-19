@@ -74,10 +74,16 @@ func GetAgents(c *gin.Context) {
 func GetAgentDetail(c *gin.Context) {
 	hwid := c.Param("hwid")
 	var agent models.Agent
-	// Cực kỳ quan trọng: Preload để lấy dữ liệu liên kết
-	err := database.DB.Preload("Inventory").Preload("Software").Where("hw_id = ?", hwid).First(&agent).Error
+
+	// Thêm .Preload("Alerts") vào chuỗi truy vấn
+	err := database.DB.Preload("Inventory").
+		Preload("Software").
+		Preload("Alerts"). // <--- THÊM CÁI NÀY
+		Where("hw_id = ?", hwid).
+		First(&agent).Error
+
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy máy"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy thiết bị"})
 		return
 	}
 	c.JSON(http.StatusOK, agent)
@@ -94,4 +100,18 @@ func GetStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"total": total, "online": online, "alerts": alerts, "regions": regions,
 	})
+}
+func GetAgentLogs(c *gin.Context) {
+	hwid := c.Param("hwid")
+	var alerts []models.SecurityAlert
+
+	// Lấy tất cả cảnh báo của HWID này, sắp xếp mới nhất trước
+	result := database.DB.Where("hw_id = ?", hwid).Order("created_at desc").Find(&alerts)
+
+	if result.Error != nil {
+		c.JSON(500, gin.H{"error": "Lỗi truy vấn Log"})
+		return
+	}
+
+	c.JSON(200, alerts)
 }

@@ -13,6 +13,67 @@ import (
 	"gorm.io/gorm"
 )
 
+type AgentPayload struct {
+	Type     string      `json:"type"` // "DATA" | "HEARTBEAT"
+	LogType  string      `json:"log_type"`
+	HWID     string      `json:"hwid"`
+	Hostname string      `json:"hostname"`
+	Data     interface{} `json:"data"`
+}
+
+func ProcessAgentData(payload AgentPayload) {
+	// 1. LUÔN LUÔN CẬP NHẬT ONLINE (Dù là Heartbeat hay Data)
+	database.DB.Model(&models.Agent{}).
+		Where("hw_id = ?", payload.HWID).
+		Updates(map[string]interface{}{
+			"status":    "online",
+			"last_seen": time.Now(),
+			"hostname":  payload.Hostname, // Cập nhật luôn tên máy nếu đổi
+		})
+
+	// 2. Nếu là Heartbeat -> Dừng luôn, không làm gì nữa (Tối ưu Server)
+	if payload.Type == "HEARTBEAT" {
+		return
+	}
+
+	// 3. Nếu là DATA -> Bắt đầu quy trình xử lý & AI
+	if payload.Type == "DATA" {
+		// Fetch Agent from database
+		var agent models.Agent
+		if err := database.DB.Where("hw_id = ?", payload.HWID).First(&agent).Error; err != nil {
+			log.Printf("Agent not found: %v", err)
+			return
+		}
+
+		switch payload.LogType {
+		case "telemetry":
+			// Lưu dữ liệu vào DB (Code cũ)
+			ProcessTelemetry(agent, payload.Data)
+
+			// --- KÍCH HOẠT AI SECURITY ---
+			go AnalyzeBehaviorAI(payload.HWID, "telemetry", payload.Data)
+
+		case "software":
+			ProcessSoftware(agent, payload.Data)
+
+			// --- KÍCH HOẠT AI COMPLIANCE ---
+			go AnalyzeBehaviorAI(payload.HWID, "software", payload.Data)
+		}
+	}
+}
+func AnalyzeBehaviorAI(hwid string, dataType string, data interface{}) {
+	// Đây là nơi bạn sẽ cắm mô hình AI vào sau này
+	// Ví dụ logic đơn giản:
+
+	log.Printf("🤖 AI đang phân tích hành vi mới của máy %s...", hwid)
+
+	// Ví dụ: Phát hiện mở cổng lạ
+	if dataType == "telemetry" {
+		// Logic AI: Nếu thấy cổng 22 (SSH) hoặc 3389 (RDP) mở bất thường vào ban đêm -> Báo động
+		// createAlert(hwid, "AI_ANOMALY", "Phát hiện hành vi mở cổng điều khiển từ xa đáng ngờ")
+	}
+}
+
 // --- Helper: Tính toán Hash của dữ liệu JSON ---
 func calculateHash(data interface{}) string {
 	bytes, _ := json.Marshal(data)

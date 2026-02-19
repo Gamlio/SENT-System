@@ -58,6 +58,7 @@ func main() {
 			agents.POST("/push", v1.PushDataHandler)
 			agents.GET("/stats", v1.GetStats)
 			agents.GET("", v1.GetAgents)
+			agents.GET("/:hwid/logs", v1.GetAgentLogs)
 			agents.GET("/:hwid", v1.GetAgentDetail)
 		}
 	}

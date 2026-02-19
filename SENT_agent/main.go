@@ -30,6 +30,56 @@ var (
 	hashMutex  sync.Mutex
 )
 
+type Payload struct {
+	Type     string      `json:"type"`     // "DATA" hoặc "HEARTBEAT"
+	LogType  string      `json:"log_type"` // "telemetry", "software", "inventory"
+	HWID     string      `json:"hwid"`
+	Hostname string      `json:"hostname"`
+	Data     interface{} `json:"data"` // Dữ liệu thật (nếu có)
+}
+
+// Hàm tính Hash
+func calculateHash(data interface{}) string {
+	b, _ := json.Marshal(data)
+	hash := sha256.Sum256(b)
+	return hex.EncodeToString(hash[:])
+}
+
+// Hàm gửi dữ liệu
+func sendPayload(hwid, hostname, logType string, data interface{}) {
+	hashMutex.Lock()
+	currentHash := calculateHash(data)
+	oldHash := lastHashes[logType]
+
+	packetType := "HEARTBEAT"
+	var dataToSend interface{} = nil
+
+	// LOGIC SÀNG LỌC CỦA AGENT:
+	if currentHash != oldHash {
+		// 1. Nếu dữ liệu thay đổi -> Gửi DATA thật
+		packetType = "DATA"
+		dataToSend = data
+		lastHashes[logType] = currentHash // Cập nhật bộ nhớ
+		fmt.Printf("⚡ [%s] Có thay đổi -> Gửi dữ liệu mới.\n", logType)
+	} else {
+		// 2. Nếu y nguyên -> Chỉ gửi Heartbeat để báo Online
+		// fmt.Printf("💤 [%s] Không đổi -> Gửi Heartbeat.\n", logType)
+	}
+	hashMutex.Unlock()
+
+	// Đóng gói
+	payload := Payload{
+		Type:     packetType,
+		LogType:  logType,
+		HWID:     hwid,
+		Hostname: hostname,
+		Data:     dataToSend, // Heartbeat thì cái này là null, rất nhẹ
+	}
+
+	jsonBytes, _ := json.Marshal(payload)
+	http.Post(SERVER_URL, "application/json", bytes.NewBuffer(jsonBytes))
+}
+
 // SỬA 1: Thêm trường Hostname vào struct để Backend nhận diện
 type SecurityLog struct {
 	LogType        string      `json:"log_type"`
@@ -156,8 +206,8 @@ func main() {
 	hwid := hInfo.HostID
 	hostname, _ := os.Hostname() // Lấy tên máy từ OS
 
-	fmt.Printf("🛡️ SENT Agent v3.2 đang chạy trên: %s (HWID: %s)\n", hostname, hwid)
-	fmt.Println("--------------------------------------------------")
+	fmt.Printf("🛡️ SMART AGENT v4.0 - Edge Processing\n")
+	fmt.Printf("Máy trạm: %s (%s)\n", hostname, hwid)
 
 	// 1. Gửi Inventory ngay lập tức (Để đăng ký máy)
 	fmt.Println("📢 Đang gửi thông tin đăng ký máy...")
@@ -168,10 +218,14 @@ func main() {
 	send("telemetry", hwid, hostname, collectTelemetry(), true)
 
 	// 3. Vòng lặp gửi định kỳ
-	ticker := time.NewTicker(30 * time.Second) // Check mỗi 30 giây cho nhanh thấy kết quả
+	ticker := time.NewTicker(10 * time.Second) // Check 10 giây/lần
 	for range ticker.C {
-		// Chỉ gửi nếu có thay đổi (Force = false)
-		send("telemetry", hwid, hostname, collectTelemetry(), false)
-		send("software", hwid, hostname, collectSoftware(), false)
+		// Thu thập dữ liệu
+		telemetry := collectTelemetry() // Hàm cũ của bạn
+		software := collectSoftware()   // Hàm cũ của bạn
+
+		// Để Agent tự quyết định có gửi hay không
+		sendPayload(hwid, hostname, "telemetry", telemetry)
+		sendPayload(hwid, hostname, "software", software)
 	}
 }
