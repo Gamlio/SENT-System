@@ -44,7 +44,7 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
-
+	r.Static("/uploads", "./uploads")
 	v1Group := r.Group("/api/v1")
 	{
 		auth := v1Group.Group("/auth")
@@ -58,8 +58,33 @@ func main() {
 			agents.POST("/push", v1.PushDataHandler)
 			agents.GET("/stats", v1.GetStats)
 			agents.GET("", v1.GetAgents)
-			agents.GET("/:hwid/logs", v1.GetAgentLogs)
+
+			// --- ĐĂNG KÝ ROUTE API Ở ĐÂY ---
+			agents.POST("/bulk-whitelist", v1.AddBulkWhitelist) // Phải để trên /:hwid
+
 			agents.GET("/:hwid", v1.GetAgentDetail)
+			agents.GET("/:hwid/logs", v1.GetAgentLogs)
+
+			agents.GET("/:hwid/whitelist", v1.GetAgentWhitelist)
+			agents.POST("/:hwid/whitelist", v1.AddAgentWhitelist)
+			agents.DELETE("/whitelist/:id", v1.DeleteAgentWhitelist)
+		}
+
+		aiDocs := v1Group.Group("/docs")
+		{
+			aiDocs.GET("", v1.GetPoliciesHandler)          // Lấy danh sách file PDF/Word
+			aiDocs.POST("/upload", v1.UploadPolicyHandler) // Upload file mới
+			aiDocs.DELETE("/:id", v1.DeletePolicyHandler)  // Xóa file vật lý và DB
+			aiDocs.PUT("/:id", v1.UpdatePolicyHandler)     // Sửa thông tin tài liệu
+		}
+
+		// --- 2. TRUNG TÂM CHÍNH SÁCH (QUẢN LÝ QUY TẮC KỸ THUẬT) ---
+		// Gom tất cả software, usb, network vào đây
+		policies := v1Group.Group("/policies")
+		{
+			policies.GET("", v1.GetPoliciesByCategory) // Lấy luật theo category (SOFTWARE/USB/...)
+			policies.POST("", v1.AddUniversalPolicy)   // Thêm luật kỹ thuật mới
+			policies.DELETE("/:id", v1.DeletePolicy)   // Xóa luật kỹ thuật
 		}
 	}
 

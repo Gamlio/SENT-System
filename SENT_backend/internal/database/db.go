@@ -22,27 +22,23 @@ func InitDB() {
 	// 1. Tự động tạo toàn bộ hệ thống bảng (Auto Migration)
 	fmt.Println("⏳ Đang đồng bộ hóa cơ sở dữ liệu...")
 	err = db.AutoMigrate(
-		// Nhóm Tổ chức & Phân quyền
 		&models.Organization{},
 		&models.Region{},
 		&models.User{},
 		&models.UserPermission{},
-
-		// Nhóm Quản lý Thiết bị & Tuân thủ
 		&models.Agent{},
 		&models.AgentInventory{},
 		&models.SoftwareItem{},
-		&models.AgentSnapshot{},
-		&models.USBWhitelist{},
-		&models.SoftwarePolicy{},
 
-		// Nhóm Log & Cảnh báo an ninh
+		// --- BẢNG CHÍNH SÁCH MỚI ---
+		&models.UniversalPolicy{},
+		&models.AgentWhitelist{},
+
 		&models.SecurityAlert{},
-		&models.OpenPort{},
-		&models.USBLog{},
 		&models.SecurityEvent{},
+		&models.USBLog{},
+		&models.OpenPort{},
 	)
-
 	if err != nil {
 		fmt.Printf("❌ Lỗi Migration: %v\n", err)
 	} else {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import '../styles/auth.css';
+import { useAuth } from '../../context/AuthContext';
+import '../../styles/auth.css';
 import { ShieldCheck, Key, RefreshCw, User, Lock, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 

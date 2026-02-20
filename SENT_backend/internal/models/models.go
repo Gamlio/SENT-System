@@ -25,9 +25,8 @@ type User struct {
 	gorm.Model
 	Username     string `gorm:"unique;not null"`
 	PasswordHash string `gorm:"not null"`
-	RoleLevel    int
-	OrgID        *uint
-	TOTPSecret   string
+	RoleLevel    int    `json:"role_level"` // 1: User (Nhân viên), 2: Admin (Quản trị)
+	OrgID        *uint  `json:"org_id"`
 }
 type UserPermission struct {
 	gorm.Model
@@ -37,18 +36,16 @@ type UserPermission struct {
 
 // --- NHÓM 3: THIẾT BỊ (QUAN TRỌNG: Đã cố định tên cột) ---
 type Agent struct {
-	// Thêm phần `json:"..."` vào sau mỗi dòng
-	HWID      string         `gorm:"primaryKey;column:hw_id" json:"hwid"`
-	OrgID     uint           `gorm:"column:org_id" json:"org_id"`
-	RegionID  uint           `gorm:"column:region_id" json:"region_id"`
-	Hostname  string         `gorm:"column:hostname" json:"hostname"`
-	Status    string         `gorm:"column:status" json:"status"`
-	LastSeen  time.Time      `gorm:"column:last_seen" json:"last_seen"`
-	Inventory AgentInventory `gorm:"foreignKey:AgentHWID;references:HWID" json:"inventory"`
-	// Liên kết 1-N: Một máy có nhiều cảnh báo
-	Alerts []SecurityAlert `gorm:"foreignKey:HWID;references:HWID" json:"alerts"`
-	// GORM sẽ tự tìm trong bảng software_items cột agent_hw_id
-	Software []SoftwareItem `gorm:"foreignKey:AgentHWID;references:HWID" json:"software"`
+	HWID      string          `gorm:"primaryKey;column:hw_id" json:"hwid"`
+	OrgID     uint            `gorm:"column:org_id" json:"org_id"`
+	RegionID  uint            `gorm:"column:region_id" json:"region_id"`
+	Hostname  string          `gorm:"column:hostname" json:"hostname"`
+	IPAddress string          `gorm:"column:ip_address" json:"ip_address"` // <--- THÊM DÒNG NÀY
+	Status    string          `gorm:"column:status" json:"status"`
+	LastSeen  time.Time       `gorm:"column:last_seen" json:"last_seen"`
+	Inventory AgentInventory  `gorm:"foreignKey:AgentHWID;references:HWID" json:"inventory"`
+	Alerts    []SecurityAlert `gorm:"foreignKey:HWID;references:HWID" json:"alerts"`
+	Software  []SoftwareItem  `gorm:"foreignKey:AgentHWID;references:HWID" json:"software"`
 }
 
 // Làm tương tự cho Inventory nếu cần hiển thị chi tiết
@@ -116,12 +113,20 @@ type SystemLog struct {
 	Action  string
 	Details string
 }
-type SoftwarePolicy struct {
+
+// --- NHÓM CHÍNH SÁCH TẬP TRUNG (POLICY HUB) ---
+type UniversalPolicy struct {
 	gorm.Model
-	OrgID        uint
-	SoftwareName string
-	IsProhibited bool
-	MinVersion   string
+	OrgID uint   `json:"org_id" gorm:"index"`
+	Title string `json:"title"`
+	// Phân loại: "SOFTWARE", "USB", "NETWORK", "OS"
+	Category string `json:"category" gorm:"index"`
+	// Loại áp dụng: "BLACKLIST" (Cấm), "WHITELIST" (Cho phép)
+	PolicyType string `json:"policy_type"`
+	// Giá trị: "chrome.exe", "VID_0781&PID_5581", "facebook.com"
+	Value       string `json:"value"`
+	IsActive    bool   `json:"is_active" gorm:"default:true"`
+	Description string `json:"description"`
 }
 type USBWhitelist struct {
 	gorm.Model
@@ -140,4 +145,20 @@ type AgentSnapshot struct {
 	AgentHWID        string `gorm:"primaryKey;column:agent_hw_id"`
 	LastSoftwareHash string
 	LastPortHash     string
+}
+
+type PolicyDocument struct {
+	gorm.Model
+	Title       string `json:"title"`
+	FileName    string `json:"file_name"`
+	FilePath    string `json:"file_path"`
+	Category    string `json:"category"`                          // Ví dụ: ISO27001, Internal, Law
+	IsProcessed bool   `gorm:"default:false" json:"is_processed"` // AI đã nạp vào Vector DB chưa?
+	OrgID       uint   `json:"org_id"`
+}
+type AgentWhitelist struct {
+	ID           uint   `json:"id" gorm:"primaryKey"`
+	HWID         string `json:"hwid" gorm:"index"`
+	Category     string `json:"category"` // Đồng bộ Category với bảng trên
+	SoftwareName string `json:"name"`
 }

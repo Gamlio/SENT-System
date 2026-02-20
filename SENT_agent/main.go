@@ -108,6 +108,41 @@ func hasChanged(logType string, newData interface{}) bool {
 	return true
 }
 
+// 1. Thu thập Event Logs quan trọng (Login, Clear Log)
+func collectEventLogs() interface{} {
+	// Trong thực tế, bạn sẽ dùng thư viện chuyên dụng.
+	// Dưới đây là ví dụ lấy các sự kiện đăng nhập thất bại (ID 4625)
+	// Bạn có thể chạy command: wevtutil qe Security /q:"*[System[(EventID=4625)]]" /f:text /c:5
+	events := []map[string]interface{}{
+		{
+			"event_id": 4625,
+			"source":   "Security",
+			"message":  "Logon Failure: Unknown user name or bad password.",
+			"time":     time.Now().Format(time.RFC3339),
+		},
+	}
+	return events
+}
+
+// 2. Nâng cấp Telemetry để lấy kết nối ESTABLISHED (IP Đích)
+func collectActiveConnections() interface{} {
+	connections, _ := psnet.Connections("tcp")
+	var activeConns []map[string]interface{}
+
+	for _, conn := range connections {
+		// Chỉ lấy các kết nối đang hoạt động và có IP đích (Remote Address)
+		if conn.Status == "ESTABLISHED" && conn.Raddr.IP != "" {
+			activeConns = append(activeConns, map[string]interface{}{
+				"local_ip":    conn.Laddr.IP,
+				"local_port":  conn.Laddr.Port,
+				"remote_ip":   conn.Raddr.IP,
+				"remote_port": conn.Raddr.Port,
+				"pid":         conn.Pid,
+			})
+		}
+	}
+	return activeConns
+}
 func collectInventory() interface{} {
 	hInfo, _ := host.Info()
 	cpuInfo, _ := cpu.Info()

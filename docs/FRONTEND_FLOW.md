@@ -6,72 +6,63 @@ Cấu trúc này được mở rộng từ bộ khung hiện tại để hỗ tr
 
 SENT_frontend/
 ├── public/
-│   └── index.html
 ├── src/
 │   ├── api/
-│   │   └── axios.js            # Cấu hình Axios, đính kèm JWT Token
+│   │   └── axios.js                # Cấu hình Axios, đính kèm JWT Token tự động
 │   ├── components/
-│   │   ├── common/             # Các component dùng chung (Button, Modal, Card)
-│   │   ├── Sidebar.jsx         # Menu động thay đổi theo Role Level
-│   │   ├── Navbar.jsx          # Thanh điều hướng, thông báo Alert mới
-│   │   └── ProtectedRoute.jsx  # Chặn truy cập trái phép cấp độ Route
+│   │   ├── common/                 # Component UI tái sử dụng
+│   │   ├── AgentActions.jsx        # Component xử lý thao tác với máy trạm
+│   │   ├── Navbar.jsx              # Thanh điều hướng chính (Chứa menu Agents, Docs, Policy Center)
+│   │   └── Sidebar.jsx             
 │   ├── context/
-│   │   └── AuthContext.js      # Quản lý trạng thái Login, Role R1-R4
+│   │   └── AuthContext.js          # Quản lý trạng thái Login, phân quyền (Level 1, Level 2)
+│   ├── hooks/                      # CUSTOM HOOKS (Tách biệt logic gọi API)
+│   │   ├── useAgents.js            # Xử lý data cho module Agents
+│   │   ├── usePolicies.js          # Xử lý data cho module Policies và Docs
+│   │   └── useUsers.js             # Xử lý data cho người dùng
 │   ├── pages/
-│   │   ├── Auth/
-│   │   │   ├── Login.jsx       # Đăng nhập 2FA
-│   │   │   └── Register.jsx    # Đăng ký SME mới (Level 3)
-│   │   ├── Dashboard/
-│   │   │   └── Dashboard.jsx   # Tổng quan Alert và tình trạng Agent
-│   │   ├── Admin/              # Dành cho R1, R2 quản lý hệ thống
-│   │   │   └── Organizations.jsx # Quản lý danh sách các công ty SME
-│   │   ├── Agents/             # Quản lý thiết bị
-│   │   │   ├── AgentList.jsx   # Danh sách máy trạm (Lọc theo Region)
-│   │   │   └── AgentDetail/    # Chi tiết máy trạm (Tabs: HW, SW, USB, Ports)
-│   │   ├── Policies/           # Quản lý tuân thủ & Truy cứu trách nhiệm
-│   │   │   ├── USBWhitelist.jsx # Danh sách trắng thiết bị USB
-│   │   │   └── SoftwareRules.jsx # Danh sách phần mềm cấm/cho phép
-│   │   ├── Alerts/
-│   │   │   └── AlertList.jsx   # Danh sách cảnh báo an ninh
-│   │   └── Regions/
-│   │       └── RegionList.jsx  # Quản lý vùng/văn phòng
+│   │   ├── Admin/                  # Module Cấu hình (Chỉ Admin Level 2)
+│   │   │   ├── policies/           # Quản trị Tuân thủ & Tri thức
+│   │   │   │   ├── PolicyCenter.jsx     # Giao diện tổng hợp luật
+│   │   │   │   ├── PolicyDocuments.jsx  # Giao diện Nạp Tài Liệu AI (Docs)
+│   │   │   │   ├── SoftwarePolicies.jsx # (Giữ làm backup)
+│   │   │   │   └── USBWhitelist.jsx     # (Giữ làm backup)
+│   │   │   └── System/             # Hệ thống
+│   │   ├── Agents/                 # Quản lý Thiết bị
+│   │   │   ├── AgentDetail.jsx     # Xem chi tiết thông số
+│   │   │   ├── Agents.jsx          # Danh sách máy trạm
+│   │   │   └── AgentSoftwareConfig.jsx 
+│   │   ├── AI/                 
+│   │   │   └── AIChatAssistant.jsx # Trợ lý ảo AI
+│   │   ├── Auth/                   # Xác thực
+│   │   │   ├── Login.jsx
+│   │   │   └── Register.jsx
+│   │   └── Dashboard/              # Tổng quan
+│   │       ├── Alerts.jsx          
+│   │       └── Dashboard.jsx       
 │   ├── styles/
-│   │   └── App.css             # Tailwind CSS
-│   ├── App.js                  # Cấu hình React Router v6
+│   ├── App.js                      # Định tuyến React Router, bảo vệ Route theo Role
 │   └── index.js
-├── tailwind.config.js          # Cấu hình giao diện
-└── docker-compose.yml          # Triển khai môi trường Docker
-
+├── tailwind.config.js          
+└── .env
 1. Luồng Xác thực và Phân quyền (RBAC Flow)
-Frontend xử lý hiển thị dựa trên role_level trả về từ Backend.
+Level 1 (Staff): Thấy menu Máy trạm, AI Trợ lý và Dashboard. Không có quyền thay đổi luật.
 
-R1/R2 (Global): Thấy menu quản lý toàn bộ các Organization và License.
-
-R3 (SME Admin): Có toàn quyền trong một công ty, tạo được User R4 và gán vùng.
-
-R4 (SME Staff): Chỉ thấy menu Agent và Alerts thuộc các Region_ID được chỉ định.
+Level 2 (Admin): Mở khóa toàn bộ tính năng bao gồm Quản lý User, Trung tâm Chính sách và Nạp Luật AI. Các chức năng SME đang được ẩn tạm thời để tập trung vào luồng SOC chính.
 
 2. Luồng Giám sát Thiết bị (Agent Monitoring)
-Hiển thị dữ liệu thu thập từ Agent v3.1 một cách trực quan.
+Danh sách (Agents): Theo dõi trạng thái Online/Offline theo thời gian thực (tính toán dựa trên last_seen). Sử dụng useAgents.js để fetch data.
 
-Agent Detail View: Sử dụng Tab-view để tách biệt các nhóm dữ liệu:
+Chi tiết (Agent Detail): Tách biệt dữ liệu Hardware, Software, Network.
 
-Hardware: CPU, RAM, OS (Dữ liệu từ bảng agent_inventory).
+3. Luồng Quản lý Tuân thủ Đa lớp (Policy Center)
+Thao tác tại một Dashboard duy nhất (PolicyCenter.jsx).
 
-Software: Highlight màu đỏ các phần mềm vi phạm chính sách.
+Cơ chế áp dụng: Hỗ trợ áp dụng toàn hệ thống (GLOBAL) hoặc chọn các máy trạm cụ thể (SPECIFIC).
 
-Network: Hiển thị bảng Port kèm tên tiến trình thực tế.
+(Các file SoftwarePolicies.jsx và USBWhitelist.jsx cũ vẫn được giữ trong thư mục nhưng luồng chính đã chuyển qua PolicyCenter).
 
-USB History: Danh sách thiết bị ngoại vi, đánh dấu Whitelisted vs Unauthorized.
+4. Luồng Tri thức AI (Docs)
+Nạp dữ liệu (PolicyDocuments.jsx): Admin tải lên tệp định dạng PDF/Word chứa nội quy, tiêu chuẩn. Quản lý logic upload qua usePolicies.js.
 
-3. Luồng Quản lý Tuân thủ (Compliance & Enforcement)
-Hỗ trợ R3/R4 thiết lập luật và truy cứu trách nhiệm.
-
-USB Whitelisting: Form nhập VID/PID/Serial và gán tên nhân viên (Assigned To) để định danh chủ sở hữu thiết bị.
-
-Software Compliance: Dashboard so sánh danh sách phần mềm máy trạm với SoftwarePolicy để tự động tạo Ticket vi phạm.
-
-4. Luồng Xử lý Cảnh báo (Alert Response)
-Real-time Alert: Sử dụng thông báo (Toast) khi có Alert mức độ Critical đổ về từ Backend.
-
-Audit Trail: Mỗi Alert ghi rõ thời gian (ScanTimestamp) và định danh máy (HWID) để làm bằng chứng truy cứu.
+Truy vấn: Nhân viên sử dụng AIChatAssistant.jsx để đặt câu hỏi.

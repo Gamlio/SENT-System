@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, CheckCircle, Clock, Filter } from 'lucide-react';
-import axios from '../api/axios'; // Sử dụng instance axios đã cấu hình
+import axios from '../../api/axios'; // Sử dụng instance axios đã cấu hình
 
 const Alerts = () => {
     const [alerts, setAlerts] = useState([]);

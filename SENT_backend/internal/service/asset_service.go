@@ -4,10 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"log"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -83,22 +84,29 @@ func calculateHash(data interface{}) string {
 
 // 1. Xử lý Inventory (Phần cứng)
 func ProcessInventory(agent models.Agent, data interface{}) {
-	var payload models.AgentInventory
-	if err := mapToStruct(data, &payload); err != nil {
+	invData, ok := data.(map[string]interface{})
+	if !ok {
 		return
 	}
 
-	// Logic cập nhật thông thường (Inventory ít thay đổi, có thể update thẳng)
-	payload.AgentHWID = agent.HWID
+	var inv models.AgentInventory
+	// Tìm xem máy này đã có cấu hình trong DB chưa
+	result := database.DB.Where("hw_id = ?", agent.HWID).First(&inv)
 
-	// Tìm xem đã có chưa để lấy ID (tránh tạo mới liên tục)
-	var existing models.AgentInventory
-	if err := database.DB.Where("agent_hw_id = ?", agent.HWID).First(&existing).Error; err == nil {
-		payload.ID = existing.ID
-		payload.CreatedAt = existing.CreatedAt
+	inv.AgentHWID = agent.HWID
+	inv.OSInfo = fmt.Sprintf("%v", invData["os_info"])
+	inv.CPUModel = fmt.Sprintf("%v", invData["cpu_model"])
+
+	// Convert Float64 sang Int một cách an toàn
+	if ramFloat, ok := invData["ram_total_gb"].(float64); ok {
+		inv.RAMTotalGB = int(ramFloat)
 	}
 
-	database.DB.Save(&payload)
+	if result.Error != nil {
+		database.DB.Create(&inv) // Máy mới -> Tạo mới
+	} else {
+		database.DB.Save(&inv) // Máy cũ -> Cập nhật
+	}
 }
 
 // 2. Xử lý Telemetry (Port, USB) - CÓ SỬ DỤNG SNAPSHOT ĐỂ TỐI ƯU
@@ -150,61 +158,65 @@ func ProcessTelemetry(agent models.Agent, data interface{}) {
 	})
 }
 
-// 3. Xử lý Software - CÓ TỐI ƯU & CHẶN LOG RÁC
+// ProcessSoftware: Xử lý log phần mềm từ Agent gửi lên
 func ProcessSoftware(agent models.Agent, data interface{}) {
 	softwareList, ok := data.([]interface{})
 	if !ok {
 		return
 	}
 
-	// 1. TỐI ƯU: So sánh Hash trước
-	newHash := calculateHash(softwareList)
-	var snapshot models.AgentSnapshot
-	err := database.DB.Where("agent_hw_id = ?", agent.HWID).First(&snapshot).Error
+	// Xóa danh sách cũ để cập nhật mới
+	database.DB.Where("hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
 
-	if err == nil && snapshot.LastSoftwareHash == newHash {
-		// log.Println("⚡ Software không đổi, bỏ qua update DB.")
-		return
-	}
+	// 1. LẤY WHITELIST CỦA RIÊNG MÁY NÀY
+	var localWhitelist []models.AgentWhitelist
+	database.DB.Where("hwid = ?", agent.HWID).Find(&localWhitelist)
+	isZeroTrustMode := len(localWhitelist) > 0 // Kích hoạt Zero Trust nếu có dữ liệu
 
-	// 2. Nếu có thay đổi -> Xử lý
-	database.DB.Transaction(func(tx *gorm.DB) error {
-		// Xóa danh sách cũ
-		tx.Where("agent_hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
+	// 2. LẤY BLACKLIST CHUNG CỦA HỆ THỐNG
+	var globalBlacklist []models.UniversalPolicy
+	database.DB.Where("policy_type = ?", "blacklist").Find(&globalBlacklist)
 
-		for _, item := range softwareList {
-			name, _ := item.(string) // Giả sử Agent gửi mảng string tên phần mềm
+	for _, sw := range softwareList {
+		swName := fmt.Sprintf("%v", sw)
+		swNameLower := strings.ToLower(swName)
 
-			// Lưu vào SoftwareItem
-			tx.Create(&models.SoftwareItem{
-				AgentHWID:    agent.HWID,
-				SoftwareName: name,
-				Version:      "Detected",
-			})
+		// Lưu phần mềm vào DB để hiển thị
+		dbItem := models.SoftwareItem{AgentHWID: agent.HWID, SoftwareName: swName}
+		database.DB.Create(&dbItem)
 
-			// --- KIỂM TRA CHÍNH SÁCH (Fix log rác ở đây) ---
-			var policy models.SoftwarePolicy
-			// Tìm xem phần mềm này có bị cấm không
-			err := tx.Where("org_id = ? AND software_name = ? AND is_prohibited = ?",
-				agent.OrgID, name, true).First(&policy).Error
-
-			// CHỈ LOG NẾU TÌM THẤY (LÀ CÓ VI PHẠM) HOẶC LỖI DB THỰC SỰ
-			if err == nil {
-				// Tìm thấy Policy cấm -> Tạo Alert
-				createAlert(tx, agent, "SOFTWARE_VIOLATION", "Phần mềm bị cấm: "+name)
-			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-				// Nếu lỗi KHÁC lỗi "Not Found" thì mới in ra console
-				log.Printf("Lỗi DB khi check policy: %v", err)
+		// --- LOGIC KIỂM TRA CHÉO ---
+		if isZeroTrustMode {
+			// CHẾ ĐỘ 1: ZERO TRUST (Cực ngặt)
+			// Tất cả phải nằm trong Whitelist, nếu trật ra ngoài -> Báo động
+			isAllowed := false
+			for _, white := range localWhitelist {
+				if strings.Contains(swNameLower, strings.ToLower(white.SoftwareName)) {
+					isAllowed = true
+					break
+				}
 			}
-			// Nếu err == RecordNotFound -> Nghĩa là phần mềm sạch, không làm gì cả.
+			if !isAllowed {
+				alert := models.SecurityAlert{
+					HWID: agent.HWID, OrgID: agent.OrgID, AlertType: "Vi phạm Zero Trust", Severity: "Critical",
+					Description: fmt.Sprintf("Phần mềm KHÔNG nằm trong Whitelist: %s", swName),
+				}
+				database.DB.Create(&alert)
+			}
+		} else {
+			// CHẾ ĐỘ 2: KIỂM TRA BLACKLIST (Chế độ thường)
+			for _, black := range globalBlacklist {
+				if black.PolicyType != "" && strings.Contains(swNameLower, strings.ToLower(black.PolicyType)) {
+					alert := models.SecurityAlert{
+						HWID: agent.HWID, OrgID: agent.OrgID, AlertType: "Phần mềm trái phép", Severity: "High",
+						Description: fmt.Sprintf("Phát hiện phần mềm bị cấm chung: %s", swName),
+					}
+					database.DB.Create(&alert)
+					break
+				}
+			}
 		}
-
-		// Cập nhật Hash mới vào Snapshot
-		snapshot.AgentHWID = agent.HWID
-		snapshot.LastSoftwareHash = newHash
-		tx.Save(&snapshot)
-		return nil
-	})
+	}
 }
 
 // Hàm tạo cảnh báo nhanh

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,7 +22,9 @@ func GetDashboardStats(c *gin.Context) {
 
 	// 2. Truy vấn số liệu thực tế từ Database
 	database.DB.Model(&models.Agent{}).Where("org_id = ?", orgID).Count(&stats.TotalAgents)
-	database.DB.Model(&models.Agent{}).Where("org_id = ? AND status = ?", orgID, "online").Count(&stats.OnlineAgents)
+	threshold := time.Now().Add(-2 * time.Minute)
+	database.DB.Model(&models.Agent{}).Where("org_id = ? AND last_seen >= ?", orgID, threshold).Count(&stats.OnlineAgents)
+
 	database.DB.Model(&models.SecurityAlert{}).Where("org_id = ?", orgID).Count(&stats.TotalAlerts)
 	database.DB.Model(&models.Region{}).Where("org_id = ?", orgID).Count(&stats.TotalRegions)
 

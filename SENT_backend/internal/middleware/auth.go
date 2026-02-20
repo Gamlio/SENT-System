@@ -65,9 +65,10 @@ func AuthRequired() gin.HandlerFunc {
 		}
 
 		// 7. Lưu thông tin User và OrgID vào Context để các API sau sử dụng
-		c.Set("user", user)
+		c.Set("user_id", user.ID)
+		c.Set("role_level", user.RoleLevel)
 		if user.OrgID != nil {
-			c.Set("org_id", *user.OrgID) // Lưu OrgID để cô lập dữ liệu SME
+			c.Set("org_id", *user.OrgID)
 		}
 
 		c.Next() // Cho phép đi tiếp vào API chính
