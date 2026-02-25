@@ -8,38 +8,49 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-    const checkAuth = () => {
-        const token = localStorage.getItem('sent_token');
-        const savedUser = localStorage.getItem('sent_user');
-        if (token && savedUser) {
-            try {
-                setUser(JSON.parse(savedUser));
-            } catch (e) {
-                console.error("Lỗi parse dữ liệu User:", e);
-                localStorage.clear();
+        const checkAuth = () => {
+            const token = localStorage.getItem('sent_token');
+            const savedUser = localStorage.getItem('sent_user');
+            if (token && savedUser) {
+                try {
+                    setUser(JSON.parse(savedUser));
+                } catch (e) {
+                    console.error("Lỗi parse dữ liệu User:", e);
+                    localStorage.clear();
+                }
             }
-        }
-        // Luôn luôn phải có dòng này ở cuối để tắt màn hình chờ
-        setLoading(false); 
-    };
-    checkAuth();
-}, []);
+            // Luôn luôn phải có dòng này ở cuối để tắt màn hình chờ
+            setLoading(false); 
+        };
+        checkAuth();
+    }, []);
 
     const login = async (loginData) => {
-    // loginData sẽ bao gồm { username, password, captcha, otp }
-    const res = await API.post('/auth/login', loginData); 
-    
-    const userData = { 
-        username: loginData.username, 
-        level: res.data.level, 
-        org_id: res.data.org_id 
+        try {
+            // loginData sẽ bao gồm { username, password }
+            const res = await API.post('/auth/login', loginData); 
+            
+            // 1. CẬP NHẬT: Thêm permissions và lấy đúng tên trường token
+            const userData = { 
+                username: res.data.username || loginData.username, 
+                level: res.data.level, 
+                org_id: res.data.org_id,
+                company_code: res.data.company_code, // BỔ SUNG DÒNG NÀY
+                permissions: res.data.permissions || {}
+            };
+            
+            // 2. CẬP NHẬT: Backend trả về 'token' chứ không phải 'access_token'
+            localStorage.setItem('sent_token', res.data.token);
+            localStorage.setItem('sent_user', JSON.stringify(userData));
+            
+            setUser(userData);
+            return { success: true, data: res.data };
+        } catch (error) {
+            console.error("Login Error:", error);
+            // Xử lý ném lỗi ra ngoài để form login bắt được
+            throw error; 
+        }
     };
-    
-    localStorage.setItem('sent_token', res.data.access_token);
-    localStorage.setItem('sent_user', JSON.stringify(userData));
-    setUser(userData);
-    return res.data;
-};
 
     const logout = () => {
         localStorage.clear();

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-// import axios from '../api/axios'; // Mở ra khi có API thật
+import axios from '../api/axios'; // Đã mở khóa import API thật
 
 export const useUsers = () => {
     const [users, setUsers] = useState([]);
@@ -8,27 +8,26 @@ export const useUsers = () => {
     const [isLoading, setIsLoading] = useState(false);
     const itemsPerPage = 5;
 
-    // 1. Lấy dữ liệu (Tạm dùng dữ liệu mẫu để bạn test giao diện, khi có Backend sẽ thay bằng axios)
+    // 1. LẤY DỮ LIỆU TỪ BACKEND
     const fetchUsers = async () => {
         try {
-            setUsers([
-                { id: 1, username: 'admin_master', role_level: 2, created_at: new Date().toISOString() },
-                { id: 2, username: 'nguyen.vana', role_level: 1, created_at: new Date().toISOString() },
-                { id: 3, username: 'tran.thib', role_level: 1, created_at: new Date(Date.now() - 86400000).toISOString() },
-                { id: 4, username: 'le.vanc', role_level: 1, created_at: new Date().toISOString() },
-                { id: 5, username: 'pham.thid', role_level: 1, created_at: new Date().toISOString() },
-                { id: 6, username: 'hoang.vane', role_level: 1, created_at: new Date().toISOString() },
-            ]);
-        } catch (err) { console.error("Lỗi:", err); }
+            const res = await axios.get('/users'); 
+            setUsers(res.data || []);
+        } catch (err) { 
+            console.error("Lỗi lấy danh sách người dùng:", err); 
+        }
     };
 
+    // Tự động lấy dữ liệu khi trang được load
     useEffect(() => { fetchUsers(); }, []);
 
-    // 2. Logic Tìm kiếm & Phân trang tự động
+    // 2. LOGIC TÌM KIẾM TỐI ƯU (Hỗ trợ tìm theo cả Username và Full Name)
     const filteredUsers = useMemo(() => {
         if (!searchQuery) return users;
+        const query = searchQuery.toLowerCase();
         return users.filter(u => 
-            u.username.toLowerCase().includes(searchQuery.toLowerCase())
+            (u.username && u.username.toLowerCase().includes(query)) ||
+            (u.full_name && u.full_name.toLowerCase().includes(query))
         );
     }, [users, searchQuery]);
 
@@ -39,21 +38,32 @@ export const useUsers = () => {
 
     useEffect(() => { setCurrentPage(1); }, [searchQuery]);
 
-    // 3. Logic thao tác (Thêm/Xóa)
+    // 3. LOGIC TẠO NGƯỜI DÙNG THẬT
     const createUser = async (formData) => {
         setIsLoading(true);
-        setTimeout(() => { // Giả lập đợi API
+        try {
+            // Gửi dữ liệu (bao gồm họ tên, sđt, email) xuống Backend
+            await axios.post('/users', formData);
             alert("Tạo tài khoản thành công!");
-            fetchUsers();
+            fetchUsers(); // Tải lại danh sách mới
             setCurrentPage(1);
+        } catch (err) {
+            // Hiển thị lỗi từ Backend (VD: "Tên đăng nhập đã tồn tại")
+            alert(err.response?.data?.error || "Lỗi khi tạo tài khoản!");
+        } finally {
             setIsLoading(false);
-        }, 800);
+        }
     };
 
+    // 4. LOGIC XÓA NGƯỜI DÙNG THẬT
     const deleteUser = async (id) => {
-        if (!window.confirm("Bạn có chắc muốn xóa nhân viên này?")) return;
-        alert("Đã xóa thành công!");
-        fetchUsers();
+        if (!window.confirm("Bạn có chắc muốn xóa nhân viên này khỏi hệ thống?")) return;
+        try {
+            await axios.delete(`/users/${id}`);
+            fetchUsers(); // Tải lại danh sách sau khi xóa
+        } catch (err) {
+            alert("Lỗi khi xóa tài khoản!");
+        }
     };
 
     return {

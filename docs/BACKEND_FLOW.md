@@ -33,10 +33,16 @@ SENT_backend/
 │       └── main.go               # Khởi chạy router, kết nối DB, định tuyến /docs và /policies
 ├── internal/
 │   ├── api/v1/                   # HANDLER: Tiếp nhận HTTP request
-│   │   ├── asset_handlers.go     # Tiếp nhận Log từ Agent, quản lý Whitelist
-│   │   ├── auth_handlers.go      # Đăng nhập, cấp Token
-│   │   ├── dashboard_handlers.go # API thống kê tổng quan
-│   │   └── policy_handlers.go    # Xử lý file tài liệu (Docs) và luật (Universal Policy)
+│   │   ├── auth/
+│   │   │   └── auth_handlers.go     (Xử lý Login, Register)
+│   │   ├── users/
+│   │   │   └── user_handlers.go     (Đổi tên từ admin_handlers.go, chứa CreateUser, GetUsers...)
+│   │   ├── agents/
+│   │   │   └── agent_handlers.go    (Đổi tên từ asset_handlers.go)
+│   │   ├── policies/
+│   │   │   └── policy_handlers.go   (Quản lý file AI Docs và Luật kỹ thuật)
+│   │   └── dashboard/
+│   │       └── dashboard_handlers.go(Thống kê tổng quan)   # Xử lý file tài liệu (Docs) và luật (Universal Policy)
 │   ├── auth/
 │   │   └── security.go                      # Cấu hình xác thực mở rộng
 │   ├── database/           

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserPlus, Users, Trash2, Shield, User, Activity, PieChart as PieIcon, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { UserPlus, Users, Trash2, Shield, User, Activity, PieChart as PieIcon, Search, ChevronLeft, ChevronRight, Phone, Mail } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUsers } from '../../../hooks/useUsers'; // Import Hook
 
@@ -12,12 +12,17 @@ const UserManagement = () => {
         isLoading, createUser, deleteUser
     } = useUsers();
 
-    const [formData, setFormData] = useState({ username: '', password: '', role_level: 1 });
+    // 1. CẬP NHẬT STATE: Thêm full_name, phone, email
+    const [formData, setFormData] = useState({ 
+        username: '', password: '', role_level: 1,
+        full_name: '', phone: '', email: '' 
+    });
 
     const handleCreateSubmit = async (e) => {
         e.preventDefault();
         await createUser(formData);
-        setFormData({ username: '', password: '', role_level: 1 });
+        // Reset toàn bộ form sau khi tạo
+        setFormData({ username: '', password: '', role_level: 1, full_name: '', phone: '', email: '' });
     };
 
     // --- BIỂU ĐỒ ĐỘNG: Tự đếm dựa trên số lượng User thật ---
@@ -27,7 +32,7 @@ const UserManagement = () => {
     ];
 
     const growthData = [
-        { name: 'T10', users: 2 }, { name: 'T11', users: 4 }, { name: 'T12', users: 5 }, { name: 'T1', users: users.length }
+        { name: 'T10', users: 2 }, { name: 'T11', users: 4 }, { name: 'T12', users: 5 }, { name: 'Hiện tại', users: users.length }
     ];
 
     return (
@@ -90,14 +95,33 @@ const UserManagement = () => {
                         <UserPlus className="text-emerald-400" size={20}/> Cấp tài khoản mới
                     </h3>
                     <form onSubmit={handleCreateSubmit} className="space-y-4">
+                        {/* 2. CÁC TRƯỜNG THÔNG TIN MỚI */}
                         <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase">Tên đăng nhập</label>
-                            <input type="text" value={formData.username} required onChange={(e) => setFormData({...formData, username: e.target.value})} className="w-full mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
+                            <label className="text-xs font-bold text-slate-500 uppercase">Họ và tên</label>
+                            <input type="text" value={formData.full_name} required placeholder="VD: Nguyễn Văn A" onChange={(e) => setFormData({...formData, full_name: e.target.value})} className="w-full mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
                         </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Tên đăng nhập</label>
+                                <input type="text" value={formData.username} required placeholder="VD: nguyenva" onChange={(e) => setFormData({...formData, username: e.target.value})} className="w-full mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Mật khẩu</label>
+                                <input type="password" value={formData.password} required minLength="6" placeholder="******" onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
+                            </div>
+                        </div>
+
                         <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase">Mật khẩu</label>
-                            <input type="password" value={formData.password} required minLength="6" onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
+                            <label className="text-xs font-bold text-slate-500 uppercase">Số điện thoại</label>
+                            <input type="tel" value={formData.phone} placeholder="VD: 0912345678" onChange={(e) => setFormData({...formData, phone: e.target.value})} className="w-full mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
                         </div>
+
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Email</label>
+                            <input type="email" value={formData.email} placeholder="VD: email@congty.com" onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
+                        </div>
+
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Phân quyền</label>
                             <select value={formData.role_level} onChange={(e) => setFormData({...formData, role_level: parseInt(e.target.value)})} className="w-full mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white">
@@ -113,12 +137,11 @@ const UserManagement = () => {
 
                 {/* Danh sách & Phân trang */}
                 <div className="xl:col-span-2 flex flex-col h-full">
-                    {/* Thanh Tìm kiếm */}
                     <div className="mb-4 relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20}/>
                         <input 
                             type="text" 
-                            placeholder="Tìm kiếm theo tên đăng nhập..." 
+                            placeholder="Tìm kiếm theo tên đăng nhập hoặc họ tên..." 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full pl-12 pr-4 py-3 bg-[#1e293b] border border-slate-800 rounded-2xl text-white outline-none focus:border-emerald-500 transition shadow-lg"
@@ -136,17 +159,28 @@ const UserManagement = () => {
                                 <thead className="text-[10px] uppercase tracking-widest text-slate-500 bg-slate-900/50">
                                     <tr>
                                         <th className="p-5 font-bold">Người dùng</th>
+                                        <th className="p-5 font-bold">Liên hệ</th>
                                         <th className="p-5 font-bold">Quyền</th>
-                                        <th className="p-5 font-bold">Ngày tạo</th>
                                         <th className="p-5 font-bold text-right">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800">
                                     {currentUsers.map((u) => (
                                         <tr key={u.id} className="hover:bg-slate-800/50 transition-colors group">
+                                            {/* 3. CẬP NHẬT CỘT NGƯỜI DÙNG: Hiển thị Full Name to, Username nhỏ */}
                                             <td className="p-5 flex items-center gap-3">
                                                 <div className="p-2 bg-slate-900 rounded-lg text-slate-400 group-hover:text-emerald-400 transition"><User size={16}/></div>
-                                                <span className="font-bold text-white text-sm">{u.username}</span>
+                                                <div>
+                                                    <p className="font-bold text-white text-sm">{u.full_name || u.username}</p>
+                                                    <p className="text-[10px] text-slate-500 font-mono">@{u.username}</p>
+                                                </div>
+                                            </td>
+                                            {/* CỘT MỚI: Liên hệ */}
+                                            <td className="p-5">
+                                                <div className="text-xs text-slate-400 space-y-1">
+                                                    <div className="flex items-center gap-1.5"><Phone size={12}/> {u.phone || '—'}</div>
+                                                    <div className="flex items-center gap-1.5"><Mail size={12}/> {u.email || '—'}</div>
+                                                </div>
                                             </td>
                                             <td className="p-5">
                                                 {u.role_level === 2 ? (
@@ -155,7 +189,6 @@ const UserManagement = () => {
                                                     <span className="flex items-center gap-1.5 w-fit px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-[10px] font-black uppercase"><User size={12}/> Nhân viên</span>
                                                 )}
                                             </td>
-                                            <td className="p-5 text-xs text-slate-400 font-mono">{new Date(u.created_at).toLocaleDateString('vi-VN')}</td>
                                             <td className="p-5 text-right">
                                                 <button onClick={() => deleteUser(u.id)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition" title="Xóa"><Trash2 size={16}/></button>
                                             </td>

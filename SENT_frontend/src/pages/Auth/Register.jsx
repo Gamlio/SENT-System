@@ -1,12 +1,12 @@
-import React, { useState } from 'react'; //
+import React, { useState } from 'react'; 
 import { Building2, ArrowLeft, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios'; // Đừng quên cài đặt: npm install axios
+import axios from '../../api/axios';
 
 const Register = () => {
     const navigate = useNavigate();
     
-    // 1. Quản lý trạng thái form
+    // Đã xóa company_code khỏi Form State
     const [formData, setFormData] = useState({
         company_name: '',
         username: '',
@@ -16,17 +16,14 @@ const Register = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // 2. Hàm xử lý thay đổi input
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    // 3. Hàm đẩy dữ liệu về Backend (FastAPI)
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
 
-        // Kiểm tra bảo mật cơ bản (Đúng chất dân Security Foxconn)
         if (formData.password !== formData.confirmPassword) {
             setError('Mật khẩu xác nhận không khớp!');
             return;
@@ -34,19 +31,20 @@ const Register = () => {
 
         setLoading(true);
         try {
-            // Đẩy dữ liệu qua cổng 8000
-            const response = await axios.post('http://localhost:8000/api/v1/auth/register', {
+            const response = await axios.post('/auth/register', {
                 company_name: formData.company_name,
                 username: formData.username,
                 password: formData.password
             });
 
             if (response.status === 200) {
-                alert('Đăng ký SME thành công! Hãy đăng nhập.');
-                navigate('/login'); // Chuyển về trang đăng nhập
+                // Lấy mã công ty Backend tự sinh và thông báo cho người dùng
+                const generatedCode = response.data.company_code;
+                alert(`CHÚC MỪNG ĐĂNG KÝ THÀNH CÔNG!\n\nMÃ CÔNG TY CỦA BẠN LÀ:  ${generatedCode}\n\n⚠️ Vui lòng lưu lại Mã công ty này để sử dụng khi đăng nhập.`);
+                navigate('/login'); 
             }
         } catch (err) {
-            setError(err.response?.data?.detail || 'Lỗi kết nối hệ thống!');
+            setError(err.response?.data?.error || 'Lỗi kết nối hệ thống!');
         } finally {
             setLoading(false);
         }
@@ -73,6 +71,9 @@ const Register = () => {
                         <input name="company_name" type="text" placeholder="Tên công ty / Tổ chức" required
                             onChange={handleChange} className="w-full p-3 pl-10 bg-slate-900 rounded-xl border border-slate-700 text-white outline-none focus:border-emerald-500"/>
                     </div>
+
+                    {/* Ô nhập Company Code đã bị xóa hoàn toàn ở đây */}
+
                     <input name="username" type="text" placeholder="Tài khoản Admin" required
                         onChange={handleChange} className="w-full p-3 bg-slate-900 rounded-xl border border-slate-700 text-white outline-none focus:border-emerald-500"/>
                     <input name="password" type="password" placeholder="Mật khẩu" required

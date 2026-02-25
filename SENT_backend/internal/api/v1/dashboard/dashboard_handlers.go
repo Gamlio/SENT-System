@@ -1,4 +1,4 @@
-package v1
+package dashboard
 
 import (
 	"net/http"
