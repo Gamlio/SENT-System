@@ -13,11 +13,12 @@ const Sidebar = () => {
 
     // Gom menu lại thành mảng để dễ render
     const menuItems = [
-        { path: '/', icon: <LayoutDashboard size={20}/>, label: 'Tổng quan', show: true },
-        { path: '/agents', icon: <Monitor size={20}/>, label: 'Máy trạm', show: user.permissions?.agents },
-        { path: '/admin/policy-center', icon: <ShieldCheck size={20}/>, label: 'Trung tâm Chính sách', show: user.permissions?.policies },
-        { path: '/admin/docs', icon: <FileText size={20}/>, label: 'Tài liệu AI (Docs)', show: user.permissions?.docs },
-        { path: '/admin/users', icon: <Users size={20}/>, label: 'Người dùng', show: user.permissions?.users },
+       { path: '/', icon: <LayoutDashboard size={20}/>, label: 'Tổng quan', show: true },
+        { path: '/agents', icon: <Monitor size={20}/>, label: 'Máy trạm', show: user.permissions?.view_agents },
+        { path: '/admin/policy-center', icon: <ShieldCheck size={20}/>, label: 'Trung tâm Chính sách', show: user.permissions?.manage_policies },
+        { path: '/admin/docs', icon: <FileText size={20}/>, label: 'Tài liệu AI (Docs)', show: user.permissions?.view_docs },
+        { path: '/admin/users', icon: <Users size={20}/>, label: 'Người dùng', show: user.permissions?.manage_users },
+        { path: '/incidents', icon: <ShieldCheck size={20}/>, label: 'Điều tra Sự cố', show: user.permissions?.manage_incidents }    
     ];
 
     return (

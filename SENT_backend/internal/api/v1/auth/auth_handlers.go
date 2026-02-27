@@ -31,7 +31,12 @@ func RegisterSMEHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu sai định dạng"})
 		return
 	}
-
+	var existingUser models.User
+	if err := database.DB.Where("username = ?", req.Username).First(&existingUser).Error; err == nil {
+		// Nếu err == nil nghĩa là TÌM THẤY user này trong DB -> Chặn luôn
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tên đăng nhập này đã có người sử dụng. Vui lòng chọn tên khác!"})
+		return
+	}
 	// 1. Tự động sinh Mã Công Ty
 	newCompanyCode := generateCompanyCode()
 
@@ -53,20 +58,33 @@ func RegisterSMEHandler(c *gin.Context) {
 
 	hashed, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
 	user := models.User{
-		Username:          req.Username,
-		PasswordHash:      string(hashed),
-		RoleLevel:         3,
-		OrgID:             &org.ID,
-		CanManageAgents:   true,
-		CanManagePolicies: true,
-		CanManageDocs:     true,
-		CanManageUsers:    true,
+		Username:           req.Username,
+		PasswordHash:       string(hashed),
+		Role:               "ADMIN", // Người tạo công ty sẽ là ADMIN
+		OrgID:              &org.ID,
+		CanViewAgents:      true,
+		CanViewDocs:        true,
+		CanManageAgents:    true,
+		CanManagePolicies:  true,
+		CanManageDocs:      true,
+		CanManageUsers:     true,
+		CanManageIncidents: true,
 	}
-	database.DB.Create(&user)
+	if err := database.DB.Create(&user).Error; err != nil {
+		// Nếu lỗi do trùng tên đăng nhập
+		if strings.Contains(err.Error(), "duplicate key value") || strings.Contains(err.Error(), "uni_users_username") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Tên đăng nhập đã tồn tại! Vui lòng chọn tên khác."})
+			return // <--- BẮT BUỘC PHẢI CÓ RETURN ĐỂ DỪNG LẠI, KHÔNG CHẠY XUỐNG DƯỚI NỮA
+		}
 
-	// TRẢ MÃ CÔNG TY VỀ CHO FRONTEND HIỂN THỊ
+		// Nếu là lỗi DB khác
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi hệ thống khi tạo tài khoản"})
+		return
+	}
+
+	// 3. Đoạn này chỉ chạy khi Create() thành công mỹ mãn
 	c.JSON(http.StatusOK, gin.H{
-		"message":      "Đăng ký công ty và tài khoản thành công",
+		"message":      "Đăng ký thành công",
 		"company_code": newCompanyCode,
 	})
 }
@@ -74,7 +92,7 @@ func RegisterSMEHandler(c *gin.Context) {
 // ... (Hàm LoginHandler giữ nguyên như cũ vì vẫn cần nhận company_code để đăng nhập) ...
 func LoginHandler(c *gin.Context) {
 	var req struct {
-		CompanyCode string `json:"company_code"` // Giờ đã trở thành Tùy chọn (Optional)
+		CompanyCode string `json:"company_code"` // Không bắt buộc
 		Username    string `json:"username"`
 		Password    string `json:"password"`
 	}
@@ -82,20 +100,20 @@ func LoginHandler(c *gin.Context) {
 
 	var user models.User
 
-	// LUỒNG 1: NẾU NGƯỜI DÙNG CÓ NHẬP MÃ CÔNG TY
+	// LUỒNG 1: USER CÓ NHẬP MÃ CÔNG TY
 	if req.CompanyCode != "" {
 		var org models.Organization
 		if err := database.DB.Where("company_code = ?", req.CompanyCode).First(&org).Error; err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Mã công ty không hợp lệ"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Mã công ty không tồn tại"})
 			return
 		}
-
+		// Tìm User theo tên VÀ theo mã công ty
 		if err := database.DB.Where("username = ? AND org_id = ?", req.Username, org.ID).First(&user).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không tồn tại trong công ty này"})
 			return
 		}
 	} else {
-		// LUỒNG 2: NẾU BỎ TRỐNG MÃ CÔNG TY -> Tìm kiếm toàn cầu
+		// LUỒNG 2: USER KHÔNG NHẬP MÃ CÔNG TY -> Quét toàn hệ thống
 		var users []models.User
 		database.DB.Where("username = ?", req.Username).Find(&users)
 
@@ -103,38 +121,42 @@ func LoginHandler(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không tồn tại trên hệ thống"})
 			return
 		} else if len(users) > 1 {
-			// Bắt trúng trường hợp trùng tên ở 2 công ty khác nhau
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Tên đăng nhập này thuộc nhiều công ty. Vui lòng nhập Mã công ty để xác định!"})
+			// Đây là mấu chốt: Trùng tên ở 2 công ty khác nhau
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":                "Tên đăng nhập này thuộc nhiều công ty. Vui lòng nhập Mã công ty (Company Code) để đăng nhập!",
+				"require_company_code": true, // Báo cho React biết để hiện ô nhập Mã CTY lên
+			})
 			return
 		}
-
-		// Nếu tên này là duy nhất toàn cầu -> Lấy luôn user đó
+		// Nếu chỉ có 1 người duy nhất trên hệ thống -> Tự động lấy người đó
 		user = users[0]
 	}
 
-	// Kiểm tra mật khẩu (Dùng chung cho cả 2 luồng)
+	// Kiểm tra mật khẩu
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Mật khẩu không chính xác"})
 		return
 	}
 
-	token, _ := auth.GenerateToken(user.Username)
-
-	// TÌM LẤY MÃ CÔNG TY ĐỂ TRẢ VỀ FRONTEND
+	// Cấp Token
+	token, _ := auth.GenerateToken(user.Username, *user.OrgID)
 	var currentOrg models.Organization
 	database.DB.Where("id = ?", user.OrgID).First(&currentOrg)
 
+	// Trả về dữ liệu kèm quyền hạn chi tiết
 	c.JSON(http.StatusOK, gin.H{
 		"token":        token,
 		"username":     user.Username,
-		"level":        user.RoleLevel,
-		"org_id":       user.OrgID,
-		"company_code": currentOrg.CompanyCode, // BỔ SUNG DÒNG NÀY
-		"permissions": gin.H{
-			"agents":   user.CanManageAgents,
-			"policies": user.CanManagePolicies,
-			"docs":     user.CanManageDocs,
-			"users":    user.CanManageUsers,
+		"role":         user.Role, // "ADMIN" hoặc "USER"
+		"company_code": currentOrg.CompanyCode,
+		"permissions": map[string]bool{
+			"view_agents":      user.CanViewAgents,
+			"manage_agents":    user.CanManageAgents,
+			"view_docs":        user.CanViewDocs,
+			"manage_docs":      user.CanManageDocs,
+			"manage_policies":  user.CanManagePolicies,
+			"manage_incidents": user.CanManageIncidents,
+			"manage_users":     user.CanManageUsers,
 		},
 	})
 }

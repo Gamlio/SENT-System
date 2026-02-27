@@ -12,6 +12,8 @@ import AgentList from './pages/Agents/Agents.jsx';
 import AgentDetail from './pages/Agents/AgentDetail.jsx'; 
 import PolicyCenter from './pages/Admin/policies/PolicyCenter.jsx';
 import PolicyDocuments from './pages/Admin/policies/PolicyDocuments.jsx';
+import IncidentReport from './pages/IncidentReport/IncidentReport.jsx';
+import IncidentList from './pages/IncidentReport/IncidentList.jsx';
 import AIChatAssistant from './pages/AI/AIChatAssistant.jsx';
 
 const ProtectedRoute = ({ children, requiredPermission }) => {
@@ -60,14 +62,14 @@ function App() {
                 <Route path="/chat-ai" element={<ProtectedRoute><AIChatAssistant /></ProtectedRoute>} />
 
                 {/* Các Route có check quyền riêng biệt */}
-                <Route path="/agents" element={<ProtectedRoute requiredPermission="agents"><AgentList /></ProtectedRoute>} />
-                <Route path="/agents/:hwid" element={<ProtectedRoute requiredPermission="agents"><AgentDetail /></ProtectedRoute>} />
+                <Route path="/agents" element={<ProtectedRoute requiredPermission="view_agents"><AgentList /></ProtectedRoute>} />
+                <Route path="/agents/:hwid" element={<ProtectedRoute requiredPermission="view_agents"><AgentDetail /></ProtectedRoute>} />
                 
-                <Route path="/admin/policy-center" element={<ProtectedRoute requiredPermission="policies"><PolicyCenter /></ProtectedRoute>} />
-                <Route path="/admin/docs" element={<ProtectedRoute requiredPermission="docs"><PolicyDocuments /></ProtectedRoute>} />
-                <Route path="/admin/users" element={<ProtectedRoute requiredPermission="users"><UserManagement /></ProtectedRoute>} />
-
-                <Route path="*" element={<Navigate to="/" />} />
+                <Route path="/admin/policy-center" element={<ProtectedRoute requiredPermission="manage_policies"><PolicyCenter /></ProtectedRoute>} />
+                <Route path="/admin/docs" element={<ProtectedRoute requiredPermission="view_docs"><PolicyDocuments /></ProtectedRoute>} />
+                <Route path="/admin/users" element={<ProtectedRoute requiredPermission="manage_users"><UserManagement /></ProtectedRoute>} />
+                <Route path="/incidents" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentList /></ProtectedRoute>} />
+                <Route path="/incidents/:id" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentReport /></ProtectedRoute>} />
             </Routes>
         </Router>
     );

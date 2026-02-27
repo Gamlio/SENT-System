@@ -12,6 +12,7 @@ import (
 	"sent_backend/internal/api/v1/dashboard"
 	"sent_backend/internal/api/v1/policies"
 	"sent_backend/internal/api/v1/users"
+	"sent_backend/internal/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -51,46 +52,60 @@ func main() {
 			authGroup.POST("/login", auth.LoginHandler)
 			authGroup.POST("/register", auth.RegisterSMEHandler)
 		}
-
-		agentsGroup := v1Group.Group("/agents")
+		agentPublicGroup := v1Group.Group("/agents")
 		{
-			agentsGroup.POST("/push", agents.PushDataHandler)
-			agentsGroup.GET("/stats", agents.GetStats)
-			agentsGroup.GET("", agents.GetAgents)
-			agentsGroup.POST("/bulk-whitelist", agents.AddBulkWhitelist)
-			agentsGroup.GET("/:hwid", agents.GetAgentDetail)
-			agentsGroup.GET("/:hwid/logs", agents.GetAgentLogs)
-			agentsGroup.GET("/:hwid/whitelist", agents.GetAgentWhitelist)
-			agentsGroup.POST("/:hwid/whitelist", agents.AddAgentWhitelist)
-			agentsGroup.DELETE("/whitelist/:id", agents.DeleteAgentWhitelist)
+			agentPublicGroup.POST("/push", agents.PushDataHandler)
 		}
-
-		aiDocs := v1Group.Group("/docs")
+		protected := v1Group.Group("")
+		protected.Use(middleware.AuthRequired()) // <--- CHỐT BẢO VỆ NẰM Ở ĐÂY
 		{
-			aiDocs.GET("", policies.GetPoliciesHandler)
-			aiDocs.POST("/upload", policies.UploadPolicyHandler)
-			aiDocs.DELETE("/:id", policies.DeletePolicyHandler)
-			aiDocs.PUT("/:id", policies.UpdatePolicyHandler)
-		}
+			usersGroup := protected.Group("/users")
+			{
+				usersGroup.GET("", users.GetUsers)
+				usersGroup.POST("", users.CreateUser)
+				usersGroup.PUT("/:id", users.UpdateUser)
+				usersGroup.DELETE("/:id", users.DeleteUser)
+			}
 
-		policiesGroup := v1Group.Group("/policies")
-		{
-			policiesGroup.GET("", policies.GetPoliciesByCategory)
-			policiesGroup.POST("", policies.AddUniversalPolicy)
-			policiesGroup.DELETE("/:id", policies.DeletePolicy)
-		}
+			agentsGroup := protected.Group("/agents")
+			{
+				agentsGroup.GET("/stats", agents.GetStats)
+				agentsGroup.GET("", agents.GetAgents)
+				agentsGroup.POST("/bulk-whitelist", agents.AddBulkWhitelist)
+				agentsGroup.GET("/:hwid", agents.GetAgentDetail)
+				agentsGroup.GET("/:hwid/logs", agents.GetAgentLogs)
+				agentsGroup.GET("/:hwid/whitelist", agents.GetAgentWhitelist)
+				agentsGroup.POST("/:hwid/whitelist", agents.AddAgentWhitelist)
+				agentsGroup.DELETE("/whitelist/:id", agents.DeleteAgentWhitelist)
+				agentsGroup.PUT("/:hwid/assign", agents.AssignManager)
+			}
 
-		usersGroup := v1Group.Group("/users")
-		{
-			usersGroup.GET("", users.GetUsers)
-			usersGroup.POST("", users.CreateUser)
-			usersGroup.DELETE("/:id", users.DeleteUser)
-		}
+			aiDocs := protected.Group("/docs")
+			{
+				aiDocs.GET("", policies.GetPoliciesHandler)
+				aiDocs.POST("/upload", policies.UploadPolicyHandler)
+				aiDocs.DELETE("/:id", policies.DeletePolicyHandler)
+				aiDocs.PUT("/:id", policies.UpdatePolicyHandler)
+			}
 
-		// Nhóm mới dành riêng cho Dashboard
-		dashGroup := v1Group.Group("/dashboard")
-		{
-			dashGroup.GET("/stats", dashboard.GetDashboardStats)
+			policiesGroup := protected.Group("/policies")
+			{
+				policiesGroup.GET("", policies.GetPoliciesByCategory)
+				policiesGroup.POST("", policies.AddUniversalPolicy)
+				policiesGroup.DELETE("/:id", policies.DeletePolicy)
+			}
+
+			dashGroup := protected.Group("/dashboard")
+			{
+				dashGroup.GET("/stats", dashboard.GetDashboardStats)
+				dashGroup.GET("/incidents", dashboard.GetIncidents)
+			}
+
+			incidentsGroup := protected.Group("/incidents")
+			{
+				incidentsGroup.GET("", dashboard.GetIncidents)
+				incidentsGroup.GET("/:id", dashboard.GetIncidentDetail)
+			}
 		}
 	}
 

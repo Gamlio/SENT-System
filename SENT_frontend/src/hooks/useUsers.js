@@ -66,10 +66,24 @@ export const useUsers = () => {
         }
     };
 
+    // 5. LOGIC CẬP NHẬT NGƯỜI DÙNG THẬT
+    const updateUser = async (id, updateData) => {
+        setIsLoading(true);
+        try {
+            await axios.put(`/users/${id}`, updateData);
+            alert("Cập nhật thông tin thành công!");
+            fetchUsers(); // Tải lại danh sách
+        } catch (err) {
+            alert(err.response?.data?.error || "Lỗi khi cập nhật!");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return {
         users, currentUsers, filteredUsers,
         searchQuery, setSearchQuery,
         currentPage, setCurrentPage, totalPages, indexOfFirstItem, indexOfLastItem,
-        isLoading, createUser, deleteUser
+        isLoading, createUser, deleteUser, updateUser
     };
 };

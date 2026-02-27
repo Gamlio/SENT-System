@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,246 +23,178 @@ import (
 
 // --- CẤU HÌNH ---
 const (
-	SERVER_URL   = "http://localhost:8000/api/v1/agents/push"
-	ENROLL_TOKEN = "SENT-TOKEN-SME-01"
+	SERVER_URL  = "http://localhost:8000/api/v1/agents/push"
+	CONFIG_FILE = "agent_config.json"
+	IS_DEV_MODE = true
 )
 
+type Config struct {
+	CompanyCode string `json:"company_code"`
+}
+
 var (
-	lastHashes = make(map[string]string)
-	hashMutex  sync.Mutex
+	lastHashes  = make(map[string]string)
+	hashMutex   sync.Mutex
+	agentConfig Config
 )
 
 type Payload struct {
-	Type     string      `json:"type"`     // "DATA" hoặc "HEARTBEAT"
-	LogType  string      `json:"log_type"` // "telemetry", "software", "inventory"
-	HWID     string      `json:"hwid"`
-	Hostname string      `json:"hostname"`
-	Data     interface{} `json:"data"` // Dữ liệu thật (nếu có)
+	Type        string      `json:"type"`
+	LogType     string      `json:"log_type"`
+	HWID        string      `json:"hwid"`
+	Hostname    string      `json:"hostname"`
+	CompanyCode string      `json:"company_code"`
+	Data        interface{} `json:"data"`
 }
 
-// Hàm tính Hash
+// --- CẤU HÌNH ---
+func loadConfig() bool {
+	file, err := os.ReadFile(CONFIG_FILE)
+	if err != nil {
+		return false
+	}
+	json.Unmarshal(file, &agentConfig)
+	return agentConfig.CompanyCode != ""
+}
+
+func saveConfig(code string) {
+	agentConfig.CompanyCode = strings.TrimSpace(code)
+	data, _ := json.Marshal(agentConfig)
+	os.WriteFile(CONFIG_FILE, data, 0644)
+}
+
+// --- THAY THẾ GUI BẰNG CLI (Không cần GCC) ---
+func promptForCompanyCode() {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("===========================================")
+	fmt.Println("   KÍCH HOẠT SENT AGENT (NO-GUI MODE)")
+	fmt.Println("===========================================")
+	fmt.Println("⚠️  Chưa tìm thấy cấu hình doanh nghiệp.")
+
+	for {
+		fmt.Print("👉 Vui lòng nhập Mã Công Ty (VD: SME-XXXX): ")
+		code, _ := reader.ReadString('\n')
+		code = strings.TrimSpace(code)
+
+		if len(code) >= 5 {
+			fmt.Println("✅ Đang lưu cấu hình...")
+			saveConfig(code)
+			fmt.Println("✅ Kích hoạt thành công! Agent sẽ bắt đầu chạy...")
+			time.Sleep(1 * time.Second)
+			break
+		} else {
+			fmt.Println("❌ Mã không hợp lệ. Vui lòng nhập lại!")
+		}
+	}
+}
+
+// --- LOGIC THU THẬP DỮ LIỆU (Đã sửa phần Software) ---
 func calculateHash(data interface{}) string {
 	b, _ := json.Marshal(data)
 	hash := sha256.Sum256(b)
 	return hex.EncodeToString(hash[:])
 }
 
-// Hàm gửi dữ liệu
-func sendPayload(hwid, hostname, logType string, data interface{}) {
-	hashMutex.Lock()
-	currentHash := calculateHash(data)
-	oldHash := lastHashes[logType]
-
-	packetType := "HEARTBEAT"
-	var dataToSend interface{} = nil
-
-	// LOGIC SÀNG LỌC CỦA AGENT:
-	if currentHash != oldHash {
-		// 1. Nếu dữ liệu thay đổi -> Gửi DATA thật
-		packetType = "DATA"
-		dataToSend = data
-		lastHashes[logType] = currentHash // Cập nhật bộ nhớ
-		fmt.Printf("⚡ [%s] Có thay đổi -> Gửi dữ liệu mới.\n", logType)
-	} else {
-		// 2. Nếu y nguyên -> Chỉ gửi Heartbeat để báo Online
-		// fmt.Printf("💤 [%s] Không đổi -> Gửi Heartbeat.\n", logType)
-	}
-	hashMutex.Unlock()
-
-	// Đóng gói
-	payload := Payload{
-		Type:     packetType,
-		LogType:  logType,
-		HWID:     hwid,
-		Hostname: hostname,
-		Data:     dataToSend, // Heartbeat thì cái này là null, rất nhẹ
-	}
-
-	jsonBytes, _ := json.Marshal(payload)
-	http.Post(SERVER_URL, "application/json", bytes.NewBuffer(jsonBytes))
-}
-
-// SỬA 1: Thêm trường Hostname vào struct để Backend nhận diện
-type SecurityLog struct {
-	LogType        string      `json:"log_type"`
-	EnrollToken    string      `json:"enroll_token"`
-	HWID           string      `json:"hwid"`
-	Hostname       string      `json:"hostname"` // Quan trọng!
-	ScanTimestamp  int64       `json:"scan_timestamp"`
-	IsDifferential bool        `json:"is_diff"`
-	Data           interface{} `json:"data"`
-}
-
-func getHash(data interface{}) string {
-	b, _ := json.Marshal(data)
-	hash := sha256.Sum256(b)
-	return hex.EncodeToString(hash[:])
-}
-
-func hasChanged(logType string, newData interface{}) bool {
-	hashMutex.Lock()
-	defer hashMutex.Unlock()
-	newHash := getHash(newData)
-	if lastHashes[logType] == newHash {
-		return false
-	}
-	lastHashes[logType] = newHash
-	return true
-}
-
-// 1. Thu thập Event Logs quan trọng (Login, Clear Log)
-func collectEventLogs() interface{} {
-	// Trong thực tế, bạn sẽ dùng thư viện chuyên dụng.
-	// Dưới đây là ví dụ lấy các sự kiện đăng nhập thất bại (ID 4625)
-	// Bạn có thể chạy command: wevtutil qe Security /q:"*[System[(EventID=4625)]]" /f:text /c:5
-	events := []map[string]interface{}{
-		{
-			"event_id": 4625,
-			"source":   "Security",
-			"message":  "Logon Failure: Unknown user name or bad password.",
-			"time":     time.Now().Format(time.RFC3339),
-		},
-	}
-	return events
-}
-
-// 2. Nâng cấp Telemetry để lấy kết nối ESTABLISHED (IP Đích)
-func collectActiveConnections() interface{} {
-	connections, _ := psnet.Connections("tcp")
-	var activeConns []map[string]interface{}
-
-	for _, conn := range connections {
-		// Chỉ lấy các kết nối đang hoạt động và có IP đích (Remote Address)
-		if conn.Status == "ESTABLISHED" && conn.Raddr.IP != "" {
-			activeConns = append(activeConns, map[string]interface{}{
-				"local_ip":    conn.Laddr.IP,
-				"local_port":  conn.Laddr.Port,
-				"remote_ip":   conn.Raddr.IP,
-				"remote_port": conn.Raddr.Port,
-				"pid":         conn.Pid,
-			})
-		}
-	}
-	return activeConns
-}
 func collectInventory() interface{} {
 	hInfo, _ := host.Info()
 	cpuInfo, _ := cpu.Info()
 	vMem, _ := mem.VirtualMemory()
-
 	model := "Unknown CPU"
 	if len(cpuInfo) > 0 {
 		model = cpuInfo[0].ModelName
 	}
-
-	return map[string]interface{}{
-		"os_info":      runtime.GOOS + " " + hInfo.PlatformVersion,
-		"cpu_model":    model,
-		"ram_total_gb": vMem.Total / 1024 / 1024 / 1024,
-	}
+	return map[string]interface{}{"os_info": runtime.GOOS + " " + hInfo.PlatformVersion, "cpu_model": model, "ram_total_gb": vMem.Total / 1024 / 1024 / 1024}
 }
 
-func collectSoftware() []string {
+// SỬA: Hàm Software chuẩn trả về map (khớp models.go)
+func collectSoftware() interface{} {
 	if runtime.GOOS != "windows" {
-		return []string{"Not implemented for " + runtime.GOOS}
+		return []map[string]string{}
 	}
-	var softwareList []string
+	var softwareList []map[string]string
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, registry.ENUMERATE_SUB_KEYS|registry.QUERY_VALUE)
 	if err != nil {
-		return []string{}
+		return []map[string]string{}
 	}
 	defer k.Close()
 	names, _ := k.ReadSubKeyNames(-1)
 	for _, name := range names {
 		sk, _ := registry.OpenKey(k, name, registry.QUERY_VALUE)
 		displayName, _, _ := sk.GetStringValue("DisplayName")
+		displayVersion, _, _ := sk.GetStringValue("DisplayVersion")
+
 		if displayName != "" {
-			softwareList = append(softwareList, displayName)
+			softwareList = append(softwareList, map[string]string{
+				"software_name": displayName,
+				"version":       displayVersion,
+			})
 		}
 		sk.Close()
 	}
 	return softwareList
 }
 
-// SỬA 2: Telemetry trả về danh sách Port chi tiết thay vì chỉ đếm số lượng
 func collectTelemetry() interface{} {
 	connections, _ := psnet.Connections("tcp")
-
 	var openPorts []map[string]interface{}
 	for _, conn := range connections {
-		// Chỉ lấy các cổng đang lắng nghe (LISTEN)
 		if conn.Status == "LISTEN" {
-			openPorts = append(openPorts, map[string]interface{}{
-				"port":         conn.Laddr.Port,
-				"process_name": "system", // Tạm thời để system (lấy tên process cần quyền Admin cao hơn)
-			})
+			openPorts = append(openPorts, map[string]interface{}{"port": conn.Laddr.Port, "process_name": "system"})
 		}
 	}
-
-	// Trả về đúng cấu trúc Backend mong đợi
-	return map[string]interface{}{
-		"open_ports": openPorts,
-	}
+	return map[string]interface{}{"open_ports": openPorts}
 }
 
-// Hàm gửi dữ liệu
-func send(logType string, hwid string, hostname string, payload interface{}, force bool) {
-	// Kiểm tra thay đổi trước khi gửi
-	if !force && !hasChanged(logType, payload) {
-		return
+func sendPayload(hwid, hostname, logType string, data interface{}, force bool) {
+	hashMutex.Lock()
+	currentHash := calculateHash(data)
+	oldHash := lastHashes[logType]
+	packetType := "HEARTBEAT"
+	var dataToSend interface{} = nil
+	if force || currentHash != oldHash {
+		packetType = "DATA"
+		dataToSend = data
+		lastHashes[logType] = currentHash
+		if IS_DEV_MODE {
+			fmt.Printf("⚡ [%s] Gửi dữ liệu mới...\n", logType)
+		}
 	}
+	hashMutex.Unlock()
 
-	entry := SecurityLog{
-		LogType:        logType,
-		EnrollToken:    ENROLL_TOKEN,
-		HWID:           hwid,
-		Hostname:       hostname, // Gửi kèm tên máy
-		ScanTimestamp:  time.Now().Unix(),
-		Data:           payload,
-		IsDifferential: !force,
+	payload := Payload{
+		Type: packetType, LogType: logType, HWID: hwid, Hostname: hostname,
+		CompanyCode: agentConfig.CompanyCode, Data: dataToSend,
 	}
+	jsonBytes, _ := json.Marshal(payload)
+	http.Post(SERVER_URL, "application/json", bytes.NewBuffer(jsonBytes))
+}
 
-	jsonData, _ := json.Marshal(entry)
-	resp, err := http.Post(SERVER_URL, "application/json", bytes.NewBuffer(jsonData))
+func runAgentLoop() {
+	hInfo, _ := host.Info()
+	hwid := hInfo.HostID
+	hostname, _ := os.Hostname()
 
-	if err != nil {
-		fmt.Printf("❌ Lỗi kết nối Server: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
+	fmt.Printf("\n🛡️  AGENT ĐANG CHẠY | CTY: %s | MÁY: %s\n", agentConfig.CompanyCode, hostname)
 
-	if resp.StatusCode == http.StatusOK {
-		fmt.Printf("🚀 [%s] Đã gửi thành công (Size: %d bytes)\n", logType, len(jsonData))
-	} else {
-		fmt.Printf("⚠️ Server trả về lỗi: %d\n", resp.StatusCode)
+	// Gửi lần đầu
+	sendPayload(hwid, hostname, "inventory", collectInventory(), true)
+	sendPayload(hwid, hostname, "software", collectSoftware(), true)
+	sendPayload(hwid, hostname, "telemetry", collectTelemetry(), true)
+
+	// Vòng lặp
+	ticker := time.NewTicker(10 * time.Second)
+	for range ticker.C {
+		sendPayload(hwid, hostname, "telemetry", collectTelemetry(), false)
+		sendPayload(hwid, hostname, "software", collectSoftware(), false)
 	}
 }
 
 func main() {
-	hInfo, _ := host.Info()
-	hwid := hInfo.HostID
-	hostname, _ := os.Hostname() // Lấy tên máy từ OS
-
-	fmt.Printf("🛡️ SMART AGENT v4.0 - Edge Processing\n")
-	fmt.Printf("Máy trạm: %s (%s)\n", hostname, hwid)
-
-	// 1. Gửi Inventory ngay lập tức (Để đăng ký máy)
-	fmt.Println("📢 Đang gửi thông tin đăng ký máy...")
-	send("inventory", hwid, hostname, collectInventory(), true)
-
-	// 2. Gửi dữ liệu lần đầu (Force = true)
-	send("software", hwid, hostname, collectSoftware(), true)
-	send("telemetry", hwid, hostname, collectTelemetry(), true)
-
-	// 3. Vòng lặp gửi định kỳ
-	ticker := time.NewTicker(10 * time.Second) // Check 10 giây/lần
-	for range ticker.C {
-		// Thu thập dữ liệu
-		telemetry := collectTelemetry() // Hàm cũ của bạn
-		software := collectSoftware()   // Hàm cũ của bạn
-
-		// Để Agent tự quyết định có gửi hay không
-		sendPayload(hwid, hostname, "telemetry", telemetry)
-		sendPayload(hwid, hostname, "software", software)
+	// 1. Nếu chưa có Config -> Hỏi trực tiếp trên Terminal
+	if !loadConfig() {
+		promptForCompanyCode()
 	}
+
+	// 2. Chạy Agent
+	runAgentLoop()
 }

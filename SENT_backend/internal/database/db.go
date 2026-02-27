@@ -9,18 +9,24 @@ import (
 	"gorm.io/gorm"
 )
 
-var DB *gorm.DB
+var DB *gorm.DB // Biến toàn cục (viết hoa)
 
 func InitDB() {
 	dsn := os.Getenv("DATABASE_URL")
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+
+	// 1. Khai báo biến err riêng ra trước
+	var err error
+
+	// 2. Ép dùng biến DB toàn cục bằng dấu = (KHÔNG dùng :=)
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		panic("Failed to connect to database!")
 	}
 
-	// 1. Tự động tạo toàn bộ hệ thống bảng (Auto Migration)
 	fmt.Println("⏳ Đang đồng bộ hóa cơ sở dữ liệu...")
-	err = db.AutoMigrate(
+
+	// 3. Đổi db (viết thường) thành DB (viết hoa) ở đây
+	err = DB.AutoMigrate(
 		// 1. Nhóm Core (Cha)
 		&models.Organization{},
 		&models.Region{},
@@ -45,10 +51,10 @@ func InitDB() {
 		&models.USBLog{},
 		&models.OpenPort{},
 	)
+
 	if err != nil {
 		fmt.Printf("❌ Lỗi Migration: %v\n", err)
 	} else {
-		fmt.Println("✅ Đã đồng bộ hóa 18+ bảng dữ liệu")
+		fmt.Println("✅ Đã đồng bộ hóa các bảng dữ liệu")
 	}
-
 }

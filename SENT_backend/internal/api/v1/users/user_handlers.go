@@ -23,7 +23,7 @@ func getOrgIDFromContext(c *gin.Context) uint {
 	return 0
 }
 
-// 1. TẠO TÀI KHOẢN MỚI (CHỈ TRONG CÔNG TY)
+// TẠO TÀI KHOẢN MỚI (CHỈ TRONG CÔNG TY)
 func CreateUser(c *gin.Context) {
 	orgID := getOrgIDFromContext(c)
 	if orgID == 0 {
@@ -37,7 +37,7 @@ func CreateUser(c *gin.Context) {
 		FullName          string `json:"full_name"`
 		Phone             string `json:"phone"`
 		Email             string `json:"email"`
-		RoleLevel         int    `json:"role_level"`
+		Role              string `json:"role"`
 		CanManageAgents   bool   `json:"can_manage_agents"`
 		CanManagePolicies bool   `json:"can_manage_policies"`
 		CanManageDocs     bool   `json:"can_manage_docs"`
@@ -62,7 +62,7 @@ func CreateUser(c *gin.Context) {
 	}
 
 	// Nếu tạo user Level 2 (Admin) thì tự động full quyền
-	isAdmin := req.RoleLevel >= 2
+	isAdmin := req.Role == "ADMIN"
 
 	newUser := models.User{
 		Username:          req.Username,
@@ -70,8 +70,8 @@ func CreateUser(c *gin.Context) {
 		FullName:          req.FullName,
 		Phone:             req.Phone,
 		Email:             req.Email,
-		RoleLevel:         req.RoleLevel,
-		OrgID:             &orgID, // GẮN CHẶT TÀI KHOẢN VÀO CÔNG TY CỦA NGƯỜI TẠO
+		Role:              req.Role,
+		OrgID:             &orgID,
 		CanManageAgents:   isAdmin || req.CanManageAgents,
 		CanManagePolicies: isAdmin || req.CanManagePolicies,
 		CanManageDocs:     isAdmin || req.CanManageDocs,
@@ -86,7 +86,7 @@ func CreateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Tạo tài khoản thành công!"})
 }
 
-// 2. LẤY DANH SÁCH TÀI KHOẢN (LỌC THEO ORG_ID)
+// LẤY DANH SÁCH TÀI KHOẢN (LỌC THEO ORG_ID)
 func GetUsers(c *gin.Context) {
 	orgID := getOrgIDFromContext(c)
 	var usersList []models.User
@@ -100,21 +100,109 @@ func GetUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, usersList)
 }
 
-// 3. XÓA TÀI KHOẢN (KIỂM TRA CHÉO ORG_ID)
-func DeleteUser(c *gin.Context) {
+func UpdateUser(c *gin.Context) {
 	id := c.Param("id")
 	orgID := getOrgIDFromContext(c)
 
-	// CHỈ CHO PHÉP XÓA NẾU USER ĐÓ CÓ CÙNG ORG_ID VỚI ADMIN
-	result := database.DB.Where("org_id = ?", orgID).Delete(&models.User{}, id)
+	// Lấy Role của người đang thực hiện thao tác (Requester)
+	requesterRole := c.GetString("role") // Middleware đã set cái này
 
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi xóa tài khoản"})
+	// 1. Tìm User cần sửa
+	var targetUser models.User
+	if err := database.DB.Where("id = ? AND org_id = ?", id, orgID).First(&targetUser).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
 		return
 	}
 
-	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng hoặc bạn không có quyền xóa"})
+	// --- BẢO MẬT: CHẶN QUYỀN NHÂN VIÊN ---
+	if requesterRole != "ADMIN" {
+		// Rule 1: Nhân viên không được phép sửa thông tin của Sếp (Admin)
+		if targetUser.Role == "ADMIN" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền chỉnh sửa tài khoản Quản trị viên (Admin)"})
+			return
+		}
+	}
+	// --------------------------------------
+
+	// 2. Hứng dữ liệu update
+	var req struct {
+		FullName           string `json:"full_name"`
+		Phone              string `json:"phone"`
+		Email              string `json:"email"`
+		Role               string `json:"role"`
+		CanViewAgents      bool   `json:"can_view_agents"`
+		CanManageAgents    bool   `json:"can_manage_agents"`
+		CanViewDocs        bool   `json:"can_view_docs"`
+		CanManageDocs      bool   `json:"can_manage_docs"`
+		CanManagePolicies  bool   `json:"can_manage_policies"`
+		CanManageIncidents bool   `json:"can_manage_incidents"`
+		CanManageUsers     bool   `json:"can_manage_users"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	// --- BẢO MẬT: CHẶN LEO THANG ĐẶC QUYỀN ---
+	if requesterRole != "ADMIN" {
+		// Rule 2: Nhân viên không được phép tự set mình hoặc người khác lên ADMIN
+		if req.Role == "ADMIN" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền chỉ định vai trò Admin"})
+			return
+		}
+	}
+	// ------------------------------------------
+
+	// 3. Logic cập nhật
+	// Nếu người thực hiện là Admin -> Update theo ý họ
+	// Nếu là User -> Chỉ update các quyền hạn cho phép (đã lọc ở trên)
+
+	isAdmin := req.Role == "ADMIN" // Logic cũ của bạn
+	updates := map[string]interface{}{
+		"full_name":            req.FullName,
+		"phone":                req.Phone,
+		"email":                req.Email,
+		"role":                 req.Role,
+		"can_view_agents":      isAdmin || req.CanViewAgents,
+		"can_manage_agents":    isAdmin || req.CanManageAgents,
+		"can_view_docs":        isAdmin || req.CanViewDocs,
+		"can_manage_docs":      isAdmin || req.CanManageDocs,
+		"can_manage_policies":  isAdmin || req.CanManagePolicies,
+		"can_manage_incidents": isAdmin || req.CanManageIncidents,
+		"can_manage_users":     isAdmin || req.CanManageUsers,
+	}
+
+	if err := database.DB.Model(&targetUser).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi cập nhật người dùng"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công!"})
+}
+
+// XÓA TÀI KHOẢN (CŨNG CẦN BẢO VỆ)
+func DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+	orgID := getOrgIDFromContext(c)
+	requesterRole := c.GetString("role")
+
+	// Tìm user định xóa xem nó là ai
+	var targetUser models.User
+	if err := database.DB.Where("id = ? AND org_id = ?", id, orgID).First(&targetUser).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
+		return
+	}
+
+	// Rule: Chỉ Admin mới được xóa Admin
+	if requesterRole != "ADMIN" && targetUser.Role == "ADMIN" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không được phép xóa tài khoản Admin"})
+		return
+	}
+
+	// Thực hiện xóa
+	if err := database.DB.Delete(&targetUser).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi xóa tài khoản"})
 		return
 	}
 

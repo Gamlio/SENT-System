@@ -21,7 +21,7 @@ const AgentActions = ({ agent }) => {
         <div className="relative flex items-center" ref={menuRef}>
             <button 
                 onClick={(e) => {
-                    e.stopPropagation(); // Ngăn chặn sự kiện click lan ra hàng của bảng
+                    e.stopPropagation(); 
                     setIsOpen(!isOpen);
                 }}
                 className={`p-2 rounded-lg transition ${isOpen ? 'bg-slate-700 text-emerald-400' : 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800'}`}
@@ -30,7 +30,12 @@ const AgentActions = ({ agent }) => {
             </button>
 
             {isOpen && (
-                <div className="absolute right-10 top-0 w-56 bg-[#1e293b] border border-slate-700 rounded-xl shadow-2xl z-[9999] overflow-hidden animate-in fade-in zoom-in duration-200">
+                // SỬA VỊ TRÍ TẠI ĐÂY:
+                // 1. right-0: Căn thẳng lề phải với nút
+                // 2. top-full: Nằm ngay bên dưới nút
+                // 3. mt-2: Cách nút một chút cho thoáng
+                // 4. z-50: Đảm bảo nổi lên trên tất cả các dòng khác
+                <div className="absolute right-0 top-full mt-2 w-56 bg-[#1e293b] border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
                     <div className="px-4 py-2 border-b border-slate-700/50 bg-slate-800/50">
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tiện ích mở rộng</p>
                     </div>

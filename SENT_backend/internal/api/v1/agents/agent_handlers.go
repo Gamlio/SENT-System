@@ -14,7 +14,7 @@ import (
 func PushDataHandler(c *gin.Context) {
 	var req struct {
 		LogType     string      `json:"log_type"`
-		EnrollToken string      `json:"enroll_token"`
+		CompanyCode string      `json:"company_code"` // Nhận Mã Công Ty
 		HWID        string      `json:"hwid"`
 		Hostname    string      `json:"hostname"`
 		Data        interface{} `json:"data"`
@@ -25,36 +25,69 @@ func PushDataHandler(c *gin.Context) {
 		return
 	}
 
+	// 1. XÁC THỰC CÔNG TY: Dùng CompanyCode để tìm OrgID
+	var org models.Organization
+	if err := database.DB.Where("company_code = ?", req.CompanyCode).First(&org).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Mã công ty không tồn tại hoặc sai"})
+		return
+	}
+
+	// --- FIX LỖI FK_REGIONS_AGENTS TẠI ĐÂY ---
+	// 1.5. TÌM VÙNG (REGION) MẶC ĐỊNH ĐỂ GÁN CHO AGENT
+	var region models.Region
+	// Thử tìm xem công ty này đã có vùng nào chưa (Lấy vùng đầu tiên tìm thấy)
+	if err := database.DB.Where("org_id = ?", org.ID).First(&region).Error; err != nil {
+		// Nếu chưa có (Công ty mới tinh), tạo tự động vùng "Trụ sở chính"
+		region = models.Region{
+			OrgID:       org.ID,
+			Name:        "Trụ sở chính",
+			EnrollToken: "AUTO-" + req.CompanyCode, // Tạo token ngẫu nhiên để tránh lỗi Unique
+		}
+		if err := database.DB.Create(&region).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khởi tạo vùng mặc định"})
+			return
+		}
+	}
+	// ------------------------------------------
+
+	// 2. TÌM HOẶC TẠO AGENT
 	var agent models.Agent
 	result := database.DB.Where("hw_id = ?", req.HWID).First(&agent)
 
 	if result.Error != nil {
-		// Máy mới lần đầu kết nối
-		var region models.Region
-		if err := database.DB.Where("enroll_token = ?", req.EnrollToken).First(&region).Error; err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Mã Enrollment Token không tồn tại hoặc sai"})
-			return
-		}
-
+		// Máy mới -> Tạo mới & Gán vào OrgID + RegionID vừa tìm được
 		agent = models.Agent{
 			HWID:      req.HWID,
-			OrgID:     region.OrgID,
-			RegionID:  region.ID,
+			OrgID:     org.ID,    // Gán đúng OrgID
+			RegionID:  region.ID, // <--- QUAN TRỌNG: Gán ID của vùng vừa tìm/tạo được
 			Hostname:  req.Hostname,
-			IPAddress: c.ClientIP(), // <--- Lấy IP mạng của thiết bị
+			IPAddress: c.ClientIP(),
 			Status:    "online",
 			LastSeen:  time.Now(),
 		}
-		database.DB.Create(&agent)
+
+		if err := database.DB.Create(&agent).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi lưu Agent vào DB: " + err.Error()})
+			return
+		}
 	} else {
-		// Máy cũ gửi log lại -> Cập nhật IP nhỡ máy mang đi chỗ khác (đổi mạng)
+		// Máy cũ -> Cập nhật trạng thái
 		agent.IPAddress = c.ClientIP()
 		agent.LastSeen = time.Now()
 		agent.Status = "online"
+
+		// Logic tự sửa lỗi: Nếu máy cũ bị lỗi mất OrgID hoặc RegionID thì cập nhật lại luôn
+		if agent.OrgID == 0 {
+			agent.OrgID = org.ID
+		}
+		if agent.RegionID == 0 {
+			agent.RegionID = region.ID
+		}
+
 		database.DB.Save(&agent)
 	}
 
-	// Phân phối dữ liệu vào Service để xử lý logic
+	// 3. XỬ LÝ DỮ LIỆU LOG (Giữ nguyên logic cũ)
 	switch req.LogType {
 	case "inventory":
 		service.ProcessInventory(agent, req.Data)
@@ -191,4 +224,23 @@ func AddBulkWhitelist(c *gin.Context) {
 		database.DB.Create(&item)
 	}
 	c.JSON(200, gin.H{"status": "success"})
+}
+func AssignManager(c *gin.Context) {
+	hwid := c.Param("hwid")
+	var req struct {
+		UserID uint `json:"user_id"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	// Cập nhật trường user_id cho Agent có HWID tương ứng
+	if err := database.DB.Model(&models.Agent{}).Where("hw_id = ?", hwid).Update("user_id", req.UserID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể phân bổ quản lý"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Đã phân bổ người quản lý thành công"})
 }

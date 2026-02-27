@@ -57,20 +57,32 @@ func AuthRequired() gin.HandlerFunc {
 
 		// 6. Truy vấn người dùng từ Database dựa trên "sub" (Username)
 		username := claims["sub"].(string)
+
+		// Lấy org_id từ token (JWT lưu số dưới dạng float64)
+		orgIDFloat, ok := claims["org_id"].(float64)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token thiếu thông tin tổ chức"})
+			c.Abort()
+			return
+		}
+		orgID := uint(orgIDFloat)
+
+		// 7. Truy vấn CHÍNH XÁC người dùng đó TẠI công ty đó
 		var user models.User
-		if err := database.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		if err := database.DB.Where("username = ? AND org_id = ?", username, orgID).First(&user).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Người dùng không tồn tại"})
 			c.Abort()
 			return
 		}
 
-		// 7. Lưu thông tin User và OrgID vào Context để các API sau sử dụng
+		// --- BẮT BUỘC PHẢI THÊM ĐOẠN NÀY ---
+		// 8. Bơm thông tin vào Context để API CreateUser có thể lấy ra bằng c.Get("org_id")
 		c.Set("user_id", user.ID)
-		c.Set("role_level", user.RoleLevel)
-		if user.OrgID != nil {
-			c.Set("org_id", *user.OrgID)
-		}
+		c.Set("username", user.Username)
+		c.Set("org_id", *user.OrgID)
+		c.Set("role", user.Role)
 
-		c.Next() // Cho phép đi tiếp vào API chính
+		// 9. Cấp phép cho request đi qua trạm kiểm soát để vào API chính
+		c.Next()
 	}
 }

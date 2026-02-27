@@ -33,9 +33,9 @@ export const AuthProvider = ({ children }) => {
             // 1. CẬP NHẬT: Thêm permissions và lấy đúng tên trường token
             const userData = { 
                 username: res.data.username || loginData.username, 
-                level: res.data.level, 
+                role: res.data.role, // <-- SỬA DÒNG NÀY (Đổi level thành role)
                 org_id: res.data.org_id,
-                company_code: res.data.company_code, // BỔ SUNG DÒNG NÀY
+                company_code: res.data.company_code, 
                 permissions: res.data.permissions || {}
             };
             

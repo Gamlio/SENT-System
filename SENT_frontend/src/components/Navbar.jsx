@@ -58,7 +58,7 @@ const Navbar = () => {
                     <div className="text-right hidden md:block ml-2">
                         <p className="text-sm font-bold text-white leading-tight">{user.username}</p>
                         <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                            Level {user.level}
+                            {user.role}
                         </p>
                     </div>
                     
