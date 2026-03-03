@@ -54,8 +54,16 @@ SENT_backend/
 │   ├── repository/               # REPOSITORY: Truy vấn DB 
 │   │   └── policy_repo.go        
 │   └── service/                  # SERVICE: Xử lý logic nghiệp vụ
-│       ├── asset_service.go      # Phân tích Log, check Differential
-│       └── policy_service.go     # Xử lý lưu file vật lý an toàn (MkdirAll, WriteFile)
+│       ├── agent_data/           # Chuyên xử lý lưu trữ dữ liệu từ Agent
+│            ├── inventory.go      # Xử lý thông tin phần cứng
+│            ├── software.go       # Xử lý danh sách phần mềm
+│            ├── usb.go            # Xử lý log USB
+│            └── telemetry.go      # Xử lý Port và mạng
+│       ├── security/             # Chuyên logic nghiệp vụ an ninh
+│       │   ├── ai_analysis.go    # Phân tích hành vi bằng AI
+│       │   ├── alerts.go         # Logic tạo và quản lý cảnh báo
+│       │   └── policies.go       # Kiểm tra chính sách (Whitelist/Blacklist)
+│       └── processor.go          # File "điều phối" chính (Entry point)
 ├── pkg/                          # Các package dùng chung
 ├── uploads/                      # Thư mục chứa file vật lý (PDF, DOCX)
 ├── .env                          # SECRET_KEY, DB_URL, PORT

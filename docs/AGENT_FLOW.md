@@ -16,3 +16,21 @@ Tài liệu này mô tả cơ chế hoạt động của Agent (được viết 
 - Agent giám sát Windows Event Log, Registry và I/O Device (USB).
 - Khi phát hiện hành vi vi phạm (Cắm USB không được phép, đăng nhập sai nhiều lần - Event 4625), Agent gửi ngay `SecurityAlert` về Backend.
 - Backend tiếp nhận, đối chiếu với `Universal Policy` và tự động gom cụm các cảnh báo này thành một Hồ sơ Sự cố (`Incident`) hoàn chỉnh.
+sent_agent/
+├── cmd/
+│   └── main.go              // Điểm khởi chạy (Entry point) - Chỉ gọi các module khác
+├── internal/
+│   ├── config/              // Quản lý file cấu hình, nhập mã công ty
+│   │   └── config.go
+│   ├── collector/           // Logic thu thập dữ liệu (Inventory, USB, Soft...)
+│   │   ├── system.go        // Inventory (CPU, RAM, OS)
+│   │   ├── software.go      // Software list
+│   │   ├── network.go       // Telemetry (IP, Port)
+│   │   └── usb.go           // USB devices
+│   ├── transport/           // Gửi dữ liệu đi (HTTP, Hashing)
+│   │   └── client.go
+│   └── utils/               // Các hàm tiện ích chung
+│       └── helpers.go
+├── agent_config.json        // File cấu hình (tự sinh)
+├── go.mod
+└── go.sum

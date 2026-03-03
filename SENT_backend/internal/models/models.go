@@ -1,10 +1,27 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+type JSONStringArray []string
+
+func (a *JSONStringArray) Scan(value interface{}) error {
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed")
+	}
+	return json.Unmarshal(bytes, &a)
+}
+
+func (a JSONStringArray) Value() (driver.Value, error) {
+	return json.Marshal(a)
+}
 
 // --- NHÓM 1: TỔ CHỨC & QUẢN TRỊ GLOBAL ---
 type Organization struct {
@@ -170,11 +187,18 @@ type UniversalPolicy struct {
 	gorm.Model
 	OrgID       uint   `json:"org_id" gorm:"index"`
 	Title       string `json:"title"`
-	Category    string `json:"category" gorm:"index"`
-	PolicyType  string `json:"policy_type"`
-	Value       string `json:"value"`
+	Category    string `json:"category" gorm:"index"` // SOFTWARE, USB, NETWORK
+	PolicyType  string `json:"policy_type"`           // BLACKLIST, WHITELIST
+	Value       string `json:"value"`                 // Giá trị (tên process, ID USB...)
 	IsActive    bool   `json:"is_active" gorm:"default:true"`
 	Description string `json:"description"`
+
+	// --- CÁC TRƯỜNG PHÂN CẤP ---
+	TargetType  string          `json:"target_type" gorm:"default:'GLOBAL'"` // GLOBAL hoặc SPECIFIC
+	TargetHWIDs JSONStringArray `json:"target_hwids" gorm:"type:json"`       // Danh sách HWID áp dụng
+
+	// --- TRUY VẾT ---
+	IncidentID *uint `json:"incident_id"` // Chính sách này được tạo ra từ sự cố nào?
 }
 
 type PolicyDocument struct {
@@ -185,19 +209,4 @@ type PolicyDocument struct {
 	Category    string `json:"category"`
 	IsProcessed bool   `gorm:"default:false" json:"is_processed"`
 	OrgID       uint   `json:"org_id" gorm:"index"`
-}
-
-type USBWhitelist struct {
-	gorm.Model
-	OrgID        uint   `json:"org_id" gorm:"index"`
-	DeviceID     string `json:"device_id"`
-	FriendlyName string `json:"friendly_name"`
-	AssignedTo   string `json:"assigned_to"`
-}
-
-type AgentWhitelist struct {
-	ID           uint   `json:"id" gorm:"primaryKey"`
-	HWID         string `json:"hwid" gorm:"index"`
-	Category     string `json:"category"`
-	SoftwareName string `json:"name"`
 }

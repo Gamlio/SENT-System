@@ -31,7 +31,10 @@ SENT_frontend/
 │   │   ├── Agents/                 # Quản lý Thiết bị
 │   │   │   ├── AgentDetail.jsx     # Xem chi tiết thông số
 │   │   │   ├── Agents.jsx          # Danh sách máy trạm
-│   │   │   └── AgentSoftwareConfig.jsx 
+│   │   │   └── components/
+│   │   │       ├── AgentUSB.jsx      
+│   │   │       ├── AgentLogs.jsx     
+│   │   │       └── AgentSoftware.jsx           
 │   │   ├── AI/                 
 │   │   │   └── AIChatAssistant.jsx # Trợ lý ảo AI
 │   │   ├── Auth/                   # Xác thực

@@ -1,78 +1,58 @@
-import { useState, useEffect, useMemo } from 'react';
-import axios from '../api/axios'; // Đảm bảo đường dẫn chuẩn
+import { useState, useCallback } from 'react';
+import axios from '../api/axios';
 
 export const usePolicies = () => {
-    const [documents, setDocuments] = useState([]);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
-    const [isUploading, setIsUploading] = useState(false);
-    const [editingDoc, setEditingDoc] = useState(null);
-    const itemsPerPage = 5;
+    const [policies, setPolicies] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
 
-    // 1. Lấy dữ liệu
-        const fetchDocs = async () => {
+    // 1. LẤY DANH SÁCH LUẬT (Hỗ trợ lọc theo category)
+    const fetchPolicies = useCallback(async (category = '') => {
+        setLoading(true);
         try {
-            const res = await axios.get('/docs'); // Đổi từ /knowledge hoặc /policies
-            setDocuments(res.data || []);
-        } catch (err) { console.error("Lỗi lấy danh sách tài liệu:", err); }
-    };
+            // Nếu có category thì thêm query param, không thì lấy hết
+            const endpoint = category ? `/policies?category=${category}` : '/policies';
+            const res = await axios.get(endpoint);
+            setPolicies(res.data || []);
+            setError(null);
+        } catch (err) {
+            console.error("Lỗi tải chính sách:", err);
+            setError("Không thể tải danh sách chính sách.");
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
-    useEffect(() => { fetchDocs(); }, []);
-
-    // 2. Logic Tìm kiếm & Phân trang tự động (Tự tính toán lại khi data hoặc search thay đổi)
-    const filteredDocs = useMemo(() => {
-        if (!searchQuery) return documents;
-        return documents.filter(doc => 
-            doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            doc.category.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }, [documents, searchQuery]);
-
-    const totalPages = Math.ceil(filteredDocs.length / itemsPerPage);
-    const indexOfLastItem = currentPage * itemsPerPage;
-    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    const currentDocuments = filteredDocs.slice(indexOfFirstItem, indexOfLastItem);
-
-    // Reset về trang 1 nếu người dùng đang gõ tìm kiếm
-    useEffect(() => { setCurrentPage(1); }, [searchQuery]);
-
-    // 3. Logic Thao tác API
-    const uploadDoc = async (formData) => {
+    // 2. THÊM LUẬT MỚI (JSON)
+    const addPolicy = async (policyData) => {
         try {
-            await axios.post('/docs/upload', formData, { // Đổi route upload
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            await fetchDocs();
-            setCurrentPage(1); // Upload xong về trang 1
+            await axios.post('/policies', policyData);
+            // Sau khi thêm, nên gọi fetchPolicies lại ở component cha hoặc cập nhật state cục bộ
             return { success: true };
         } catch (err) {
-            return { success: false, error: err.response?.data?.error || "Lỗi Server" };
-        } finally { setIsUploading(false); }
+            console.error("Lỗi thêm chính sách:", err);
+            return { success: false, error: err.response?.data?.error || "Lỗi lưu dữ liệu" };
+        }
     };
 
-    const deleteDoc = async (id) => {
-        if (!window.confirm("Bạn có chắc muốn xóa tài liệu này?")) return;
+    // 3. XÓA LUẬT
+    const deletePolicy = async (id) => {
         try {
             await axios.delete(`/policies/${id}`);
-            await fetchDocs();
-            if (currentDocuments.length === 1 && currentPage > 1) setCurrentPage(currentPage - 1);
-        } catch (err) { alert("Lỗi khi xóa!"); }
+            setPolicies(prev => prev.filter(p => p.ID !== id)); // Cập nhật UI ngay
+            return { success: true };
+        } catch (err) {
+            alert("Không thể xóa chính sách này!");
+            return { success: false };
+        }
     };
 
-    const updateDoc = async (id, data) => {
-        try {
-            await axios.put(`/policies/${id}`, data);
-            setEditingDoc(null);
-            await fetchDocs();
-        } catch (err) { alert("Lỗi khi cập nhật!"); }
-    };
-
-    // Trả về tất cả state và hàm để giao diện sử dụng
     return {
-        documents, filteredDocs, currentDocuments,
-        searchQuery, setSearchQuery,
-        currentPage, setCurrentPage, totalPages, indexOfFirstItem, indexOfLastItem,
-        isUploading, editingDoc, setEditingDoc,
-        uploadDoc, deleteDoc, updateDoc
+        policies,
+        loading,
+        error,
+        fetchPolicies,
+        addPolicy,
+        deletePolicy
     };
 };

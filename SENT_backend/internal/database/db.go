@@ -36,8 +36,6 @@ func InitDB() {
 		// 2. Nhóm Policies
 		&models.UniversalPolicy{},
 		&models.PolicyDocument{},
-		&models.USBWhitelist{},
-		&models.AgentWhitelist{},
 
 		// 3. Nhóm Thiết bị (Con của Org/Region)
 		&models.Agent{},

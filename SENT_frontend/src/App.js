@@ -11,9 +11,9 @@ import UserManagement from './pages/Admin/System/UserManagement.jsx';
 import AgentList from './pages/Agents/Agents.jsx';
 import AgentDetail from './pages/Agents/AgentDetail.jsx'; 
 import PolicyCenter from './pages/Admin/policies/PolicyCenter.jsx';
-import PolicyDocuments from './pages/Admin/policies/PolicyDocuments.jsx';
-import IncidentReport from './pages/IncidentReport/IncidentReport.jsx';
-import IncidentList from './pages/IncidentReport/IncidentList.jsx';
+import Documents from './pages/Admin/KnowledgeBase/Documents.jsx';
+import IncidentList from './pages/IncidentReport/IncidentManager.jsx';
+import IncidentDetailPanel from './pages/IncidentReport/components/IncidentDetailPanel.jsx';
 import AIChatAssistant from './pages/AI/AIChatAssistant.jsx';
 
 const ProtectedRoute = ({ children, requiredPermission }) => {
@@ -65,11 +65,18 @@ function App() {
                 <Route path="/agents" element={<ProtectedRoute requiredPermission="view_agents"><AgentList /></ProtectedRoute>} />
                 <Route path="/agents/:hwid" element={<ProtectedRoute requiredPermission="view_agents"><AgentDetail /></ProtectedRoute>} />
                 
-                <Route path="/admin/policy-center" element={<ProtectedRoute requiredPermission="manage_policies"><PolicyCenter /></ProtectedRoute>} />
-                <Route path="/admin/docs" element={<ProtectedRoute requiredPermission="view_docs"><PolicyDocuments /></ProtectedRoute>} />
+               <Route 
+                    path="/admin/policy-center" 
+                    element={<ProtectedRoute requiredPermission="manage_policies"><PolicyCenter /></ProtectedRoute>} 
+                />
+                
+                {/* Route quản lý Tài liệu  */}
+                <Route  path="/admin/docs" element={<ProtectedRoute requiredPermission="view_docs"><Documents /></ProtectedRoute>}/>
+                {/* Route quản lý người dùng (chỉ admin mới có quyền) */}
                 <Route path="/admin/users" element={<ProtectedRoute requiredPermission="manage_users"><UserManagement /></ProtectedRoute>} />
+                {/* Route sự cố (chỉ nhân viên có quyền quản lý sự cố mới xem được) */}
                 <Route path="/incidents" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentList /></ProtectedRoute>} />
-                <Route path="/incidents/:id" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentReport /></ProtectedRoute>} />
+                <Route path="/incidents/:id" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentDetailPanel /></ProtectedRoute>} />
             </Routes>
         </Router>
     );

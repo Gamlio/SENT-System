@@ -7,21 +7,22 @@ export const useAgents = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8; 
 
+
+    const fetchAgents = async () => {
+        try {
+            const res = await axios.get('/agents');
+            setAgents(res.data || []);
+        } catch (err) {
+            console.error("Lỗi lấy danh sách máy trạm:", err);
+        }
+    };
     // 1. Gọi API lấy dữ liệu Realtime
     useEffect(() => {
-        const fetchAgents = async () => {
-            try {
-                const res = await axios.get('/agents');
-                setAgents(res.data || []);
-            } catch (err) {
-                console.error("Lỗi lấy danh sách máy trạm:", err);
-            }
-        };
         fetchAgents();
         const interval = setInterval(fetchAgents, 30000); 
         return () => clearInterval(interval);
     }, []);
-
+    
     // 2. Logic Tìm kiếm
     const filteredAgents = useMemo(() => {
         if (!searchQuery) return agents;
@@ -62,7 +63,7 @@ export const useAgents = () => {
         agents, filteredAgents, currentAgents,
         searchQuery, setSearchQuery,
         currentPage, setCurrentPage, totalPages, indexOfFirstItem, indexOfLastItem,
-        statusChartData, osChartData, onlineCount, offlineCount
+        statusChartData, osChartData, onlineCount, offlineCount, fetchAgents
     };
 };
 

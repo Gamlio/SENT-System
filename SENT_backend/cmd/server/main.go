@@ -10,6 +10,8 @@ import (
 	"sent_backend/internal/api/v1/agents"
 	"sent_backend/internal/api/v1/auth"
 	"sent_backend/internal/api/v1/dashboard"
+	"sent_backend/internal/api/v1/docs"
+	"sent_backend/internal/api/v1/incidents"
 	"sent_backend/internal/api/v1/policies"
 	"sent_backend/internal/api/v1/users"
 	"sent_backend/internal/middleware"
@@ -71,40 +73,40 @@ func main() {
 			{
 				agentsGroup.GET("/stats", agents.GetStats)
 				agentsGroup.GET("", agents.GetAgents)
-				agentsGroup.POST("/bulk-whitelist", agents.AddBulkWhitelist)
 				agentsGroup.GET("/:hwid", agents.GetAgentDetail)
 				agentsGroup.GET("/:hwid/logs", agents.GetAgentLogs)
-				agentsGroup.GET("/:hwid/whitelist", agents.GetAgentWhitelist)
-				agentsGroup.POST("/:hwid/whitelist", agents.AddAgentWhitelist)
-				agentsGroup.DELETE("/whitelist/:id", agents.DeleteAgentWhitelist)
+
 				agentsGroup.PUT("/:hwid/assign", agents.AssignManager)
+				agentPublicGroup.GET("/sync-policies", policies.SyncPoliciesForAgent)
 			}
 
 			aiDocs := protected.Group("/docs")
 			{
-				aiDocs.GET("", policies.GetPoliciesHandler)
-				aiDocs.POST("/upload", policies.UploadPolicyHandler)
-				aiDocs.DELETE("/:id", policies.DeletePolicyHandler)
-				aiDocs.PUT("/:id", policies.UpdatePolicyHandler)
+				aiDocs.GET("", docs.GetDocuments)           // Lấy danh sách tài liệu
+				aiDocs.POST("/upload", docs.UploadDocument) // Upload PDF/Word
+				aiDocs.DELETE("/:id", docs.DeleteDocument)  // Xóa tài liệu
+				aiDocs.PUT("/:id", docs.UpdateDocument)     // Sửa tên tài liệu
 			}
 
+			// 2. GROUP POLICIES (CHÍNH SÁCH KỸ THUẬT CHO AGENT)
 			policiesGroup := protected.Group("/policies")
 			{
-				policiesGroup.GET("", policies.GetPoliciesByCategory)
-				policiesGroup.POST("", policies.AddUniversalPolicy)
-				policiesGroup.DELETE("/:id", policies.DeletePolicy)
+				policiesGroup.GET("", policies.GetPoliciesByCategory) // Lấy luật JSON
+				policiesGroup.POST("/bulk", policies.AddBulkPolicies) // Thêm nhiều luật cùng lúc (Dành cho import Excel)
+				policiesGroup.POST("", policies.AddUniversalPolicy)   // Thêm luật JSON
+				policiesGroup.DELETE("/:id", policies.DeletePolicy)   // Xóa luật JSON
 			}
-
 			dashGroup := protected.Group("/dashboard")
 			{
 				dashGroup.GET("/stats", dashboard.GetDashboardStats)
-				dashGroup.GET("/incidents", dashboard.GetIncidents)
+
 			}
 
 			incidentsGroup := protected.Group("/incidents")
 			{
-				incidentsGroup.GET("", dashboard.GetIncidents)
-				incidentsGroup.GET("/:id", dashboard.GetIncidentDetail)
+				dashGroup.GET("/incidents", incidents.GetIncidents)
+				incidentsGroup.GET("", incidents.GetIncidents)
+				incidentsGroup.GET("/:id", incidents.GetIncidentDetail)
 			}
 		}
 	}

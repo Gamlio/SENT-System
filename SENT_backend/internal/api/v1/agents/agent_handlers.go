@@ -4,7 +4,10 @@ import (
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"sent_backend/internal/service"
+
+	// Import các package mới chia
+	"sent_backend/internal/service/agent_data"
+	"sent_backend/internal/service/security"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,7 +17,7 @@ import (
 func PushDataHandler(c *gin.Context) {
 	var req struct {
 		LogType     string      `json:"log_type"`
-		CompanyCode string      `json:"company_code"` // Nhận Mã Công Ty
+		CompanyCode string      `json:"company_code"`
 		HWID        string      `json:"hwid"`
 		Hostname    string      `json:"hostname"`
 		Data        interface{} `json:"data"`
@@ -25,90 +28,90 @@ func PushDataHandler(c *gin.Context) {
 		return
 	}
 
-	// 1. XÁC THỰC CÔNG TY: Dùng CompanyCode để tìm OrgID
+	// 1. XÁC THỰC CÔNG TY
 	var org models.Organization
 	if err := database.DB.Where("company_code = ?", req.CompanyCode).First(&org).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Mã công ty không tồn tại hoặc sai"})
 		return
 	}
 
-	// --- FIX LỖI FK_REGIONS_AGENTS TẠI ĐÂY ---
-	// 1.5. TÌM VÙNG (REGION) MẶC ĐỊNH ĐỂ GÁN CHO AGENT
+	// 1.5. TÌM VÙNG (REGION) MẶC ĐỊNH
 	var region models.Region
-	// Thử tìm xem công ty này đã có vùng nào chưa (Lấy vùng đầu tiên tìm thấy)
 	if err := database.DB.Where("org_id = ?", org.ID).First(&region).Error; err != nil {
-		// Nếu chưa có (Công ty mới tinh), tạo tự động vùng "Trụ sở chính"
 		region = models.Region{
 			OrgID:       org.ID,
 			Name:        "Trụ sở chính",
-			EnrollToken: "AUTO-" + req.CompanyCode, // Tạo token ngẫu nhiên để tránh lỗi Unique
+			EnrollToken: "AUTO-" + req.CompanyCode,
 		}
-		if err := database.DB.Create(&region).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khởi tạo vùng mặc định"})
-			return
-		}
+		database.DB.Create(&region)
 	}
-	// ------------------------------------------
 
 	// 2. TÌM HOẶC TẠO AGENT
 	var agent models.Agent
 	result := database.DB.Where("hw_id = ?", req.HWID).First(&agent)
 
 	if result.Error != nil {
-		// Máy mới -> Tạo mới & Gán vào OrgID + RegionID vừa tìm được
+		// Máy mới -> Tạo mới
 		agent = models.Agent{
 			HWID:      req.HWID,
-			OrgID:     org.ID,    // Gán đúng OrgID
-			RegionID:  region.ID, // <--- QUAN TRỌNG: Gán ID của vùng vừa tìm/tạo được
+			OrgID:     org.ID,
+			RegionID:  region.ID,
 			Hostname:  req.Hostname,
 			IPAddress: c.ClientIP(),
 			Status:    "online",
 			LastSeen:  time.Now(),
 		}
-
 		if err := database.DB.Create(&agent).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi lưu Agent vào DB: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi lưu Agent: " + err.Error()})
 			return
 		}
 	} else {
 		// Máy cũ -> Cập nhật trạng thái
-		agent.IPAddress = c.ClientIP()
-		agent.LastSeen = time.Now()
-		agent.Status = "online"
-
-		// Logic tự sửa lỗi: Nếu máy cũ bị lỗi mất OrgID hoặc RegionID thì cập nhật lại luôn
+		updates := map[string]interface{}{
+			"ip_address": c.ClientIP(),
+			"last_seen":  time.Now(),
+			"status":     "online",
+		}
+		// Tự sửa lỗi mất OrgID/RegionID
 		if agent.OrgID == 0 {
-			agent.OrgID = org.ID
+			updates["org_id"] = org.ID
 		}
 		if agent.RegionID == 0 {
-			agent.RegionID = region.ID
+			updates["region_id"] = region.ID
 		}
 
-		database.DB.Save(&agent)
+		database.DB.Model(&agent).Updates(updates)
 	}
 
-	// 3. XỬ LÝ DỮ LIỆU LOG (Giữ nguyên logic cũ)
+	// 3. XỬ LÝ DỮ LIỆU LOG (Dùng các package mới chia)
 	switch req.LogType {
 	case "inventory":
-		service.ProcessInventory(agent, req.Data)
+		agent_data.ProcessInventory(agent, req.Data)
 	case "telemetry":
-		service.ProcessTelemetry(agent, req.Data)
+		agent_data.ProcessTelemetry(agent, req.Data)
+		go security.AnalyzeBehaviorAI(agent.HWID, "telemetry", req.Data)
 	case "software":
-		service.ProcessSoftware(agent, req.Data)
+		agent_data.ProcessSoftware(agent, req.Data)
+		// KIỂM TRA CHÍNH SÁCH NGAY LẬP TỨC
+		go security.CheckSoftwareCompliance(agent, req.Data)
+	case "usb":
+		agent_data.ProcessUSB(agent, req.Data)
+		// KIỂM TRA CHÍNH SÁCH USB
+		go security.AnalyzeBehaviorAI(agent.HWID, "usb", req.Data)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "processed", "type": req.LogType})
 }
 
-// GetAgents: Lấy danh sách máy trạm kèm trạng thái Realtime
+// GetAgents: Lấy danh sách máy trạm
 func GetAgents(c *gin.Context) {
 	var agents []models.Agent
-	if err := database.DB.Find(&agents).Error; err != nil {
+	// Preload Manager để hiển thị người quản lý
+	if err := database.DB.Preload("Manager").Find(&agents).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu"})
 		return
 	}
 
-	// TÍNH TOÁN TRẠNG THÁI ĐỘNG: Nếu LastSeen cũ hơn 2 phút -> Đánh dấu Offline
 	threshold := time.Now().Add(-2 * time.Minute)
 	for i := range agents {
 		if agents[i].LastSeen.After(threshold) {
@@ -117,11 +120,10 @@ func GetAgents(c *gin.Context) {
 			agents[i].Status = "offline"
 		}
 	}
-
 	c.JSON(http.StatusOK, agents)
 }
 
-// GetAgentDetail: Lấy chi tiết kèm Inventory và Software
+// GetAgentDetail: Lấy chi tiết kèm USB, Software, Inventory
 func GetAgentDetail(c *gin.Context) {
 	hwid := c.Param("hwid")
 	var agent models.Agent
@@ -129,6 +131,7 @@ func GetAgentDetail(c *gin.Context) {
 	err := database.DB.Preload("Inventory").
 		Preload("Software").
 		Preload("Alerts").
+		Preload("USBLogs"). // <--- Đã thêm USBLogs
 		Where("hw_id = ?", hwid).
 		First(&agent).Error
 
@@ -137,7 +140,6 @@ func GetAgentDetail(c *gin.Context) {
 		return
 	}
 
-	// TÍNH TOÁN TRẠNG THÁI ĐỘNG TRƯỚC KHI TRẢ VỀ
 	threshold := time.Now().Add(-2 * time.Minute)
 	if agent.LastSeen.After(threshold) {
 		agent.Status = "online"
@@ -148,18 +150,14 @@ func GetAgentDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, agent)
 }
 
-// GetStats: Trả về số liệu Realtime cho Dashboard
+// GetStats: Số liệu Dashboard
 func GetStats(c *gin.Context) {
 	var total, online, alerts, regions int64
-
-	// 1. Tổng số máy
 	database.DB.Model(&models.Agent{}).Count(&total)
 
-	// 2. TÍNH SỐ MÁY ONLINE: Chỉ đếm những máy có LastSeen trong 2 phút đổ lại đây
 	threshold := time.Now().Add(-2 * time.Minute)
 	database.DB.Model(&models.Agent{}).Where("last_seen >= ?", threshold).Count(&online)
 
-	// 3. Các thông số khác
 	database.DB.Model(&models.SecurityAlert{}).Where("is_resolved = ?", false).Count(&alerts)
 	database.DB.Model(&models.Region{}).Count(&regions)
 
@@ -167,64 +165,14 @@ func GetStats(c *gin.Context) {
 		"total": total, "online": online, "alerts": alerts, "regions": regions,
 	})
 }
+
 func GetAgentLogs(c *gin.Context) {
 	hwid := c.Param("hwid")
 	var alerts []models.SecurityAlert
-
-	// Lấy tất cả cảnh báo của HWID này, sắp xếp mới nhất trước
-	result := database.DB.Where("hw_id = ?", hwid).Order("created_at desc").Find(&alerts)
-
-	if result.Error != nil {
-		c.JSON(500, gin.H{"error": "Lỗi truy vấn Log"})
-		return
-	}
-
+	database.DB.Where("hw_id = ?", hwid).Order("created_at desc").Find(&alerts)
 	c.JSON(200, alerts)
 }
 
-// Lấy danh sách Whitelist của 1 máy
-func GetAgentWhitelist(c *gin.Context) {
-	var list []models.AgentWhitelist
-	database.DB.Where("hwid = ?", c.Param("hwid")).Find(&list)
-	c.JSON(200, list)
-}
-
-func AddAgentWhitelist(c *gin.Context) {
-	var req struct {
-		Name string `json:"name"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
-		return
-	}
-	item := models.AgentWhitelist{HWID: c.Param("hwid"), SoftwareName: req.Name}
-	database.DB.Create(&item)
-	c.JSON(200, item)
-}
-
-func DeleteAgentWhitelist(c *gin.Context) {
-	database.DB.Delete(&models.AgentWhitelist{}, c.Param("id"))
-	c.JSON(200, gin.H{"status": "ok"})
-}
-
-// Hàm mới: CẤP PHÉP HÀNG LOẠT CHO NHIỀU MÁY CÙNG LÚC
-func AddBulkWhitelist(c *gin.Context) {
-	var req struct {
-		HWIDs        []string `json:"hwids"`
-		SoftwareName string   `json:"software_name"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
-		return
-	}
-
-	// Lặp qua danh sách các máy được tích chọn và lưu vào DB
-	for _, hwid := range req.HWIDs {
-		item := models.AgentWhitelist{HWID: hwid, SoftwareName: req.SoftwareName}
-		database.DB.Create(&item)
-	}
-	c.JSON(200, gin.H{"status": "success"})
-}
 func AssignManager(c *gin.Context) {
 	hwid := c.Param("hwid")
 	var req struct {
@@ -235,12 +183,10 @@ func AssignManager(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
-
-	// Cập nhật trường user_id cho Agent có HWID tương ứng
+	// Fix lỗi phân bổ
 	if err := database.DB.Model(&models.Agent{}).Where("hw_id = ?", hwid).Update("user_id", req.UserID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể phân bổ quản lý"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi DB"})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Đã phân bổ người quản lý thành công"})
+	c.JSON(http.StatusOK, gin.H{"message": "Đã phân bổ thành công"})
 }

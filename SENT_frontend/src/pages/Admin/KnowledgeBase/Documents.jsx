@@ -1,22 +1,21 @@
 import React, { useState } from 'react';
 // Nhớ thêm icon X để làm nút đóng Modal
-import { FileText, UploadCloud, Trash2, Edit, CheckCircle, Clock, RefreshCw, Eye, Download, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
-import { usePolicies } from '../../../hooks/usePolicies'; 
-
-const PolicyDocuments = () => {
+import { FileText, UploadCloud, Trash2, Edit, CheckCircle, Clock, RefreshCw, Eye, Download, Search, X } from 'lucide-react';
+import { useDocuments } from '../../../hooks/useDocuments';
+import Pagination from '../../../components/common/Pagination';
+const Documents = () => {
+    // Sử dụng hook useDocuments thay vì usePolicies
     const {
         currentDocuments, filteredDocs, 
         searchQuery, setSearchQuery,
-        currentPage, setCurrentPage, totalPages, indexOfFirstItem, indexOfLastItem,
+        currentPage, setCurrentPage, totalPages,
         isUploading, editingDoc, setEditingDoc,
         uploadDoc, deleteDoc, updateDoc
-    } = usePolicies();
+    } = useDocuments();
 
     const [file, setFile] = useState(null);
     const [title, setTitle] = useState('');
     const [category, setCategory] = useState('Internal');
-    
-    // Thêm State để quản lý việc hiển thị cửa sổ Xem tài liệu
     const [viewingDoc, setViewingDoc] = useState(null);
 
     const handleUploadSubmit = async (e) => {
@@ -38,15 +37,12 @@ const PolicyDocuments = () => {
     };
 
     // Hàm Xem: Lưu thông tin tài liệu vào state để bật Modal
-    const handleViewDocument = (doc) => {
-        setViewingDoc(doc);
-    };
+    const handleViewDocument = (doc) => setViewingDoc(doc);
 
-    // Hàm Tải: Ép tải file về máy
+    // Hàm Tải
     const handleDownloadDocument = (filePath, fileName) => {
         const formattedPath = filePath.replace(/\\/g, '/');
         const fileUrl = `http://localhost:8000/${formattedPath}`;
-        
         const link = document.createElement('a');
         link.href = fileUrl;
         link.setAttribute('download', fileName || 'Tai_Lieu.pdf'); 
@@ -144,18 +140,14 @@ const PolicyDocuments = () => {
                         )}
                     </div>
 
-                    {totalPages > 1 && (
-                        <div className="mt-8 flex justify-between items-center bg-[#1e293b] p-4 rounded-2xl border border-slate-800">
-                            <span className="text-sm text-slate-500 font-medium">
-                                Hiển thị <span className="text-white">{indexOfFirstItem + 1}</span> - <span className="text-white">{Math.min(indexOfLastItem, filteredDocs.length)}</span> / <span className="text-white">{filteredDocs.length}</span>
-                            </span>
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-50 transition"><ChevronLeft size={18}/></button>
-                                <span className="text-sm font-bold text-emerald-400 px-4">Trang {currentPage} / {totalPages}</span>
-                                <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-50 transition"><ChevronRight size={18}/></button>
-                            </div>
-                        </div>
-                    )}
+                    {/* Pagination Xịn */}
+                    <div className="px-4 pb-4">
+                        <Pagination 
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            onPageChange={setCurrentPage}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -237,4 +229,4 @@ const PolicyDocuments = () => {
     );
 };
 
-export default PolicyDocuments;
+export default Documents;

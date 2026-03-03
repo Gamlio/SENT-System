@@ -1,109 +1,116 @@
 package policies
 
 import (
-	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"sent_backend/internal/repository"
-	"sent_backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func UploadPolicyHandler(c *gin.Context) {
-	title := c.PostForm("title")
-	category := c.PostForm("category")
-	file, err := c.FormFile("file") // Lấy file từ key 'file'
-	if err != nil {
-		c.JSON(400, gin.H{"error": "Không tìm thấy file gửi kèm"})
-		return
-	}
-
-	openedFile, _ := file.Open()
-	defer openedFile.Close()
-	buffer := make([]byte, file.Size)
-	openedFile.Read(buffer)
-
-	orgID := uint(1) // Tạm thời
-	err = service.SavePolicyFile(orgID, title, category, file.Filename, buffer)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Lỗi khi lưu file"})
-		return
-	}
-	c.JSON(200, gin.H{"message": "Upload thành công"})
-}
-func GetPoliciesHandler(c *gin.Context) {
-	orgID := uint(1)
-	var docs []models.PolicyDocument // Chắc chắn dùng đúng struct này
-	if err := database.DB.Where("org_id = ?", orgID).Find(&docs).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Lỗi truy vấn"})
-		return
-	}
-	c.JSON(200, docs)
-}
-
-// DeletePolicyHandler: Xóa tài liệu
-func DeletePolicyHandler(c *gin.Context) {
-	id := c.Param("id")
-	orgID := uint(1)
-
-	if err := service.DeletePolicyAndFile(id, orgID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xóa tài liệu"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Xóa thành công"})
-}
-
-// UpdatePolicyHandler: Sửa thông tin tài liệu
-func UpdatePolicyHandler(c *gin.Context) {
-	id := c.Param("id")
-	var req struct {
-		Title    string `json:"title"`
-		Category string `json:"category"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
-		return
-	}
-
-	repository.UpdatePolicyStatus(id, req.Title, req.Category)
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công"})
-}
-
-// Lấy danh sách chính sách theo loại (Software, USB,...)
+// GetPoliciesByCategory: Lấy luật Software/USB/Network (JSON)
 func GetPoliciesByCategory(c *gin.Context) {
-	category := c.Query("category") // Lấy từ URL: ?category=SOFTWARE
+	category := c.Query("category")
 	var list []models.UniversalPolicy
-
-	query := database.DB.Where("org_id = ?", 1) // Tạm hardcode OrgID
+	query := database.DB.Where("org_id = ?", 1)
 	if category != "" {
 		query = query.Where("category = ?", category)
 	}
-
 	query.Find(&list)
 	c.JSON(200, list)
 }
 
+// AddUniversalPolicy: Thêm luật kỹ thuật mới
 func AddUniversalPolicy(c *gin.Context) {
 	var req models.UniversalPolicy
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(400, gin.H{"error": "Dữ liệu sai"})
 		return
 	}
-	// Lưu vào bảng chính sách kỹ thuật
+	// Mặc định OrgID = 1 nếu chưa có Auth
+	if req.OrgID == 0 {
+		req.OrgID = 1
+	}
 	database.DB.Create(&req)
 	c.JSON(200, gin.H{"message": "Đã lưu chính sách kỹ thuật"})
 }
 
-// Xóa chính sách kỹ thuật (Software/USB) khỏi bảng UniversalPolicy
+// DeletePolicy: Xóa luật kỹ thuật
 func DeletePolicy(c *gin.Context) {
 	id := c.Param("id")
-
-	// Xóa trực tiếp bằng GORM
 	if err := database.DB.Delete(&models.UniversalPolicy{}, id).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Lỗi khi xóa chính sách"})
+		c.JSON(500, gin.H{"error": "Lỗi xóa"})
+		return
+	}
+	c.JSON(200, gin.H{"message": "Đã xóa chính sách"})
+}
+
+// SyncPoliciesForAgent: Agent gọi API này để lấy bộ luật "Effective"
+func SyncPoliciesForAgent(c *gin.Context) {
+	// Giả sử Agent gửi HWID qua Query hoặc Header (Thực tế nên lấy từ Token Claims)
+	hwid := c.Query("hwid")
+	if hwid == "" {
+		c.JSON(400, gin.H{"error": "Thiếu HWID"})
 		return
 	}
 
-	c.JSON(200, gin.H{"message": "Đã xóa chính sách kỹ thuật"})
+	orgID := uint(1) // Tạm hardcode, sau này lấy từ Auth Middleware của Agent
+
+	// Gọi Engine tính toán
+	policies := CalculateEffectivePolicies(orgID, hwid)
+
+	c.JSON(200, gin.H{
+		"sync_time": "now",
+		"count":     len(policies),
+		"policies":  policies,
+	})
+}
+
+// AddBulkPolicies: API chuyên dụng để nạp danh sách luật (Bulk Insert)
+func AddBulkPolicies(c *gin.Context) {
+	// Định nghĩa struct nhận dữ liệu riêng cho API này
+	var req struct {
+		Title       string   `json:"title"`
+		Category    string   `json:"category"`
+		PolicyType  string   `json:"policy_type"`
+		TargetType  string   `json:"target_type"`
+		TargetHWIDs []string `json:"target_hwids"`
+		Values      []string `json:"values"` // <--- Quan trọng: Nhận mảng giá trị
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	if len(req.Values) == 0 {
+		c.JSON(400, gin.H{"error": "Danh sách giá trị không được để trống"})
+		return
+	}
+
+	orgID := uint(1) // Tạm hardcode
+
+	// Bắt đầu Transaction (Lưu tất cả hoặc không lưu gì cả)
+	tx := database.DB.Begin()
+
+	for _, val := range req.Values {
+		policy := models.UniversalPolicy{
+			OrgID:       orgID,
+			Title:       req.Title,
+			Category:    req.Category,
+			PolicyType:  req.PolicyType,
+			TargetType:  req.TargetType,
+			TargetHWIDs: req.TargetHWIDs,
+			Value:       val,
+			IsActive:    true,
+		}
+
+		if err := tx.Create(&policy).Error; err != nil {
+			tx.Rollback()
+			c.JSON(500, gin.H{"error": "Lỗi lưu DB: " + err.Error()})
+			return
+		}
+	}
+
+	tx.Commit()
+	c.JSON(200, gin.H{"message": "Đã nạp thành công danh sách chính sách"})
 }
