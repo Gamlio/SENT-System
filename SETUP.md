@@ -1,35 +1,33 @@
-# ⚙️ Hướng dẫn Triển khai SENT SOC System
+# ⚙️ Hướng dẫn Triển khai Hệ thống SENT SOC
 
-## Bước 1: Chuẩn bị Database
-- Cài đặt và khởi chạy **PostgreSQL** (Mặc định Port `5432`).
-- Tạo một database trống có tên: `sent_db`.
+## 📋 Yêu cầu hệ thống
+* **Backend/Agent:** Golang 1.21+
+* **Frontend:** NodeJS 18+ (React 18)
+* **Database:** PostgreSQL 15+
 
-## Bước 2: Khởi chạy Backend (Trạm điều phối & AI Docs)
-1. Mở Terminal, di chuyển vào thư mục Backend: `cd SENT_backend`
-2. Tạo file `.env` ở thư mục gốc chứa các thông tin sau:
-   ```env
-   PORT=8000
-   DATABASE_URL=host=localhost user=postgres password=YOUR_PASSWORD dbname=sent_db port=5432 sslmode=disable TimeZone=Asia/Ho_Chi_Minh
-   JWT_SECRET=super_secret_key_cua_thanh
-   ALLOWED_ORIGINS=http://localhost:3000
-3. Chạy lệnh cài đặt thư viện: go mod tidy
+## 📦 Bước 1: Thiết lập Cơ sở dữ liệu
+1.  Khởi chạy PostgreSQL và tạo database tên: `sent_db`.
+2.  Backend sử dụng GORM để tự động khởi tạo các bảng (AutoMigrate).
 
-4. Khởi chạy Server: go run cmd/server/main.go
+## 🖥️ Bước 2: Cài đặt Backend SOC
+1.  Di chuyển vào thư mục: `cd SENT_backend`
+2.  Tạo file `.env` với nội dung mẫu:
+    ```env
+    PORT=8000
+    DATABASE_URL=host=localhost user=postgres password=YOUR_PASS dbname=sent_db port=5432 sslmode=disable
+    JWT_SECRET=thanh_soc_security_key
+    ```
+3.  Cài đặt thư viện: `go mod tidy`
+4.  Chạy server: `go run main.go`
 
-Lưu ý: Quá trình này sẽ tự động AutoMigrate Database, tạo cây thư mục uploads/policies/ để lưu tài liệu AI và khởi tạo tài khoản Admin mặc định.
+## 🌐 Bước 3: Cài đặt Giao diện Frontend
+1.  Di chuyển vào thư mục: `cd SENT_frontend`
+2.  Cài đặt dependencies: `npm install`
+3.  Khởi chạy: `npm start` (Giao diện sẽ chạy tại `http://localhost:3000`)
 
-Bước 3: Đăng nhập vào Hệ thống
-Backend đã tự động tạo một tài khoản Super Admin với thông tin sau:
+## 🛡️ Bước 4: Cài đặt Endpoint Agent
+1.  Di chuyển vào thư mục: `cd SENT_agent`
+2.  Cấu hình `config.json` hoặc nhập **Company Code** khi khởi chạy lần đầu.
+3.  Build và chạy: `go run main.go`
+    * *Lưu ý: Agent cần quyền Admin trên Windows để thu thập thông tin phần mềm và USB.*
 
-Username: Admin
-
-Password: Thanh@123
-
-Khuyến nghị đổi mật khẩu sau lần đăng nhập đầu tiên.
-
-Bước 4: Khởi chạy Giao diện Frontend
-Mở một Terminal mới, di chuyển vào thư mục Frontend: cd SENT_frontend
-
-Cài đặt các gói Node modules: npm install
-
-Khởi chạy Dashboard: npm start (Mặc định sẽ chạy tại http://localhost:3000)

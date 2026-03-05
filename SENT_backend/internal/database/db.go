@@ -48,6 +48,13 @@ func InitDB() {
 		&models.SecurityEvent{},
 		&models.USBLog{},
 		&models.OpenPort{},
+
+		// 5. Nhóm Sự cố (Con của Agent)
+		&models.Incident{},
+
+		// 6. Nhóm AI Chat History
+		&models.AIChatLog{},
+		&models.AIChatSession{},
 	)
 
 	if err != nil {

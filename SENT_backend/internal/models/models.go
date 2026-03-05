@@ -63,6 +63,7 @@ type User struct {
 	// THAY ĐỔI 1: Thay RoleLevel bằng RoleName rõ ràng
 	Role string `json:"role" gorm:"default:'USER'"` // Có 2 loại: "ADMIN" (Chủ công ty) và "USER" (Nhân viên)
 
+	RiskScore int `json:"risk_score" gorm:"default:0"`
 	// THAY ĐỔI 2: Chia nhỏ quyền (Read / Write)
 	CanViewAgents   bool `json:"can_view_agents" gorm:"default:false"`
 	CanManageAgents bool `json:"can_manage_agents" gorm:"default:false"`
@@ -103,6 +104,8 @@ type Agent struct {
 	OpenPorts      []OpenPort      `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"open_ports"`
 	USBLogs        []USBLog        `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"usb_logs"`
 
+	RiskScore int `json:"risk_score" gorm:"default:0"`
+
 	Incidents []Incident `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"incidents"`
 }
 
@@ -127,31 +130,39 @@ type SoftwareItem struct {
 	Version      string `json:"version"`
 }
 
-// --- NHÓM 4: GIÁM SÁT AN NINH & SỰ CỐ ---
+// --- NHÓM 4: GIÁM SÁT AN NINH & SỰ CỐ (ĐÃ REFACTOR THEO PLAYBOOK) ---
 type Incident struct {
 	gorm.Model
-	OrgID       uint   `json:"org_id" gorm:"index"`
-	AgentHWID   string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
-	Type        string `json:"type"`        // VD: Malware, Network Anomaly
-	Severity    string `json:"severity"`    // Low, Medium, High, Critical
-	Status      string `json:"status"`      // Open, InProgress, Resolved
+	OrgID     uint   `json:"org_id" gorm:"index"`
+	AgentHWID string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
+
+	// [THÊM MỚI] - Khớp chuẩn với hệ thống Playbook
+	PlaybookName string `json:"playbook_name"` // VD: "Unauthorized Software", "Dual Homing", "Virus Infection"
+	Priority     string `json:"priority"`      // VD: "P1", "P2", "P3"
+
+	Type        string `json:"type"`        // Phân loại: Malware, Network Anomaly...
+	Severity    string `json:"severity"`    // Giữ lại để tương thích: Critical (P1), High (P2), Medium (P3)
+	Status      string `json:"status"`      // Open, InProgress, Resolved, Contained
 	Description string `json:"description"` // Mô tả tổng quan
 
-	// AI / Playbook Data (Dành riêng cho RAG phân tích sau này)
-	AIAnalysis string `json:"ai_analysis" gorm:"type:text"` // Lưu kết luận của AI
-	Resolution string `json:"resolution" gorm:"type:text"`  // Ghi chú cách giải quyết của Admin
+	// AI / Playbook Data (Dành riêng cho RAG phân tích)
+	AIAnalysis string `json:"ai_analysis" gorm:"type:text"` // Lưu kết luận & hướng dẫn xử lý của AI
+	Resolution string `json:"resolution" gorm:"type:text"`  // Ghi chú cách giải quyết của Admin (IT)
 
 	// Relationships
 	Agent  Agent           `gorm:"foreignKey:AgentHWID;references:HWID" json:"agent"`
 	Alerts []SecurityAlert `gorm:"foreignKey:IncidentID" json:"alerts"`
 }
 
-// Cập nhật lại bảng SecurityAlert hiện tại của bạn
 type SecurityAlert struct {
 	gorm.Model
-	OrgID       uint   `json:"org_id" gorm:"index"`
-	HWID        string `gorm:"column:hw_id;index" json:"hw_id"`
-	IncidentID  *uint  `json:"incident_id" gorm:"index"` // Thêm dòng này: Dùng pointer (*) vì Alert có thể đứng độc lập chưa bị gom vào Incident
+	OrgID      uint   `json:"org_id" gorm:"index"`
+	HWID       string `gorm:"column:hw_id;index" json:"hw_id"`
+	IncidentID *uint  `json:"incident_id" gorm:"index"` // Dùng pointer (*) vì Alert có thể chưa bị gom vào Incident
+
+	// [THÊM MỚI] - Để nhận diện cấp độ khẩn cấp ngay từ Agent gửi lên
+	Priority string `json:"priority"` // "P1", "P2", "P3"
+
 	AlertType   string `json:"alert_type"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
@@ -209,4 +220,29 @@ type PolicyDocument struct {
 	Category    string `json:"category"`
 	IsProcessed bool   `gorm:"default:false" json:"is_processed"`
 	OrgID       uint   `json:"org_id" gorm:"index"`
+}
+
+// --- NHÓM 6: AI CHAT HISTORY ---
+type AIChatSession struct {
+	// Thay gorm.Model bằng các trường cụ thể có tag json:"id"
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+
+	UserID uint   `json:"user_id" gorm:"index"`
+	Title  string `json:"title"`
+}
+
+type AIChatLog struct {
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+
+	SessionID uint   `json:"session_id" gorm:"index"`
+	UserID    uint   `json:"user_id" gorm:"index"`
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	Thought   string `json:"thought"`
 }

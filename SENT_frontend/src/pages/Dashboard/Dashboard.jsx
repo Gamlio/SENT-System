@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Activity, ShieldAlert, Server, Wifi, WifiOff, PlusCircle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import axios from '../../api/axios';
-import DashboardTable from '../../components/DashboardTable'; // Import component vừa tạo
+import DashboardTable from './components/DashboardTable'; // Import component vừa tạo
 
 const Dashboard = () => {
     const [stats, setStats] = useState({ total: 0, online: 0, alerts: 0, regions: 0 });

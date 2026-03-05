@@ -8,6 +8,7 @@ import (
 	"sent_backend/internal/database"
 	// IMPORT CÁC PACKAGE ĐÃ CHIA NHỎ
 	"sent_backend/internal/api/v1/agents"
+	"sent_backend/internal/api/v1/ai"
 	"sent_backend/internal/api/v1/auth"
 	"sent_backend/internal/api/v1/dashboard"
 	"sent_backend/internal/api/v1/docs"
@@ -107,6 +108,19 @@ func main() {
 				dashGroup.GET("/incidents", incidents.GetIncidents)
 				incidentsGroup.GET("", incidents.GetIncidents)
 				incidentsGroup.GET("/:id", incidents.GetIncidentDetail)
+			}
+			aiGroup := protected.Group("/ai")
+			{
+				aiGroup.POST("/chat", ai.ChatHandler)
+				aiGroup.POST("/sessions", ai.CreateSession) // Tạo phiên mới
+				aiGroup.GET("/sessions", ai.GetSessions)    // Lấy danh sách phiên
+
+				// Chat trong phiên cụ thể
+				aiGroup.POST("/chat/:session_id", ai.ChatHandler)
+				// Các endpoint khác như xóa phiên, lấy lịch sử chat... có thể thêm sau khi có cơ sở hạ tầng chính. Hiện tập trung vào chức năng chat chính đã.
+				aiGroup.DELETE("/sessions/:id", ai.DeleteSession) // Xóa phiên
+				aiGroup.PUT("/sessions/:id", ai.RenameSession)
+				aiGroup.GET("/chat/:session_id", ai.GetChatHistory) // Lấy lịch sử chat của phiên
 			}
 		}
 	}

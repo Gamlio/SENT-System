@@ -92,3 +92,34 @@ func logToFile(pType, lType, status string) {
 		f.Close()
 	}
 }
+
+// Thêm cấu trúc cho Dữ liệu Cảnh báo
+type AlertData struct {
+	AlertType string `json:"alert_type"`
+	Message   string `json:"message"`
+	Severity  string `json:"severity"`
+}
+
+// Hàm gửi cảnh báo khẩn cấp (Bỏ qua kiểm tra Hash, gửi lập tức)
+func (c *Client) SendAlert(hwid, hostname, alertType, message, severity string) {
+	alertPayload := Payload{
+		Type:        "ALERT", // Phân biệt với DATA bình thường
+		LogType:     "alert",
+		HWID:        hwid,
+		Hostname:    hostname,
+		CompanyCode: config.Current.CompanyCode,
+		Data: AlertData{
+			AlertType: alertType,
+			Message:   message,
+			Severity:  severity,
+		},
+	}
+
+	jsonBytes, _ := json.Marshal(alertPayload)
+	resp, err := http.Post(SERVER_URL, "application/json", bytes.NewBuffer(jsonBytes))
+
+	if err == nil {
+		fmt.Printf("🚨 Đã gửi cảnh báo khẩn cấp [%s] về SOC Server!\n", alertType)
+		resp.Body.Close()
+	}
+}

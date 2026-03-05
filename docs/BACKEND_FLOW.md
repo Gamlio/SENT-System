@@ -69,3 +69,48 @@ SENT_backend/
 ├── .env                          # SECRET_KEY, DB_URL, PORT
 ├── go.mod
 └── go.sum
+
+
+Luồng xử lý dữ liệu Agent (Data Pipeline)
+Bước 1: Tiếp nhận (Ingestion)
+API POST /api/v1/agents/push nhận gói tin JSON từ Agent.
+
+Agent Handler:
+
+Kiểm tra CompanyCode.
+
+Tìm hoặc Tạo mới (FindOrCreate) bản ghi Agent trong DB.
+
+LƯU Ý QUAN TRỌNG: Ở bước này, Handler chỉ cập nhật LastSeen. Tuyệt đối KHÔNG ghi đè IPAddress bằng IP kết nối (để tránh lỗi ::1 khi chạy Localhost).
+
+Bước 2: Phân loại & Xử lý (Processing)
+Dựa vào trường log_type, dữ liệu được chuyển cho Service tương ứng:
+
+Telemetry Service (telemetry.go):
+
+Nhận danh sách open_ports và ip_address từ Agent.
+
+Cập nhật trường IPAddress trong bảng agents bằng giá trị chính xác từ Agent gửi lên.
+
+So sánh Hash Port để quyết định có ghi đè bảng open_ports hay không.
+
+Inventory Service (inventory.go):
+
+Cập nhật thông tin CPU, RAM, OS. Hỗ trợ nhận diện các OS khác nhau (Windows 10/11, Ubuntu, macOS).
+
+Software Service (software.go):
+
+Xóa danh sách phần mềm cũ -> Thêm danh sách mới (Cơ chế Sync đầy đủ).
+
+Future: Kích hoạt quét lỗ hổng (Vulnerability Scan) ngay sau khi lưu.
+
+USB Service (usb.go):
+
+Ghi nhận lịch sử cắm rút vào bảng usb_logs.
+
+Kiểm tra đối chiếu với Whitelist để sinh cảnh báo (Alert) nếu thiết bị lạ.
+
+API Phục vụ Frontend
+GET /agents: Trả về danh sách máy trạm kèm trạng thái Online/Offline (tính toán dựa trên LastSeen > 2 phút).
+
+GET /agents/:hwid: Trả về chi tiết máy trạm, preload toàn bộ quan hệ (Inventory, Software, USB Logs, Alerts).

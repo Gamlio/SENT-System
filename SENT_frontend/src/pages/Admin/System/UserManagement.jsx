@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserPlus, Users, Trash2, Shield, User, Search, ChevronLeft, ChevronRight, Phone, Mail, CheckSquare, Edit, AlertTriangle } from 'lucide-react';
-import { useUsers } from '../../../hooks/useUsers';
+import { useUsers } from './hooks/useUsers';
 import { useAuth } from '../../../context/AuthContext'; // 1. IMPORT AUTH CONTEXT
 import UserStats from '../../Dashboard/UserStats';
 

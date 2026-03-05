@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
     LayoutDashboard, Monitor, MessageSquare, FileText, 
-    ShieldCheck, ChevronLeft, ChevronRight 
+    ShieldCheck, ChevronLeft, ChevronRight, 
+    User
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -22,12 +23,13 @@ const Sidebar = () => {
         { path: '/agents', icon: <Monitor size={20}/>, label: 'Quản lý máy trạm', show: user.permissions?.view_agents },
         { path: '/admin/policy-center', icon: <ShieldCheck size={20}/>, label: 'Quản lý Chính sách', show: user.permissions?.manage_policies },
         { path: '/admin/docs',icon: <FileText size={20}/>,label: 'Quản lý tài liệu', show: user.permissions?.view_docs},
+        { path: '/admin/users', icon: <User size={20}/>, label: 'Quản lý người dùng', show: user.permissions?.manage_users },
         { path: '/incidents', icon: <ShieldCheck size={20}/>, label: 'Quản lý sự cố', show: user.permissions?.manage_incidents }    
     ];
 
     return (
         <div 
-            className={`${isCollapsed ? 'w-20' : 'w-64'} bg-[#1e293b] h-screen flex flex-col border-r border-slate-800 shadow-2xl relative z-20 transition-all duration-300 ease-in-out`}
+            className={`${isCollapsed ? 'w-20' : 'w-60'} bg-[#1e293b] h-screen flex flex-col border-r border-slate-800 shadow-2xl relative z-20 transition-all duration-300 ease-in-out`}
         >
             {/* --- NÚT TOGGLE ĐÓNG/MỞ --- */}
             <button 
@@ -91,16 +93,23 @@ const Sidebar = () => {
             </nav>
 
             {/* --- AI CHAT BUTTON --- */}
-            <div className="p-4 border-t border-slate-800">
+               <div className="p-4 border-t border-slate-800 relative">
                 <Link 
                     to="/chat-ai" 
-                    className={`flex items-center gap-2 p-3 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 transition font-bold text-sm shadow-xl ${isCollapsed ? 'justify-center' : ''}`}
-                    title="Hỏi AI Copilot"
+                    className={`flex items-center gap-2 p-3 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 transition font-bold text-sm shadow-xl group ${isCollapsed ? 'justify-center' : ''}`}
+                    title={isCollapsed ? "Hỏi trợ lý AI" : ""}
                 >
                     <MessageSquare size={18} className="text-blue-400 shrink-0"/> 
                     <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
-                        Hỏi AI Copilot
+                            Hỏi trợ lý AI
                     </span>
+                    
+                    {/* Tooltip when collapsed */}
+                    {isCollapsed && (
+                        <div className="absolute left-16 bg-slate-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap border border-slate-700">
+                            Hỏi trợ lý AI
+                        </div>
+                    )}
                 </Link>
             </div>
         </div>

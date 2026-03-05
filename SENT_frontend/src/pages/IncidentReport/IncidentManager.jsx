@@ -7,8 +7,6 @@ const IncidentManager = () => {
     // --- STATE QUẢN LÝ ---
     const [incidents, setIncidents] = useState([]);
     const [loading, setLoading] = useState(true);
-    
-    // State quản lý xem chi tiết
     const [selectedIncident, setSelectedIncident] = useState(null); 
     const [loadingDetail, setLoadingDetail] = useState(false);
 
@@ -16,29 +14,29 @@ const IncidentManager = () => {
     const fetchIncidents = async () => {
         try {
             const response = await axiosInstance.get('/incidents');
-            setIncidents(response.data.data || []);
+            // Đảm bảo dữ liệu là mảng, sắp xếp mới nhất lên đầu
+            const data = response.data.data || response.data || [];
+            setIncidents(data);
         } catch (error) {
-            console.error("Lỗi tải danh sách:", error);
+            console.error("Lỗi tải danh sách sự cố:", error);
         } finally {
             setLoading(false);
         }
     };
 
-    // Auto refresh
+    // Auto refresh mỗi 15s
     useEffect(() => {
         fetchIncidents();
         const interval = setInterval(fetchIncidents, 15000); 
         return () => clearInterval(interval);
     }, []);
 
-    // --- HANDLERS (SỰ KIỆN) ---
-    
-    // 1. Khi bấm vào 1 dòng trong bảng -> Gọi API lấy chi tiết
+    // --- HANDLERS ---
     const handleViewDetail = async (id) => {
         setLoadingDetail(true);
         try {
             const response = await axiosInstance.get(`/incidents/${id}`);
-            setSelectedIncident(response.data.data);
+            setSelectedIncident(response.data.data || response.data);
         } catch (error) {
             alert("Không thể tải chi tiết sự cố");
         } finally {
@@ -46,34 +44,33 @@ const IncidentManager = () => {
         }
     };
 
-    // 2. Khi đóng panel
     const handleCloseDetail = () => {
         setSelectedIncident(null);
-        fetchIncidents(); // Refresh lại danh sách để cập nhật trạng thái nếu có thay đổi
+        fetchIncidents(); // Refresh lại danh sách
     };
 
-    // 3. Khi bấm nút "Đánh dấu đã xử lý" (Logic giả lập, bạn cần thêm API backend)
-    const handleResolve = async (id) => {
-        if(window.confirm("Xác nhận đóng hồ sơ sự cố này?")) {
-            // Gọi API Update Status (Cần viết thêm API PUT /incidents/:id)
-            // await axiosInstance.put(`/incidents/${id}`, { status: 'Resolved' });
-            alert("Đã đánh dấu xử lý (Demo)");
+    // Xử lý đóng Case (Có kèm theo ghi chú)
+    const handleResolve = async (id, resolutionNote) => {
+        try {
+            // TODO: Bạn cần viết API PUT /api/v1/incidents/:id ở Backend để nhận data này
+            // await axiosInstance.put(`/incidents/${id}`, { 
+            //     status: 'Resolved', 
+            //     resolution: resolutionNote 
+            // });
+            
+            alert("Đã ghi nhận và đóng hồ sơ sự cố (Chế độ Demo)!\nGhi chú: " + resolutionNote);
             handleCloseDetail();
+        } catch (err) {
+            alert("Lỗi khi đóng sự cố!");
         }
     };
 
-    // --- RENDER ---
     if (loading) return <div className="p-6 text-slate-400 font-bold animate-pulse">Đang tải dữ liệu...</div>;
 
     return (
         <div className="p-6 text-slate-200 h-full flex flex-col relative overflow-hidden">
-            {/* Component Danh Sách */}
-            <IncidentTable 
-                rawData={incidents} 
-                onViewDetail={handleViewDetail} 
-            />
+            <IncidentTable rawData={incidents} onViewDetail={handleViewDetail} />
 
-            {/* Component Chi Tiết (Chỉ hiện khi selectedIncident != null) */}
             {selectedIncident && (
                 <IncidentDetailPanel 
                     incident={selectedIncident} 

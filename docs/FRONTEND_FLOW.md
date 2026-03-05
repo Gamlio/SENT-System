@@ -69,3 +69,49 @@ Cơ chế áp dụng: Hỗ trợ áp dụng toàn hệ thống (GLOBAL) hoặc c
 Nạp dữ liệu (PolicyDocuments.jsx): Admin tải lên tệp định dạng PDF/Word chứa nội quy, tiêu chuẩn. Quản lý logic upload qua usePolicies.js.
 
 Truy vấn: Nhân viên sử dụng AIChatAssistant.jsx để đặt câu hỏi.
+
+# SENT Frontend Architecture (v3.5 - React Ecosystem)
+
+Tài liệu mô tả luồng giao diện người dùng, tập trung vào trải nghiệm giám sát thời gian thực và quản lý danh sách lớn.
+
+## 1. Kiến trúc Component & Hooks
+
+### A. Custom Hooks (Logic Layer)
+Tách biệt hoàn toàn logic gọi API ra khỏi giao diện để dễ tái sử dụng.
+* **`useAgents.js`**: Hook quan trọng nhất.
+    * *Real-time:* Tự động polling API `/agents` mỗi 30 giây.
+    * *Sorting:* Xử lý sắp xếp phía Client (IP Address sorting, Hostname A-Z, Last Seen).
+    * *Pagination:* Cắt dữ liệu thành các trang (Default: 8 item/trang).
+    * *Filtering:* Tìm kiếm theo tên máy, IP hoặc người quản lý.
+* **`useUsers.js`**: Quản lý danh sách nhân sự để phân quyền quản lý máy trạm.
+
+### B. Core Components (UI Layer)
+* **`Agents.jsx` (Danh sách máy trạm):**
+    * Toolbar: Bao gồm ô tìm kiếm và **Dropdown Sắp xếp** (Mới).
+    * Table: Hiển thị danh sách máy, trạng thái Online/Offline, IP Address.
+    * Pagination Control: Thanh điều hướng trang ở dưới cùng.
+* **`AgentDetail.jsx` (Chi tiết máy trạm):**
+    * Bố cục Grid 3 cột: Thông tin phần cứng - Danh sách phần mềm - Lịch sử USB.
+    * Logs Panel: Hiển thị lịch sử cảnh báo an ninh bên dưới.
+* **`DashboardTable.jsx`**: Widget hiển thị tóm tắt trên trang chủ.
+
+## 2. Các luồng nghiệp vụ chính (User Flows)
+
+### Flow 1: Giám sát Trạng thái (Monitoring)
+1.  User truy cập Menu **"Máy trạm"**.
+2.  Hệ thống tải danh sách, tự động tính toán trạng thái:
+    * Nếu `last_seen` < 2 phút trước -> **ONLINE** (Xanh lá).
+    * Nếu `last_seen` > 2 phút trước -> **OFFLINE** (Xám).
+3.  User có thể lọc nhanh bằng thanh tìm kiếm hoặc sắp xếp theo IP để gom nhóm các máy cùng phòng ban.
+
+### Flow 2: Điều tra chi tiết (Investigation)
+1.  User bấm vào tên máy trạm.
+2.  Trang Detail hiện ra. User kiểm tra:
+    * **Inventory:** Máy này cài Win hay Linux? Cấu hình mạnh hay yếu?
+    * **Software:** Có cài phần mềm cấm (VD: uTorrent, Game) không?
+    * **USB:** Có ai cắm USB lạ vào máy này gần đây không?
+
+### Flow 3: Phân quyền quản lý (Assignment)
+1.  Trên danh sách máy trạm, User bấm nút **"Thay đổi người quản lý"**.
+2.  Modal hiện ra danh sách nhân viên (lấy từ `useUsers`).
+3.  Chọn nhân viên -> API `PUT /agents/:hwid/assign` được gọi để cập nhật người chịu trách nhiệm.

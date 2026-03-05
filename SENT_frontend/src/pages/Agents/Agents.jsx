@@ -3,31 +3,29 @@ import { useNavigate } from 'react-router-dom';
 import { 
     Search, Monitor, ArrowUpRight, Smartphone, User, 
     ChevronLeft, ChevronRight, ShieldBan, ShieldCheck, 
-    X, UserCheck, LayoutList 
+    X, UserCheck, LayoutList, ArrowUpDown // Thêm icon ArrowUpDown
 } from 'lucide-react'; 
-import { useAgents, getTimeAgo } from '../../hooks/useAgents'; 
-import { useUsers } from '../../hooks/useUsers'; 
-import AgentActions from '../../components/AgentActions'; 
+import { useAgents, getTimeAgo } from './hooks/useAgents'; 
+import { useUsers } from '../Admin/System/hooks/useUsers'; 
+import AgentActions from './components/AgentActions'; 
 import axios from '../../api/axios';
 
 const Agents = () => {
     const navigate = useNavigate();
     
-    // Lấy các biến phân trang từ Hook useAgents
+    // Lấy sortConfig và setSortConfig từ Hook mới
     const {
-        currentAgents, // Dữ liệu máy trạm đã được cắt theo trang
+        currentAgents,
         searchQuery, setSearchQuery,
-        currentPage, setCurrentPage, totalPages, // Biến điều khiển phân trang
-        fetchAgents 
+        currentPage, setCurrentPage, totalPages,
+        fetchAgents,
+        sortConfig, setSortConfig 
     } = useAgents();
 
     const { users } = useUsers(); 
 
-    // --- STATE QUẢN LÝ ---
     const [selectedAgents, setSelectedAgents] = useState([]);
-    const [ setShowBulkModal] = useState(false);
-   
-
+    const [showBulkModal, setShowBulkModal] = useState(false);
     const [assignModalOpen, setAssignModalOpen] = useState(false);
     const [targetAgent, setTargetAgent] = useState(null);
 
@@ -53,10 +51,15 @@ const Agents = () => {
         }
     };
 
+    // Hàm xử lý khi chọn Dropdown sắp xếp
+    const handleSortChange = (e) => {
+        const value = e.target.value;
+        const [key, direction] = value.split('-');
+        setSortConfig({ key, direction });
+    };
 
     return (
         <div className="text-slate-200 pb-20 relative">
-            {/* Header (Giữ nguyên) */}
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-white tracking-tight">Quản lý Máy trạm</h1>
@@ -64,10 +67,46 @@ const Agents = () => {
                 </div>
             </header>
 
-            {/* Tìm kiếm (Giữ nguyên) */}
-            <div className="mb-6 relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20}/>
-                <input type="text" placeholder="Tìm theo Hostname, IP, Người quản lý..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-[#1e293b] border border-slate-800 rounded-2xl text-white outline-none focus:border-emerald-500 transition shadow-lg" />
+            {/* --- TOOLBAR: TÌM KIẾM & SẮP XẾP --- */}
+            <div className="mb-6 flex flex-col md:flex-row gap-4">
+                {/* 1. Ô Tìm kiếm */}
+                <div className="relative flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20}/>
+                    <input 
+                        type="text" 
+                        placeholder="Tìm theo Hostname, IP, Người quản lý..." 
+                        value={searchQuery} 
+                        onChange={(e) => setSearchQuery(e.target.value)} 
+                        className="w-full pl-12 pr-4 py-3 bg-[#1e293b] border border-slate-800 rounded-2xl text-white outline-none focus:border-emerald-500 transition shadow-lg" 
+                    />
+                </div>
+
+                {/* 2. Dropdown Sắp xếp (Mới thêm) */}
+                <div className="relative min-w-[220px]">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500 pointer-events-none">
+                        <ArrowUpDown size={18} />
+                    </div>
+                    <select 
+                        value={`${sortConfig.key}-${sortConfig.direction}`}
+                        onChange={handleSortChange}
+                        className="w-full pl-11 pr-8 py-3 bg-[#1e293b] border border-slate-800 rounded-2xl text-white outline-none focus:border-emerald-500 appearance-none cursor-pointer font-bold text-sm shadow-lg hover:bg-slate-800 transition"
+                    >
+                        <option value="last_seen-desc">🕒 Mới cập nhật (Mặc định)</option>
+                        <option value="last_seen-asc">🕒 Cũ nhất trước</option>
+                        <option value="hostname-asc">🔤 Tên máy (A-Z)</option>
+                        <option value="hostname-desc">🔤 Tên máy (Z-A)</option>
+                        <option value="ip_address-asc">🌐 IP (Tăng dần)</option>
+                        <option value="ip_address-desc">🌐 IP (Giảm dần)</option>
+                        <option value="manager-asc">👤 Người quản lý (A-Z)</option>
+                        <option value="status-asc">🟢 Trạng thái</option>
+                    </select>
+                    {/* Mũi tên custom cho select */}
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
             </div>
 
             {/* Bảng dữ liệu */}
@@ -79,9 +118,14 @@ const Agents = () => {
                                 <th className="p-5 w-10">
                                     <input type="checkbox" checked={selectedAgents.length === currentAgents.length && currentAgents.length > 0} onChange={handleSelectAll} className="w-4 h-4 rounded bg-slate-800 border-slate-700 accent-emerald-500 cursor-pointer"/>
                                 </th>
-                                <th className="p-5 font-bold">Máy trạm (Hostname)</th>
+                                {/* Click vào Header để sort nhanh (Optional UX) */}
+                                <th className="p-5 font-bold cursor-pointer hover:text-emerald-400 transition" onClick={() => setSortConfig({ key: 'hostname', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
+                                    Máy trạm (Hostname)
+                                </th>
                                 <th className="p-5 font-bold">Người chịu trách nhiệm</th>
-                                <th className="p-5 font-bold">Mạng (IP)</th>
+                                <th className="p-5 font-bold cursor-pointer hover:text-emerald-400 transition" onClick={() => setSortConfig({ key: 'ip_address', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
+                                    Mạng (IP)
+                                </th>
                                 <th className="p-5 font-bold">Trạng thái</th>
                                 <th className="p-5 font-bold text-right">Thao tác</th>
                             </tr>
@@ -147,7 +191,7 @@ const Agents = () => {
                     </table>
                 </div>
 
-                {/* --- THANH PHÂN TRANG (PAGINATION) --- */}
+                {/* --- THANH PHÂN TRANG --- */}
                 {totalPages > 1 && (
                     <div className="p-4 bg-slate-900/80 border-t border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
                         <div className="flex items-center gap-2 text-xs text-slate-500 font-bold uppercase tracking-wider">
