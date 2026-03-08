@@ -40,17 +40,16 @@ func InitDB() {
 		// 3. Nhóm Thiết bị (Con của Org/Region)
 		&models.Agent{},
 		&models.AgentInventory{},
-		&models.AgentSnapshot{},
 		&models.SoftwareItem{},
 
 		// 4. Nhóm Log & Alerts (Con của Agent)
 		&models.SecurityAlert{},
-		&models.SecurityEvent{},
 		&models.USBLog{},
 		&models.OpenPort{},
 
 		// 5. Nhóm Sự cố (Con của Agent)
 		&models.Incident{},
+		&models.IncidentActivity{},
 
 		// 6. Nhóm AI Chat History
 		&models.AIChatLog{},

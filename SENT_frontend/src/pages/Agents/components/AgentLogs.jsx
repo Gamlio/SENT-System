@@ -10,7 +10,24 @@ const AgentLogs = ({ logs }) => {
         l.description.toLowerCase().includes(search.toLowerCase()) || 
         l.alert_type.toLowerCase().includes(search.toLowerCase())
     );
-
+    const getAlertColor = (type) => {
+        switch(type) {
+            case 'Firewall Disabled': 
+                return 'text-red-400 border-red-500/50 bg-red-500/10';     // P1 - Critical
+            case 'Malware/AV Alert': 
+                return 'text-orange-400 border-orange-500/50 bg-orange-500/10'; // P2 - High
+            case 'Unauthorized Port': 
+                return 'text-amber-400 border-amber-500/50 bg-amber-500/10';   // P2 - High
+            case 'Unpatched OS': 
+                return 'text-yellow-400 border-yellow-500/50 bg-yellow-500/10'; // P3 - Medium
+            case 'Software Violation': 
+                return 'text-blue-400 border-blue-500/50 bg-blue-500/10';     // P3 - Medium
+            case 'USB Violation': 
+                return 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10'; // P3 - Medium
+            default: 
+                return 'text-slate-300 border-slate-700 bg-slate-800';
+        }
+    };
     const totalPages = Math.ceil(filtered.length / perPage);
     const display = filtered.slice((page - 1) * perPage, page * perPage);
 
@@ -44,10 +61,17 @@ const AgentLogs = ({ logs }) => {
                         {display.map((log) => (
                             <tr key={log.ID} className="hover:bg-slate-800/30">
                                 <td className="p-3 font-mono text-slate-500">{new Date(log.CreatedAt).toLocaleString('vi-VN')}</td>
-                                <td className="p-3"><span className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] font-bold text-slate-300 border border-slate-700">{log.alert_type}</span></td>
+                                
+                                {/* CẬP NHẬT MÀU SẮC Ở ĐÂY */}
+                                <td className="p-3">
+                                    <span className={`px-2 py-1 rounded-md text-[9px] font-black tracking-wider border uppercase ${getAlertColor(log.alert_type)}`}>
+                                        {log.alert_type}
+                                    </span>
+                                </td>
+
                                 <td className="p-3 text-slate-300 max-w-[200px] truncate" title={log.description}>{log.description}</td>
                                 <td className="p-3 text-right">
-                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${log.is_resolved ? 'text-emerald-500 bg-emerald-500/10' : 'text-red-500 bg-red-500/10'}`}>
+                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${log.is_resolved ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/20' : 'text-red-500 bg-red-500/10 border border-red-500/20'}`}>
                                         {log.is_resolved ? 'FIXED' : 'OPEN'}
                                     </span>
                                 </td>

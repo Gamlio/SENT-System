@@ -51,7 +51,7 @@ func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, f
 		packetType = "DATA"
 		dataToSend = data
 		c.LastHashes[logType] = currentHash
-		fmt.Printf("⚡ [%s] Gửi dữ liệu mới...\n", logType)
+		fmt.Printf(" [%s] Gửi dữ liệu mới...\n", logType)
 	}
 	c.Mutex.Unlock()
 

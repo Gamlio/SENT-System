@@ -11,15 +11,35 @@ import (
 
 type JSONStringArray []string
 
+// Scan: Chuyển dữ liệu từ Database (JSON/Text) thành Go Struct
 func (a *JSONStringArray) Scan(value interface{}) error {
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("type assertion to []byte failed")
+	// 1. Xử lý trường hợp NULL từ database
+	if value == nil {
+		*a = make([]string, 0)
+		return nil
 	}
+
+	// 2. Chấp nhận cả []byte và string
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return errors.New("type assertion failed: value is not []byte or string")
+	}
+
+	// 3. Parse JSON
 	return json.Unmarshal(bytes, &a)
 }
 
+// Value: Chuyển Go Struct thành JSON để lưu vào Database
 func (a JSONStringArray) Value() (driver.Value, error) {
+	// Nếu mảng rỗng hoặc nil, lưu là "[]" thay vì NULL để tránh lỗi Scan sau này
+	if len(a) == 0 {
+		return "[]", nil
+	}
 	return json.Marshal(a)
 }
 
@@ -96,13 +116,11 @@ type Agent struct {
 	Manager *User `gorm:"foreignKey:UserID" json:"manager"`
 	// Khai báo Relationship rõ ràng: 1 Agent có 1 Inventory, nhiều Alerts, nhiều Software...
 	// OnDelete:CASCADE -> Xóa Agent sẽ tự động xóa log, inventory của nó cho sạch DB.
-	Inventory      AgentInventory  `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"inventory"`
-	Snapshot       AgentSnapshot   `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"snapshot"`
-	Software       []SoftwareItem  `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"software"`
-	Alerts         []SecurityAlert `gorm:"foreignKey:HWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"alerts"`
-	SecurityEvents []SecurityEvent `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"security_events"`
-	OpenPorts      []OpenPort      `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"open_ports"`
-	USBLogs        []USBLog        `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"usb_logs"`
+	Inventory AgentInventory  `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"inventory"`
+	Software  []SoftwareItem  `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"software"`
+	Alerts    []SecurityAlert `gorm:"foreignKey:HWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"alerts"`
+	OpenPorts []OpenPort      `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"open_ports"`
+	USBLogs   []USBLog        `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"usb_logs"`
 
 	RiskScore int `json:"risk_score" gorm:"default:0"`
 
@@ -117,12 +135,6 @@ type AgentInventory struct {
 	OSInfo     string `json:"os_info"`
 }
 
-type AgentSnapshot struct {
-	AgentHWID        string `gorm:"primaryKey;column:agent_hw_id"`
-	LastSoftwareHash string `json:"last_software_hash"`
-	LastPortHash     string `json:"last_port_hash"`
-}
-
 type SoftwareItem struct {
 	gorm.Model
 	AgentHWID    string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
@@ -131,29 +143,47 @@ type SoftwareItem struct {
 }
 
 // --- NHÓM 4: GIÁM SÁT AN NINH & SỰ CỐ (ĐÃ REFACTOR THEO PLAYBOOK) ---
+// --- NHÓM 5: QUẢN LÝ SỰ CỐ & AUTOMATION ---
 type Incident struct {
-	gorm.Model
-	OrgID     uint   `json:"org_id" gorm:"index"`
-	AgentHWID string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
+	gorm.Model // ID, CreatedAt, UpdatedAt, DeletedAt
+	// Lưu ý: ID ở đây là uint
 
-	// [THÊM MỚI] - Khớp chuẩn với hệ thống Playbook
-	PlaybookName string `json:"playbook_name"` // VD: "Unauthorized Software", "Dual Homing", "Virus Infection"
-	Priority     string `json:"priority"`      // VD: "P1", "P2", "P3"
+	OrgID     uint   `json:"org_id"`
+	AgentHWID string `json:"agent_hw_id"`
+	// Relationship
+	Agent Agent `gorm:"foreignKey:AgentHWID;references:HWID" json:"agent"`
 
-	Type        string `json:"type"`        // Phân loại: Malware, Network Anomaly...
-	Severity    string `json:"severity"`    // Giữ lại để tương thích: Critical (P1), High (P2), Medium (P3)
-	Status      string `json:"status"`      // Open, InProgress, Resolved, Contained
-	Description string `json:"description"` // Mô tả tổng quan
+	Type         string `json:"type"`          // Loại sự cố (VD: Malware, DDoS)
+	Severity     string `json:"severity"`      // Low, Medium, High, Critical
+	Priority     string `json:"priority"`      // P1, P2, P3, P4
+	Status       string `json:"status"`        // Open, Investigating, Resolved, False Positive
+	Description  string `json:"description"`   // Mô tả ngắn gọn
+	PlaybookName string `json:"playbook_name"` // Tên quy trình xử lý áp dụng
+	AIAnalysis   string `json:"ai_analysis"`   // Kết quả phân tích từ AI
 
-	// AI / Playbook Data (Dành riêng cho RAG phân tích)
-	AIAnalysis string `json:"ai_analysis" gorm:"type:text"` // Lưu kết luận & hướng dẫn xử lý của AI
-	Resolution string `json:"resolution" gorm:"type:text"`  // Ghi chú cách giải quyết của Admin (IT)
-
-	// Relationships
-	Agent  Agent           `gorm:"foreignKey:AgentHWID;references:HWID" json:"agent"`
+	// Alerts liên quan
 	Alerts []SecurityAlert `gorm:"foreignKey:IncidentID" json:"alerts"`
+
+	// [MỚI] Link sang bảng hoạt động
+	Activities       []IncidentActivity `json:"activities" gorm:"foreignKey:IncidentID"`
+	PlaybookProgress string             `json:"playbook_progress" gorm:"type:text"`
 }
 
+// [MỚI] Bảng lưu lịch sử xử lý (Timeline)
+type IncidentActivity struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	IncidentID uint `json:"incident_id" gorm:"index"`
+	UserID     uint `json:"user_id"` // Người thực hiện (0 nếu là System/AI)
+	User       User `json:"user" gorm:"foreignKey:UserID"`
+
+	ActionType string          `json:"action_type"` // COMMENT, STATUS_CHANGE, AI_ANALYSIS
+	Content    string          `json:"content"`     // Nội dung chi tiết
+	OldStatus  string          `json:"old_status"`  // Trạng thái cũ
+	NewStatus  string          `json:"new_status"`  // Trạng thái mới
+	Images     JSONStringArray `json:"images" gorm:"type:text"`
+}
 type SecurityAlert struct {
 	gorm.Model
 	OrgID      uint   `json:"org_id" gorm:"index"`
@@ -168,13 +198,6 @@ type SecurityAlert struct {
 	Description string `json:"description"`
 	Severity    string `json:"severity"`
 	IsResolved  bool   `json:"is_resolved" gorm:"default:false"`
-}
-
-type SecurityEvent struct {
-	gorm.Model
-	AgentHWID string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
-	EventID   int    `json:"event_id"`
-	Message   string `json:"message"`
 }
 
 type OpenPort struct {

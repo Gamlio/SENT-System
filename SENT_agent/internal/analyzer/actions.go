@@ -3,19 +3,30 @@ package analyzer
 import (
 	"fmt"
 	"os/exec"
+	"runtime"
 )
 
-// 2. Hàm hiển thị Pop-up cảnh báo giữa màn hình người dùng
-func ShowWindowsAlert(title, message string) {
-	// Tận dụng PowerShell để gọi MessageBox của Windows (Rất nhẹ và không cần thư viện ngoài)
-	psScript := fmt.Sprintf(`Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('%s', '%s', 'OK', 'Warning')`, message, title)
+// ShowSystemAlert: Hiển thị Pop-up cảnh báo trên Windows, macOS và Linux
+func ShowSystemAlert(title, message string) {
+	var cmd *exec.Cmd
 
-	// Chạy lệnh PowerShell ngầm (-WindowStyle Hidden)
-	cmd := exec.Command("powershell", "-WindowStyle", "Hidden", "-Command", psScript)
+	switch runtime.GOOS {
+	case "windows":
+		psScript := fmt.Sprintf(`Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('%s', '%s', 'OK', 'Warning')`, message, title)
+		cmd = exec.Command("powershell", "-WindowStyle", "Hidden", "-Command", psScript)
+	case "darwin": // macOS
+		appleScript := fmt.Sprintf(`display notification "%s" with title "%s"`, message, title)
+		cmd = exec.Command("osascript", "-e", appleScript)
+	case "linux":
+		// Sử dụng notify-send phổ biến trên Ubuntu/Debian
+		cmd = exec.Command("notify-send", title, message, "-u", "critical")
+	default:
+		fmt.Printf("⚠️ [%s] %s\n", title, message)
+		return
+	}
 
-	// Dùng Start() thay vì Run() để Pop-up hiện lên mà không làm treo (block) luồng chạy của Agent
 	err := cmd.Start()
 	if err != nil {
-		fmt.Printf("⚠️ Lỗi hiển thị cảnh báo: %v\n", err)
+		fmt.Printf("⚠️ Lỗi hiển thị cảnh báo UI: %v\n", err)
 	}
 }

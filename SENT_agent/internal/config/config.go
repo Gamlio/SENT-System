@@ -39,17 +39,17 @@ func PromptForCompanyCode() {
 	fmt.Println("===========================================")
 
 	for {
-		fmt.Print("👉 Nhập Mã Công Ty (VD: SME-XXXX): ")
+		fmt.Print(" Nhập Mã Công Ty (VD: SME-XXXX): ")
 		// Sử dụng biến reader ở đây
 		code, _ := reader.ReadString('\n')
 		code = strings.TrimSpace(code)
 
 		if len(code) >= 5 {
 			Save(code)
-			fmt.Println("✅ Kích hoạt thành công!")
+			fmt.Println(" Kích hoạt thành công!")
 			time.Sleep(1 * time.Second)
 			break
 		}
-		fmt.Println("❌ Mã không hợp lệ.")
+		fmt.Println(" Mã không hợp lệ.")
 	}
 }

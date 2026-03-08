@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 // Nhớ thêm icon X để làm nút đóng Modal
 import { FileText, UploadCloud, Trash2, Edit, CheckCircle, Clock, RefreshCw, Eye, Download, Search, X } from 'lucide-react';
 import { useDocuments } from './hooks/useDocuments';
-import Pagination from '../../../components/common/Pagination';
+import Pagination from '../../components/common/Pagination';
 const Documents = () => {
     // Sử dụng hook useDocuments thay vì usePolicies
     const {

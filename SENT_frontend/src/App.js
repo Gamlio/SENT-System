@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react'; // Bắt buộc thêm useState ở đây
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar.jsx';
@@ -14,31 +14,35 @@ import IncidentList from './pages/IncidentReport/IncidentManager.jsx';
 import IncidentDetailPanel from './pages/IncidentReport/components/IncidentDetailPanel.jsx';
 import AIChatPage from './pages/AIChat/AIChatPage.jsx';
 
-import PolicyCenter from './pages/PolicyCenter/PolicyCenter.jsx'; 
+import PolicyCenter from './pages/policies/PolicyCenter.jsx'; 
 import Documents from './pages/KnowledgeBase/Documents.jsx';     
-import UserManagement from './pages/Admin/UserManagement.jsx';   
+import UserManagement from './pages/Admin/System/UserManagement.jsx';   
+
+// IMPORT DRAWER MỚI TẠO
+import GlobalCopilotDrawer from './components/GlobalCopilotDrawer.jsx'; 
 
 const ProtectedRoute = ({ children, requiredPermission }) => {
     const { user, loading } = useAuth();
     
+    // STATE ĐIỀU KHIỂN AI DRAWER
+    const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+    
     if (loading) return <div className="h-screen bg-[#0f172a]"></div>;
     if (!user) return <Navigate to="/login" />;
     
-    // Kiểm tra phân quyền chi tiết
     if (requiredPermission && user.permissions && !user.permissions[requiredPermission]) {
         return <Navigate to="/" />; 
     }
 
-    // KHUNG GIAO DIỆN CHÍNH NẰM Ở ĐÂY (Tuyệt vời!)
     return (
-        <div className="flex h-screen overflow-hidden bg-[#0f172a]">
+        <div className="flex h-screen overflow-hidden bg-[#0f172a] relative">
             {/* Sidebar bên trái */}
             <Sidebar />
             
             {/* Khu vực nội dung chính */}
             <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Header */}
-                <Navbar />
+                {/* Header truyền hàm mở Drawer vào Navbar */}
+                <Navbar onOpenCopilot={() => setIsCopilotOpen(true)} />
                 
                 {/* Nội dung trang */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto p-8 relative">
@@ -47,6 +51,12 @@ const ProtectedRoute = ({ children, requiredPermission }) => {
                     </div>
                 </main>
             </div>
+            
+            {/* NHÚNG DRAWER VÀO LAYOUT TOÀN CỤC */}
+            <GlobalCopilotDrawer 
+                isOpen={isCopilotOpen} 
+                onClose={() => setIsCopilotOpen(false)} 
+            />
         </div>
     );
 };

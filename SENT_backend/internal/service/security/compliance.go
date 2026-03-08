@@ -12,13 +12,15 @@ import (
 func CalculateEffectivePolicies(orgID uint, hwid string) []models.UniversalPolicy {
 	var allPolicies []models.UniversalPolicy
 	database.DB.Where("org_id = ? AND is_active = ?", orgID, true).Find(&allPolicies)
-	
+
 	// ... (Giữ nguyên logic lọc policy cũ của bạn) ...
 	effectiveMap := make(map[string]models.UniversalPolicy)
 	for _, p := range allPolicies {
 		key := p.Category + "|" + p.Value
 		if p.TargetType == "GLOBAL" {
-			if _, exists := effectiveMap[key]; !exists { effectiveMap[key] = p }
+			if _, exists := effectiveMap[key]; !exists {
+				effectiveMap[key] = p
+			}
 		} else if p.TargetType == "SPECIFIC" {
 			for _, targetID := range p.TargetHWIDs {
 				if targetID == hwid {
@@ -29,30 +31,41 @@ func CalculateEffectivePolicies(orgID uint, hwid string) []models.UniversalPolic
 		}
 	}
 	var finalPolicies []models.UniversalPolicy
-	for _, p := range effectiveMap { finalPolicies = append(finalPolicies, p) }
+	for _, p := range effectiveMap {
+		finalPolicies = append(finalPolicies, p)
+	}
 	return finalPolicies
 }
 
 // CheckSoftwareCompliance: (Sửa đoạn gọi hàm create)
 func CheckSoftwareCompliance(agent models.Agent, data interface{}) {
 	policies := CalculateEffectivePolicies(agent.OrgID, agent.HWID)
+
 	softwareList, ok := data.([]interface{})
-	if !ok { return }
+	if !ok {
+		return
+	}
 
-	for _, p := range policies {
-		if p.Category != "SOFTWARE" || p.PolicyType != "BLACKLIST" { continue }
-		for _, item := range softwareList {
-			swMap, ok := item.(map[string]interface{})
-			if !ok { continue }
-			swName := fmt.Sprintf("%v", swMap["software_name"])
+	violationFound := false
 
-			if strings.Contains(strings.ToLower(swName), strings.ToLower(p.Value)) {
-				// Tìm thấy vi phạm -> Gọi hàm xử lý thông minh
-				desc := fmt.Sprintf("Phát hiện phần mềm cấm: %s (Luật: %s)", swName, p.Title)
-				handleSecurityViolation(agent, p, desc, "High")
-				break // Đã bắt được lỗi này thì break loop software, check luật khác
+	for _, item := range softwareList {
+		swMap, _ := item.(map[string]interface{})
+		swName := fmt.Sprintf("%v", swMap["software_name"])
+
+		for _, p := range policies {
+			if p.Category == "SOFTWARE_BLACKLIST" && p.Value == swName {
+				violationFound = true
+				// Gọi CreateAlert (Hàm này giờ đã tự tạo Incident + Playbook)
+				CreateAlert(agent, "Software Violation",
+					fmt.Sprintf("Phát hiện phần mềm cấm: %s", swName),
+					"Máy trạm đã cài đặt phần mềm nằm trong danh sách đen.", "Medium")
 			}
 		}
+	}
+
+	// [LOGIC MỚI] NẾU KHÔNG CÒN VI PHẠM -> TỰ ĐỘNG ĐÓNG SỰ CỐ
+	if !violationFound {
+		AutoResolveIncident(agent.HWID, "Software Violation")
 	}
 }
 
@@ -60,10 +73,14 @@ func CheckSoftwareCompliance(agent models.Agent, data interface{}) {
 func CheckUSBCompliance(agent models.Agent, data interface{}) {
 	policies := CalculateEffectivePolicies(agent.OrgID, agent.HWID)
 	usbList, ok := data.([]interface{})
-	if !ok { return }
+	if !ok {
+		return
+	}
 
 	for _, p := range policies {
-		if p.Category != "USB" { continue }
+		if p.Category != "USB" {
+			continue
+		}
 		for _, item := range usbList {
 			u, _ := item.(map[string]interface{})
 			deviceID := fmt.Sprintf("%v", u["device_id"])
@@ -89,10 +106,10 @@ func handleSecurityViolation(agent models.Agent, policy models.UniversalPolicy, 
 		// TRƯỜNG HỢP 1: ĐÃ CÓ SỰ CỐ -> CẬP NHẬT
 		incidentID = activeIncident.ID
 		fmt.Printf(">> [GOM NHÓM] Phát hiện cảnh báo mới cho Case #%d (Máy: %s)\n", incidentID, agent.Hostname)
-		
+
 		// Cập nhật thời gian update để nó nổi lên đầu danh sách
 		database.DB.Model(&activeIncident).Updates(map[string]interface{}{
-			"updated_at": time.Now(),
+			"updated_at":  time.Now(),
 			"description": activeIncident.Description + " | " + desc, // Nối thêm mô tả (hoặc giữ nguyên tùy bạn)
 		})
 
@@ -130,5 +147,41 @@ func handleSecurityViolation(agent models.Agent, policy models.UniversalPolicy, 
 			Severity:    severity,
 		}
 		database.DB.Create(&alert)
+	}
+}
+
+// AutoResolveIncident: Tự động đóng Case nếu Agent báo cáo đã sạch
+func AutoResolveIncident(hwid string, incidentType string) {
+	var incident models.Incident
+
+	// Tìm sự cố đang mở của máy này
+	err := database.DB.Where("agent_hw_id = ? AND type = ? AND status != ?", hwid, incidentType, "Resolved").
+		First(&incident).Error
+
+	if err == nil {
+		// 1. Cập nhật trạng thái
+		database.DB.Model(&incident).Updates(map[string]interface{}{
+			"status":      "Resolved",
+			"description": incident.Description + " [AUTO: Đã khắc phục]",
+		})
+
+		// 2. Thêm Activity Log (Để hiện lên Timeline bên phải)
+		activity := models.IncidentActivity{
+			IncidentID: incident.ID,
+			UserID:     0, // 0 đại diện cho System/AI
+			ActionType: "RESOLVE",
+			Content:    "Hệ thống giám sát xác nhận máy trạm không còn vi phạm. Tự động đóng hồ sơ.",
+			OldStatus:  incident.Status,
+			NewStatus:  "Resolved",
+			CreatedAt:  time.Now(),
+		}
+		database.DB.Create(&activity)
+
+		// 3. Đánh dấu các Alert con là đã giải quyết
+		database.DB.Model(&models.SecurityAlert{}).
+			Where("incident_id = ?", incident.ID).
+			Update("is_resolved", true)
+
+		fmt.Printf("✅ AUTO-RESOLVED Incident #%d for %s\n", incident.ID, hwid)
 	}
 }

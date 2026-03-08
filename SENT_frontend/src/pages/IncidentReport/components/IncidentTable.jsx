@@ -2,16 +2,15 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ShieldAlert, Search, AlertTriangle, CheckCircle, BookOpen } from 'lucide-react';
 import Pagination from '../../../components/common/Pagination';
 
-// Hàm helper để tô màu Badge theo Priority
+// [CẬP NHẬT MÀU SẮC SOC CHUẨN]
 const getPriorityColor = (priority) => {
     switch (priority) {
-        case 'P1': return 'bg-purple-500/20 text-purple-400 border-purple-500/50 shadow-[0_0_10px_rgba(168,85,247,0.4)]';
-        case 'P2': return 'bg-red-500/20 text-red-400 border-red-500/50';
-        case 'P3': return 'bg-orange-500/20 text-orange-400 border-orange-500/50';
+        case 'P1': return 'bg-red-500/20 text-red-500 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.5)]'; // Critical
+        case 'P2': return 'bg-orange-500/20 text-orange-400 border-orange-500/50'; // High
+        case 'P3': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'; // Medium
         default: return 'bg-slate-500/20 text-slate-400 border-slate-500/50';
     }
 };
-
 const IncidentTable = ({ rawData, onViewDetail }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('ALL'); 
@@ -120,14 +119,19 @@ const IncidentTable = ({ rawData, onViewDetail }) => {
                                             <span className="text-emerald-400 font-bold text-xs flex justify-center items-center gap-1"><CheckCircle size={14}/> RESOLVED</span>
                                         }
                                     </td>
-                                    <td className="p-4 text-xs font-mono text-slate-400">
-                                        {new Date(inc.created_at).toLocaleString('vi-VN')}
+                                  <td className="p-4 text-xs font-mono text-slate-400">
+                                        {new Date(inc.CreatedAt || inc.created_at).toLocaleString('vi-VN')}
                                     </td>
                                     <td className="p-4 text-center">
-                                        <button className="text-indigo-400 hover:text-white text-xs font-bold border border-indigo-500/30 px-4 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-600 transition shadow-lg">
-                                            Chi tiết
-                                        </button>
-                                    </td>
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onViewDetail(inc.ID); // Luôn gọi được
+                                        }}
+                                        className="text-indigo-400 hover:text-white text-xs font-bold border border-indigo-500/30 px-4 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-600 transition shadow-lg" >
+                                        Chi tiết
+                                    </button>
+                                </td>
                                 </tr>
                             ))}
                         </tbody>

@@ -42,22 +42,3 @@ input[type=number] {
   scrollbar-width: thin;
   scrollbar-color: #334155 transparent;
 }
-/* --- CHỈ ÁP DỤNG CHO TRANG AI CHAT --- */
-.ai-chat-page ::-webkit-scrollbar {
-  width: 6px; /* Thanh cuộn siêu nhỏ */
-}
-.ai-chat-page ::-webkit-scrollbar-track {
-  background: #1e293b; /* Màu nền trùng sidebar */
-}
-.ai-chat-page ::-webkit-scrollbar-thumb {
-  background: #475569; /* Màu thanh cuộn */
-  border-radius: 4px;
-}
-.ai-chat-page ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
-
-/* Ẩn thanh cuộn chính của body khi đang ở trang Chat */
-body.chat-mode {
-  overflow: hidden; /* Cấm cuộn trang ngoài */
-}

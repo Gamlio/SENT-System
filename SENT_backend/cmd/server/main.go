@@ -108,6 +108,8 @@ func main() {
 				dashGroup.GET("/incidents", incidents.GetIncidents)
 				incidentsGroup.GET("", incidents.GetIncidents)
 				incidentsGroup.GET("/:id", incidents.GetIncidentDetail)
+				incidentsGroup.POST("/:id/activity", incidents.AddIncidentActivity)
+				incidentsGroup.PUT("/:id/playbook", incidents.UpdatePlaybookProgress)
 			}
 			aiGroup := protected.Group("/ai")
 			{

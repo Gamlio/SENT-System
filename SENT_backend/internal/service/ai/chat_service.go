@@ -13,7 +13,8 @@ import (
 
 const OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 
-const AI_MODEL = "qwen2.5:3b"
+// const AI_MODEL = "qwen2.5:3b"
+const AI_MODEL = "qwen3:4b"
 
 // const AI_MODEL = "phi3"
 
@@ -48,7 +49,6 @@ func ChatWithPolicy(userQuestion string) (string, string, error) {
 		policyContext += fmt.Sprintf("- %s (%s): %s\n", p.Title, p.PolicyType, p.Value)
 	}
 
-	// 2. [MỚI] LẤY 5 SỰ CỐ MỚI NHẤT (Để AI biết tình hình hiện tại)
 	var incidents []models.Incident
 	database.DB.Order("created_at desc").Limit(5).Find(&incidents)
 	incidentContext := "\nCÁC SỰ CỐ GẦN ĐÂY:\n"
@@ -61,41 +61,30 @@ func ChatWithPolicy(userQuestion string) (string, string, error) {
 		}
 	}
 
-	// 3. [MỚI] NHÚNG KIẾN THỨC PLAYBOOK (Tóm tắt từ ảnh bạn gửi)
 	playbookKnowledge := `
-    QUY TRÌNH XỬ LÝ SỰ CỐ (PLAYBOOKS):
-    1. Unauthorized Software (P3):
-       - B1: Xác định thiết bị và người dùng qua Woodpecker.
-       - B2: Gỡ bỏ phần mềm trái phép.
-       - B3: Cảnh báo người dùng. Nếu tái phạm -> Leo thang.
-    2. Virus Infection (P2):
-       - B1: Cô lập máy trạm (Ngắt mạng).
-       - B2: Dùng Anti-virus quét full disk.
-       - B3: Nếu không sạch -> Cài lại Win (Re-image).
-    3. Unauthorized USB (P3):
-       - B1: Kiểm tra Device ID.
-       - B2: Yêu cầu rút USB.
-       - B3: Nếu USB lạ -> Tịch thu kiểm tra malware.
+    QUY TRÌNH XỬ LÝ SỰ CỐ:
+    1. Firewall Disabled (P1): Xác minh người dùng -> Bật lại -> Quét mã độc.
+    2. Malware/AV Alert (P2): Cô lập máy -> Quét Full Disk -> Cài lại OS nếu cần.
+    3. Unpatched OS (P3): Kiểm tra version -> Chạy Windows Update.
+    4. Unauthorized (P3): Gỡ phần mềm / Rút USB -> Cảnh báo.
     `
 
-	// 4. TẠO PROMPT NÂNG CAO
-	finalPrompt := fmt.Sprintf(`
-	Bạn là Chuyên gia SOC tại Trung tâm điều hành an ninh SENT.
-	
-	DỮ LIỆU HỆ THỐNG HIỆN TẠI:
-	%s
-	%s
-	
-	KIẾN THỨC XỬ LÝ (PLAYBOOKS):
-	%s
-	
-	YÊU CẦU:
-	1. Dựa vào "CÁC SỰ CỐ GẦN ĐÂY", hãy đưa ra nhận định nếu người dùng hỏi về tình hình an ninh.
-	2. Nếu người dùng hỏi cách xử lý, hãy dùng "KIẾN THỨC PLAYBOOK" để hướng dẫn từng bước.
-	3. Luôn SUY LUẬN trong thẻ <think> trước khi trả lời.
+	// TẠO PROMPT MỚI: ÉP BUỘC RÕ RÀNG HƠN
+	finalPrompt := fmt.Sprintf(`Bạn là SENT Copilot - Trợ lý AI An ninh mạng cấp cao.
 
-	Câu hỏi: "%s"
-	`, policyContext, incidentContext, playbookKnowledge, userQuestion)
+			QUY TẮC ỨNG XỬ (TUÂN THỦ TUYỆT ĐỐI):
+			1. GIAO TIẾP THÔNG THƯỜNG: Nếu người dùng gửi lời chào (VD: "Hello", "Hi", "Chào"),
+		 	bạn BẮT BUỘC chỉ trả lời lại bằng 1 câu chào ngắn gọn đúng ngôn ngữ đó.
+			KHÔNG ĐƯỢC báo cáo sự cố. KHÔNG ĐƯỢC dùng thẻ <tool_call>.
+			2. TRẢ LỜI NGHIỆP VỤ: Chỉ khi người dùng hỏi về lỗi, sự cố hoặc chính sách,
+			bạn mới dùng thẻ <tool_call> suy luận <tool_call> và đọc dữ liệu bên dưới để tư vấn.
+
+			DỮ LIỆU HỆ THỐNG:
+			%s
+			%s
+			%s
+
+			Câu hỏi của người dùng: "%s"`, policyContext, incidentContext, playbookKnowledge, userQuestion)
 
 	// 3. GỬI REQUEST
 	reqBody := OllamaRequest{

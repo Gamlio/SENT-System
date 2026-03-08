@@ -24,11 +24,11 @@ func RecalculateRiskScore(agentHWID string) {
 		switch alert.Severity {
 		case "Low":
 			totalScore += 5
-		case "Medium": // P3 (Ví dụ: Cắm USB lạ, Phần mềm crack)
+		case "Medium": // P3 (Ví dụ: Thiếu bản vá OS, Cắm USB lạ, Phần mềm crack)
 			totalScore += 20
-		case "High": // P2 (Ví dụ: Nhiễm Virus, Scan Port)
+		case "High": // P2 (Ví dụ: Tắt Antivirus, Phát hiện Malware, Mở Port lạ)
 			totalScore += 50
-		case "Critical": // P1 (Ví dụ: Dùng 2 mạng cùng lúc - Dual Network)
+		case "Critical": // P1 (Ví dụ: Tắt Tường lửa hệ thống - Firewall Disabled)
 			totalScore += 80
 		}
 	}

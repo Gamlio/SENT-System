@@ -118,24 +118,27 @@ func PushDataHandler(c *gin.Context) {
 			alertType := fmt.Sprintf("%v", alertMap["alert_type"])
 			desc := fmt.Sprintf("%v", alertMap["message"])
 
-			// 2. MAPPING THEO MỨC ĐỘ ƯU TIÊN (Đã xóa biến playbook)
+			// 2. MAPPING THEO MỨC ĐỘ ƯU TIÊN (Khớp với 5 Use-case chuẩn SOC)
 			priority := "P4"
 			severity := "Low"
 
 			switch alertType {
-			case "Dual Homing":
+			case "Firewall Disabled": // [MỚI] Tắt tường lửa
 				priority = "P1"
 				severity = "Critical"
-			case "Malware Infection":
+			case "Malware/AV Alert": // [MỚI] Mã độc / Tắt Antivirus
 				priority = "P2"
 				severity = "High"
-			case "Unauthorized Port":
-				priority = "P2"
-				severity = "High"
-			case "Software Violation":
+			case "Unpatched OS": // [MỚI] Thiếu bản vá Windows
 				priority = "P3"
 				severity = "Medium"
-			case "USB Violation":
+			case "Unauthorized Port": // Mở cổng mạng nguy hiểm
+				priority = "P2"
+				severity = "High"
+			case "Software Violation": // Phần mềm cấm
+				priority = "P3"
+				severity = "Medium"
+			case "USB Violation": // Cắm USB lạ
 				priority = "P3"
 				severity = "Medium"
 			}
@@ -148,12 +151,15 @@ func PushDataHandler(c *gin.Context) {
 				Title:       fmt.Sprintf("[%s] %s", priority, alertType),
 				Description: desc,
 				Severity:    severity,
-				Priority:    priority, // Sử dụng Priority P1, P2, P3
+				Priority:    priority,
 				IsResolved:  false,
 			}
 			database.DB.Create(&newAlert)
 
-			// 4. Cập nhật điểm rủi ro
+			// 4. Gọi hàm Gom nhóm Alert vào Incident (Nếu bạn đã tạo hàm này ở file security)
+			go security.GroupAlertToIncident(&newAlert)
+
+			// 5. Cập nhật điểm rủi ro
 			go scoring.RecalculateRiskScore(agent.HWID)
 		}
 	}

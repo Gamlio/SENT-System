@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Monitor, Cpu, ArrowLeft, User, Smartphone, Mail, ShieldAlert } from 'lucide-react';
+import { Cpu, ArrowLeft, User, Smartphone, Mail, ShieldAlert } from 'lucide-react';
 import axios from '../../api/axios';
 
 import AgentUSB from './components/AgentUSB';
@@ -30,7 +30,7 @@ const AgentDetail = () => {
 
     return (
         <div className="text-slate-200 p-6 pb-20 max-w-[1600px] mx-auto">
-            {/* Header + Back Button */}
+         {/* Header + Back Button */}
             <div className="flex items-center gap-4 mb-6">
                 <button onClick={() => navigate('/agents')} className="p-2 bg-slate-800 rounded-xl hover:bg-slate-700 transition text-slate-400 hover:text-white">
                     <ArrowLeft size={20}/>
@@ -39,8 +39,19 @@ const AgentDetail = () => {
                     <h1 className="text-2xl font-black text-white">{agent.hostname}</h1>
                     <p className="text-xs text-slate-500 font-mono mt-0.5">{agent.hwid}</p>
                 </div>
-                <div className="ml-auto flex items-center gap-2">
-                     <div className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider ${agent.status === 'online' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                <div className="ml-auto flex items-center gap-3">
+                     {/* THÊM MỚI: Huy hiệu hiển thị Điểm Rủi Ro */}
+                     <div className={`px-3 py-1.5 rounded-lg border text-[11px] font-black tracking-wider flex items-center gap-2 ${
+                         agent.risk_score >= 80 ? 'bg-red-500/10 border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' :
+                         agent.risk_score >= 50 ? 'bg-orange-500/10 border-orange-500/50 text-orange-400' :
+                         agent.risk_score >= 20 ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400' :
+                         'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                     }`}>
+                        <ShieldAlert size={14} /> 
+                        RISK SCORE: {agent.risk_score || 0}
+                     </div>
+
+                     <div className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold uppercase tracking-wider ${agent.status === 'online' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-slate-500/10 border-slate-500/30 text-slate-400'}`}>
                         {agent.status}
                      </div>
                 </div>
