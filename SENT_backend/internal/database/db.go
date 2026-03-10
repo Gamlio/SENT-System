@@ -54,6 +54,8 @@ func InitDB() {
 		// 6. Nhóm AI Chat History
 		&models.AIChatLog{},
 		&models.AIChatSession{},
+		// 7. Nhóm Phê duyệt
+		&models.ApprovalTicket{},
 	)
 
 	if err != nil {

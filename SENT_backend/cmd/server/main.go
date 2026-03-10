@@ -9,6 +9,7 @@ import (
 	// IMPORT CÁC PACKAGE ĐÃ CHIA NHỎ
 	"sent_backend/internal/api/v1/agents"
 	"sent_backend/internal/api/v1/ai"
+	"sent_backend/internal/api/v1/approvals"
 	"sent_backend/internal/api/v1/auth"
 	"sent_backend/internal/api/v1/dashboard"
 	"sent_backend/internal/api/v1/docs"
@@ -92,10 +93,11 @@ func main() {
 			// 2. GROUP POLICIES (CHÍNH SÁCH KỸ THUẬT CHO AGENT)
 			policiesGroup := protected.Group("/policies")
 			{
-				policiesGroup.GET("", policies.GetPoliciesByCategory) // Lấy luật JSON
-				policiesGroup.POST("/bulk", policies.AddBulkPolicies) // Thêm nhiều luật cùng lúc (Dành cho import Excel)
-				policiesGroup.POST("", policies.AddUniversalPolicy)   // Thêm luật JSON
-				policiesGroup.DELETE("/:id", policies.DeletePolicy)   // Xóa luật JSON
+				policiesGroup.GET("", policies.GetPoliciesByCategory)   // Lấy luật JSON
+				policiesGroup.POST("/bulk", policies.AddBulkPolicies)   // Thêm nhiều luật cùng lúc (Dành cho import Excel)
+				policiesGroup.POST("", policies.AddUniversalPolicy)     // Thêm luật JSON
+				policiesGroup.DELETE("/:id", policies.DeletePolicy)     // Xóa luật JSON
+				policiesGroup.PUT("/:id/review", policies.ReviewPolicy) // Phê duyệt hoặc từ chối chính sách (Dành riêng cho SOC Manager)
 			}
 			dashGroup := protected.Group("/dashboard")
 			{
@@ -123,6 +125,14 @@ func main() {
 				aiGroup.DELETE("/sessions/:id", ai.DeleteSession) // Xóa phiên
 				aiGroup.PUT("/sessions/:id", ai.RenameSession)
 				aiGroup.GET("/chat/:session_id", ai.GetChatHistory) // Lấy lịch sử chat của phiên
+			}
+			approvalsGroup := protected.Group("/approvals")
+			{
+				// Lấy danh sách các đơn cần duyệt (có thể lọc theo ModuleType)
+				approvalsGroup.GET("", approvals.GetTickets)
+
+				// Admin thao tác: Duyệt hoặc Từ chối
+				approvalsGroup.PUT("/:id/review", approvals.ReviewTicket)
 			}
 		}
 	}

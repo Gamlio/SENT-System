@@ -3,36 +3,12 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"gorm.io/gorm"
 )
 
 type JSONStringArray []string
-
-// Scan: Chuyển dữ liệu từ Database (JSON/Text) thành Go Struct
-func (a *JSONStringArray) Scan(value interface{}) error {
-	// 1. Xử lý trường hợp NULL từ database
-	if value == nil {
-		*a = make([]string, 0)
-		return nil
-	}
-
-	// 2. Chấp nhận cả []byte và string
-	var bytes []byte
-	switch v := value.(type) {
-	case []byte:
-		bytes = v
-	case string:
-		bytes = []byte(v)
-	default:
-		return errors.New("type assertion failed: value is not []byte or string")
-	}
-
-	// 3. Parse JSON
-	return json.Unmarshal(bytes, &a)
-}
 
 // Value: Chuyển Go Struct thành JSON để lưu vào Database
 func (a JSONStringArray) Value() (driver.Value, error) {
@@ -49,10 +25,13 @@ type Organization struct {
 	Name              string `json:"name"`
 	CompanyCode       string `gorm:"unique;not null" json:"company_code"`
 	EnrollTokenPrefix string `json:"enroll_token_prefix"`
-	// Relationships
-	Users    []User            `gorm:"foreignKey:OrgID" json:"-"`
-	Regions  []Region          `gorm:"foreignKey:OrgID" json:"-"`
-	Policies []UniversalPolicy `gorm:"foreignKey:OrgID" json:"-"`
+	// Relationships (Đã bổ sung đầy đủ các liên kết Has Many)
+	Users           []User            `gorm:"foreignKey:OrgID" json:"-"`
+	Regions         []Region          `gorm:"foreignKey:OrgID" json:"-"`
+	Policies        []UniversalPolicy `gorm:"foreignKey:OrgID" json:"-"`
+	Agents          []Agent           `gorm:"foreignKey:OrgID" json:"-"`
+	ApprovalTickets []ApprovalTicket  `gorm:"foreignKey:OrgID" json:"-"`
+	PolicyDocuments []PolicyDocument  `gorm:"foreignKey:OrgID" json:"-"`
 }
 
 type Region struct {
@@ -94,6 +73,13 @@ type User struct {
 	CanManagePolicies  bool `json:"can_manage_policies" gorm:"default:false"`
 	CanManageIncidents bool `json:"can_manage_incidents" gorm:"default:false"`
 	CanManageUsers     bool `json:"can_manage_users" gorm:"default:false"`
+
+	// [MỚI] Quyền quản lý Trung tâm Phê duyệt
+	CanManageApprovals bool `json:"can_manage_approvals" gorm:"default:false"`
+
+	// [MỚI] ĐỒNG BỘ: Luồng phê duyệt tài khoản mới tạo (Maker - Checker)
+	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"` // PENDING, APPROVED, REJECTED
+	ApprovedBy     string `json:"approved_by"`
 }
 
 type UserPermission struct {
@@ -110,7 +96,6 @@ type Agent struct {
 	UserID    *uint     `gorm:"column:user_id" json:"user_id"`
 	Hostname  string    `gorm:"column:hostname" json:"hostname"`
 	IPAddress string    `gorm:"column:ip_address" json:"ip_address"`
-	Status    string    `gorm:"column:status" json:"status"`
 	LastSeen  time.Time `gorm:"column:last_seen" json:"last_seen"`
 
 	Manager *User `gorm:"foreignKey:UserID" json:"manager"`
@@ -122,7 +107,11 @@ type Agent struct {
 	OpenPorts []OpenPort      `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"open_ports"`
 	USBLogs   []USBLog        `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"usb_logs"`
 
-	RiskScore int `json:"risk_score" gorm:"default:0"`
+	RiskScore int    `json:"risk_score" gorm:"default:0"`
+	Status    string `json:"status" gorm:"default:'PENDING'"`
+
+	// [MỚI] ĐỒNG BỘ: Lưu người đã cấp phép máy trạm này
+	ApprovedBy string `json:"approved_by"`
 
 	Incidents []Incident `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"incidents"`
 }
@@ -184,6 +173,7 @@ type IncidentActivity struct {
 	NewStatus  string          `json:"new_status"`  // Trạng thái mới
 	Images     JSONStringArray `json:"images" gorm:"type:text"`
 }
+
 type SecurityAlert struct {
 	gorm.Model
 	OrgID      uint   `json:"org_id" gorm:"index"`
@@ -218,21 +208,27 @@ type USBLog struct {
 
 // --- NHÓM 5: CHÍNH SÁCH TẬP TRUNG ---
 type UniversalPolicy struct {
-	gorm.Model
-	OrgID       uint   `json:"org_id" gorm:"index"`
-	Title       string `json:"title"`
-	Category    string `json:"category" gorm:"index"` // SOFTWARE, USB, NETWORK
-	PolicyType  string `json:"policy_type"`           // BLACKLIST, WHITELIST
-	Value       string `json:"value"`                 // Giá trị (tên process, ID USB...)
-	IsActive    bool   `json:"is_active" gorm:"default:true"`
-	Description string `json:"description"`
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
-	// --- CÁC TRƯỜNG PHÂN CẤP ---
-	TargetType  string          `json:"target_type" gorm:"default:'GLOBAL'"` // GLOBAL hoặc SPECIFIC
-	TargetHWIDs JSONStringArray `json:"target_hwids" gorm:"type:json"`       // Danh sách HWID áp dụng
+	OrgID      uint   `json:"org_id" gorm:"index"`
+	Title      string `json:"title"`
+	Category   string `json:"category"` // SOFTWARE, USB, NETWORK
+	Value      string `json:"value"`    // Tên exe, mã USB, Port...
+	PolicyType string `json:"policy_type" gorm:"default:'BLACKLIST'"`
+	IsActive   bool   `json:"is_active" gorm:"default:true"`
 
-	// --- TRUY VẾT ---
-	IncidentID *uint `json:"incident_id"` // Chính sách này được tạo ra từ sự cố nào?
+	TargetType  string          `json:"target_type" gorm:"default:'GLOBAL'"`
+	TargetHWIDs JSONStringArray `json:"target_hwids" gorm:"type:json"`
+
+	IncidentID *uint `json:"incident_id"`
+
+	// [MỚI THÊM] - LUỒNG PHÊ DUYỆT (APPROVAL WORKFLOW)
+	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"` // PENDING, APPROVED, REJECTED
+	CreatedBy      string `json:"created_by"`                               // Username người tạo đơn
+	ApprovedBy     string `json:"approved_by"`                              // Username người duyệt đơn
 }
 
 type PolicyDocument struct {
@@ -243,6 +239,11 @@ type PolicyDocument struct {
 	Category    string `json:"category"`
 	IsProcessed bool   `gorm:"default:false" json:"is_processed"`
 	OrgID       uint   `json:"org_id" gorm:"index"`
+
+	// [MỚI] ĐỒNG BỘ: Luồng phê duyệt tài liệu (tránh up file rác)
+	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"`
+	UploadedBy     string `json:"uploaded_by"`
+	ApprovedBy     string `json:"approved_by"`
 }
 
 // --- NHÓM 6: AI CHAT HISTORY ---
@@ -268,4 +269,26 @@ type AIChatLog struct {
 	Role      string `json:"role"`
 	Content   string `json:"content"`
 	Thought   string `json:"thought"`
+}
+
+// --- NHÓM 7: HỆ THỐNG PHÊ DUYỆT TẬP TRUNG (APPROVAL TICKETS) ---
+type ApprovalTicket struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	OrgID      uint   `json:"org_id" gorm:"index"`
+	ModuleType string `json:"module_type"` // Loại đơn: "AGENT", "POLICY", "DOCUMENT", "USER"
+	ActionType string `json:"action_type"` // Hành động: "ENROLL" (đăng ký mới), "CREATE", "DELETE"
+	TargetID   uint   `json:"target_id"`   // ID của bản ghi tương ứng (VD: ID của Agent hoặc Policy)
+	TargetName string `json:"target_name"` // Tên để hiển thị cho dễ nhìn (VD: "PC-KETOAN-01" hoặc "Cấm USB")
+
+	Status string `json:"status" gorm:"default:'PENDING'"` // PENDING, APPROVED, REJECTED
+
+	RequestedBy string `json:"requested_by"` // Tên người gửi đơn (hoặc "SYSTEM" nếu là Agent tự gửi)
+	ReviewedBy  string `json:"reviewed_by"`  // Tên Admin đã duyệt
+	ReviewNote  string `json:"review_note"`  // Lý do từ chối (nếu có)
+
+	// Lưu dạng JSON để admin xem trước nội dung mà không cần join bảng phức tạp
+	SnapshotData string `json:"snapshot_data" gorm:"type:text"`
 }

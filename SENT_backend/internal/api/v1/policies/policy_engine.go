@@ -12,8 +12,7 @@ func CalculateEffectivePolicies(orgID uint, agentHWID string) []models.Universal
 
 	// 1. Lấy TOÀN BỘ chính sách của công ty (Active = true)
 	// (Lấy hết 1 lần rồi lọc trên RAM để giảm số lần query DB)
-	database.DB.Where("org_id = ? AND is_active = ?", orgID, true).Find(&allPolicies)
-
+	database.DB.Where("org_id = ? AND is_active = ? AND approval_status = ?", orgID, true, "APPROVED").Find(&allPolicies)
 	// Map để khử trùng lặp (Key = Category + Value), Luật SPECIFIC sẽ ghi đè GLOBAL
 	effectiveMap := make(map[string]models.UniversalPolicy)
 

@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { 
     LayoutDashboard, Monitor, MessageSquare, FileText, 
     ShieldCheck, ChevronLeft, ChevronRight, 
-    User
+    User,ClipboardCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -24,7 +24,8 @@ const Sidebar = () => {
         { path: '/admin/policy-center', icon: <ShieldCheck size={20}/>, label: 'Quản lý Chính sách', show: user.permissions?.manage_policies },
         { path: '/admin/docs',icon: <FileText size={20}/>,label: 'Quản lý tài liệu', show: user.permissions?.view_docs},
         { path: '/admin/users', icon: <User size={20}/>, label: 'Quản lý người dùng', show: user.permissions?.manage_users },
-        { path: '/incidents', icon: <ShieldCheck size={20}/>, label: 'Quản lý sự cố', show: user.permissions?.manage_incidents }    
+        { path: '/incidents', icon: <ShieldCheck size={20}/>, label: 'Quản lý sự cố', show: user.permissions?.manage_incidents },
+        { path: '/approvals', icon: <ClipboardCheck size={20}/>, label: 'Trung tâm phê duyệt', show: true }
     ];
 
     return (

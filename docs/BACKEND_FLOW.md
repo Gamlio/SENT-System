@@ -22,7 +22,12 @@ Hệ thống sử dụng mô hình RBAC tinh gọn với 2 cấp độ:
 - Hỗ trợ cơ chế phân phối linh hoạt: Toàn cầu (GLOBAL) hoặc từng máy trạm (SPECIFIC HWIDs).
 
 ---
-
+## 6. Kiến trúc Phê duyệt Tập trung (Approval Center / Maker-Checker)
+Để đảm bảo an toàn tuyệt đối (Zero Trust), mọi thay đổi quan trọng trong hệ thống đều phải đi qua luồng phê duyệt 2 lớp:
+- **Nguyên lý:** Khi có tác vụ nhạy cảm (Cài mới Agent, Thêm luật cấm USB, Xóa tài liệu), hệ thống KHÔNG áp dụng ngay mà sinh ra một `ApprovalTicket` (Vé chờ duyệt) với trạng thái `PENDING`.
+- **Bảo vệ Agent:** Agent mới kết nối sẽ có trạng thái `PENDING` và bị giam trong vùng cách ly. Chỉ khi Admin bấm `APPROVED`, Agent mới chuyển sang `ACTIVE` và được phép nhận Policy hoặc gửi Log.
+- **Workflow:** 1. `Maker` (Nhân viên SOC / Hoặc tự động từ Agent) -> Gọi API thêm mới -> Backend tạo Record (Status: PENDING) + Tạo `ApprovalTicket`.
+  2. `Checker` (Trưởng ca SOC / Admin) -> Gọi API `/approvals/:id/review` -> Đổi Status của Ticket thành `APPROVED` -> Trigger update Status của Record gốc thành `ACTIVE/APPROVED`.
 ## 📂 Cấu Trúc Mã Nguồn Thực Tế (Project Structure)
 Hệ thống tuân thủ tiêu chuẩn **Standard Go Project Layout**.
 

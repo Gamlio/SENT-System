@@ -1,0 +1,11 @@
+[2026-03-10 17:04:50] [DATA] telemetry | HTTP 200
+[2026-03-10 17:04:50] [DATA] software | HTTP 200
+[2026-03-10 17:04:50] [DATA] usb | HTTP 200
+[2026-03-10 17:05:34] [DATA] telemetry | FAIL: Post "http://localhost:8000/api/v1/agents/push": dial tcp [::1]:8000: connectex: No connection could be made because the target machine actively refused it.
+[2026-03-10 17:06:19] [DATA] telemetry | HTTP 200
+[2026-03-10 17:07:22] [DATA] telemetry | HTTP 200
+[2026-03-10 17:07:22] [DATA] software | HTTP 200
+[2026-03-10 17:07:22] [DATA] usb | HTTP 200
+[2026-03-10 17:09:38] [DATA] firewall | HTTP 200
+[2026-03-10 17:09:38] [DATA] antivirus | HTTP 200
+[2026-03-10 17:09:38] [DATA] inventory | HTTP 200

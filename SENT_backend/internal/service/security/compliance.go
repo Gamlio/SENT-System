@@ -11,9 +11,8 @@ import (
 // CalculateEffectivePolicies: (Giữ nguyên như cũ)
 func CalculateEffectivePolicies(orgID uint, hwid string) []models.UniversalPolicy {
 	var allPolicies []models.UniversalPolicy
-	database.DB.Where("org_id = ? AND is_active = ?", orgID, true).Find(&allPolicies)
-
-	// ... (Giữ nguyên logic lọc policy cũ của bạn) ...
+	database.DB.Where("org_id = ? AND is_active = ? AND approval_status = ?", orgID, true, "APPROVED").Find(&allPolicies)
+	// Map để khử trùng lặp (Key = Category + Value), Luật SPECIFIC sẽ ghi đè GLOBAL
 	effectiveMap := make(map[string]models.UniversalPolicy)
 	for _, p := range allPolicies {
 		key := p.Category + "|" + p.Value

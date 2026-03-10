@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 
-	// [SỬA LỖI TẠI ĐÂY] Dùng đường dẫn tuyệt đối theo tên module
 	"sent_agent/internal/config"
 	"sent_agent/internal/utils"
 )
@@ -28,60 +28,63 @@ type Payload struct {
 	Data        interface{} `json:"data"`
 }
 
-// Client quản lý trạng thái gửi
 type Client struct {
 	LastHashes map[string]string
 	Mutex      sync.Mutex
 }
 
-// Tạo Client mới
 var AgentClient = &Client{
 	LastHashes: make(map[string]string),
 }
 
-func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, force bool) {
+// [CẬP NHẬT] Đổi hàm trả về string để main.go biết trạng thái (ACTIVE, PENDING, REJECTED)
+func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, force bool) string {
 	c.Mutex.Lock()
-	// Gọi hàm từ package utils (đã viết hoa)
 	currentHash := utils.CalculateHash(data)
-	oldHash := c.LastHashes[logType]
-	packetType := "HEARTBEAT"
-	var dataToSend interface{} = nil
+	lastHash := c.LastHashes[logType]
 
-	if force || currentHash != oldHash {
-		packetType = "DATA"
-		dataToSend = data
-		c.LastHashes[logType] = currentHash
-		fmt.Printf(" [%s] Gửi dữ liệu mới...\n", logType)
+	if !force && currentHash == lastHash {
+		c.Mutex.Unlock()
+		return "NO_CHANGE"
 	}
+	c.LastHashes[logType] = currentHash
 	c.Mutex.Unlock()
 
-	if packetType == "HEARTBEAT" {
-		dataToSend = nil
-	} else if logType == "telemetry" {
-		dataToSend = data
-	}
-
 	payload := Payload{
-		Type:        packetType,
+		Type:        "DATA",
 		LogType:     logType,
 		HWID:        hwid,
 		Hostname:    hostname,
-		CompanyCode: config.Current.CompanyCode, // Gọi biến từ package config
-		Data:        dataToSend,
+		CompanyCode: config.Current.CompanyCode,
+		Data:        data,
 	}
 
 	jsonBytes, _ := json.Marshal(payload)
 	resp, err := http.Post(SERVER_URL, "application/json", bytes.NewBuffer(jsonBytes))
 
 	status := "OK"
+	serverState := "ACTIVE" // Mặc định là Active nếu gọi thành công
+
 	if err != nil {
 		status = "FAIL: " + err.Error()
+		serverState = "ERROR"
 	} else {
+		defer resp.Body.Close()
+		bodyBytes, _ := io.ReadAll(resp.Body)
 		status = fmt.Sprintf("HTTP %d", resp.StatusCode)
-		resp.Body.Close()
+
+		// [MỚI] Bắt lỗi 403 từ Server để lấy trạng thái PENDING/REJECTED
+		if resp.StatusCode == http.StatusForbidden {
+			var errResp map[string]interface{}
+			json.Unmarshal(bodyBytes, &errResp)
+			if state, ok := errResp["status"].(string); ok {
+				serverState = state // Trả về "PENDING" hoặc "REJECTED"
+			}
+		}
 	}
 
-	logToFile(packetType, logType, status)
+	logToFile("DATA", logType, status)
+	return serverState // Trả trạng thái về cho main.go xử lý
 }
 
 func logToFile(pType, lType, status string) {

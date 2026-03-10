@@ -13,7 +13,7 @@ import AgentDetail from './pages/Agents/AgentDetail.jsx';
 import IncidentList from './pages/IncidentReport/IncidentManager.jsx';
 import IncidentDetailPanel from './pages/IncidentReport/components/IncidentDetailPanel.jsx';
 import AIChatPage from './pages/AIChat/AIChatPage.jsx';
-
+import ApprovalCenter from './pages/approvals/ApprovalCenter.jsx';
 import PolicyCenter from './pages/policies/PolicyCenter.jsx'; 
 import Documents from './pages/KnowledgeBase/Documents.jsx';     
 import UserManagement from './pages/Admin/System/UserManagement.jsx';   
@@ -78,11 +78,12 @@ function App() {
                 
                 <Route path="/incidents" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentList /></ProtectedRoute>} />
                 <Route path="/incidents/:id" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentDetailPanel /></ProtectedRoute>} />
+                <Route path="/approvals" element={<ProtectedRoute ><ApprovalCenter /></ProtectedRoute>} />
 
                 {/* Compliance & Knowledge Base Routes */}
                 <Route path="/admin/policy-center" element={<ProtectedRoute requiredPermission="manage_policies"><PolicyCenter /></ProtectedRoute>} />
                 <Route path="/admin/docs" element={<ProtectedRoute requiredPermission="view_docs"><Documents /></ProtectedRoute>} />
-                
+                {/* Approval Routes */}
                 {/* System Admin Routes */}
                 <Route path="/admin/users" element={<ProtectedRoute requiredPermission="manage_users"><UserManagement /></ProtectedRoute>} />
             </Routes>
