@@ -92,8 +92,8 @@ func main() {
 			fwData := collector.CollectFirewall()
 			avData := collector.CollectAntivirus()
 
-			analyzer.EvaluateFirewall(hwid, hostname, fwData)
-			analyzer.EvaluateAntivirus(hwid, hostname, avData)
+			analyzer.CheckAntivirusStatus(hwid, hostname)
+			analyzer.CheckFirewallStatus(hwid, hostname)
 
 			client.SendPayload(hwid, hostname, "firewall", fwData, false)
 			client.SendPayload(hwid, hostname, "antivirus", avData, false)

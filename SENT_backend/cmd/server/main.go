@@ -79,6 +79,7 @@ func main() {
 				agentsGroup.GET("/:hwid/logs", agents.GetAgentLogs)
 
 				agentsGroup.PUT("/:hwid/assign", agents.AssignManager)
+				agentsGroup.PUT("/:hwid/device-type", agents.UpdateDeviceType)
 				agentPublicGroup.GET("/sync-policies", policies.SyncPoliciesForAgent)
 			}
 
@@ -93,11 +94,13 @@ func main() {
 			// 2. GROUP POLICIES (CHÍNH SÁCH KỸ THUẬT CHO AGENT)
 			policiesGroup := protected.Group("/policies")
 			{
-				policiesGroup.GET("", policies.GetPoliciesByCategory)   // Lấy luật JSON
-				policiesGroup.POST("/bulk", policies.AddBulkPolicies)   // Thêm nhiều luật cùng lúc (Dành cho import Excel)
-				policiesGroup.POST("", policies.AddUniversalPolicy)     // Thêm luật JSON
-				policiesGroup.DELETE("/:id", policies.DeletePolicy)     // Xóa luật JSON
-				policiesGroup.PUT("/:id/review", policies.ReviewPolicy) // Phê duyệt hoặc từ chối chính sách (Dành riêng cho SOC Manager)
+				policiesGroup.GET("", policies.GetPoliciesByCategory)           // Lấy luật JSON
+				policiesGroup.POST("/bulk", policies.AddBulkPolicies)           // Thêm nhiều luật cùng lúc (Dành cho import Excel)
+				policiesGroup.POST("", policies.AddUniversalPolicy)             // Thêm luật JSON
+				policiesGroup.DELETE("/:id", policies.DeletePolicy)             // Xóa luật JSON
+				policiesGroup.PUT("/:id/review", policies.ReviewPolicy)         // Phê duyệt hoặc từ chối chính sách (Dành riêng cho SOC Manager)
+				policiesGroup.POST("/bulk-delete", policies.DeleteBulkPolicies) // Xóa nhiều luật cùng lúc
+
 			}
 			dashGroup := protected.Group("/dashboard")
 			{

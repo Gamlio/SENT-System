@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+	"sent_backend/internal/service/scoring"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -72,4 +73,35 @@ func AssignManager(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Đã phân bổ thành công"})
+}
+
+// [MỚI] UpdateDeviceType: Cập nhật phân loại thiết bị và tính lại điểm
+func UpdateDeviceType(c *gin.Context) {
+	hwid := c.Param("hwid")
+	var req struct {
+		DeviceType string `json:"device_type"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	// Danh sách các loại hợp lệ
+	validTypes := map[string]bool{"SERVER": true, "IT_ADMIN": true, "OFFICE": true, "GUEST": true}
+	if !validTypes[req.DeviceType] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Loại thiết bị không hợp lệ"})
+		return
+	}
+
+	// Cập nhật Database
+	if err := database.DB.Model(&models.Agent{}).Where("hw_id = ?", hwid).Update("device_type", req.DeviceType).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi DB khi cập nhật"})
+		return
+	}
+
+	// [QUAN TRỌNG] Phải tính lại điểm rủi ro ngay lập tức vì hệ số W_asset đã thay đổi
+	go scoring.RecalculateRiskScore(hwid)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Đã cập nhật loại thiết bị thành công", "device_type": req.DeviceType})
 }

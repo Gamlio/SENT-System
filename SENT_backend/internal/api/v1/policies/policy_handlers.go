@@ -212,6 +212,28 @@ func DeletePolicy(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Đã xóa"})
 }
 
+// DeleteBulkPolicies: Xóa nhiều chính sách cùng lúc
+func DeleteBulkPolicies(c *gin.Context) {
+	var req struct {
+		IDs []uint `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		c.JSON(400, gin.H{"error": "Không có chính sách nào để xóa"})
+		return
+	}
+
+	if err := database.DB.Delete(&models.UniversalPolicy{}, req.IDs).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Không thể xóa"})
+		return
+	}
+	c.JSON(200, gin.H{"message": "Đã xóa thành công"})
+}
+
 // SyncPoliciesForAgent: Agent gọi API này để lấy bộ luật "Effective"
 func SyncPoliciesForAgent(c *gin.Context) {
 	// Giả sử Agent gửi HWID qua Query hoặc Header (Thực tế nên lấy từ Token Claims)

@@ -107,9 +107,9 @@ type Agent struct {
 	OpenPorts []OpenPort      `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"open_ports"`
 	USBLogs   []USBLog        `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"usb_logs"`
 
-	RiskScore int    `json:"risk_score" gorm:"default:0"`
-	Status    string `json:"status" gorm:"default:'PENDING'"`
-
+	RiskScore  int    `json:"risk_score" gorm:"default:0"`
+	Status     string `json:"status" gorm:"default:'PENDING'"`
+	DeviceType string `json:"device_type" gorm:"default:'OFFICE'"`
 	// [MỚI] ĐỒNG BỘ: Lưu người đã cấp phép máy trạm này
 	ApprovedBy string `json:"approved_by"`
 
