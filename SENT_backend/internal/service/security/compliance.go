@@ -167,7 +167,7 @@ func AutoResolveIncident(hwid string, incidentType string) {
 		// 2. Thêm Activity Log (Để hiện lên Timeline bên phải)
 		activity := models.IncidentActivity{
 			IncidentID: incident.ID,
-			UserID:     0, // 0 đại diện cho System/AI
+			UserID:     nil, // nil đại diện cho System/AI
 			ActionType: "RESOLVE",
 			Content:    "Hệ thống giám sát xác nhận máy trạm không còn vi phạm. Tự động đóng hồ sơ.",
 			OldStatus:  incident.Status,

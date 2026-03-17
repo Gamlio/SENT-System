@@ -30,12 +30,12 @@ const Sidebar = () => {
 
     return (
         <div 
-            className={`${isCollapsed ? 'w-20' : 'w-60'} bg-[#1e293b] h-screen flex flex-col border-r border-slate-800 shadow-2xl relative z-20 transition-all duration-300 ease-in-out`}
+            className={`${isCollapsed ? 'w-25' : 'w-60'} bg-[#1e293b] h-screen flex flex-col border-r border-slate-800 shadow-2xl relative z-20 transition-all duration-300 ease-in-out`}
         >
             {/* --- NÚT TOGGLE ĐÓNG/MỞ --- */}
             <button 
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                className="absolute -right-3 top-9 bg-emerald-500 text-white p-1 rounded-full shadow-lg border-2 border-[#1e293b] hover:bg-emerald-600 transition-colors z-50"
+                className="absolute -right-0.5 top-9 bg-emerald-500 text-white p-1 rounded-full shadow-lg border-2 border-[#1e293b] hover:bg-emerald-600 transition-colors z-50"
             >
                 {isCollapsed ? <ChevronRight size={14}/> : <ChevronLeft size={14}/>}
             </button>

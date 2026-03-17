@@ -11,42 +11,90 @@ SENT_frontend/
 │   │   └── axios.js                # Cấu hình Axios, đính kèm JWT Token tự động
 │   ├── components/
 │   │   ├── common/                 # Component UI tái sử dụng
-│   │   ├── AgentActions.jsx        # Component xử lý thao tác với máy trạm
+│   │   │    └── Pagination.jsx   
+│   │   ├── GlobalCopilotDrawer.jsx
 │   │   ├── Navbar.jsx              # Thanh điều hướng chính (Chứa menu Agents, Docs, Policy Center)
+│   │   ├── SearchableList.jsx     
 │   │   └── Sidebar.jsx             
 │   ├── context/
 │   │   └── AuthContext.js          # Quản lý trạng thái Login, phân quyền (Level 1, Level 2)
-│   ├── hooks/                      # CUSTOM HOOKS (Tách biệt logic gọi API)
-│   │   ├── useAgents.js            # Xử lý data cho module Agents
-│   │   ├── usePolicies.js          # Xử lý data cho module Policies và Docs
-│   │   └── useUsers.js             # Xử lý data cho người dùng
 │   ├── pages/
 │   │   ├── Admin/                  # Module Cấu hình (Chỉ Admin Level 2)
-│   │   │   ├── policies/           # Quản trị Tuân thủ & Tri thức
-│   │   │   │   ├── PolicyCenter.jsx     # Giao diện tổng hợp luật
-│   │   │   │   ├── PolicyDocuments.jsx  # Giao diện Nạp Tài Liệu AI (Docs)
-│   │   │   │   ├── SoftwarePolicies.jsx # (Giữ làm backup)
-│   │   │   │   └── USBWhitelist.jsx     # (Giữ làm backup)
 │   │   │   └── System/             # Hệ thống
+│   │   │        ├── AdminSME.jsx
+│   │   │        ├── Organizations.jsx
+│   │   │        ├── Regions.jsx
+│   │   │        ├── UserManagement.jsx
+│   │   │        └── hooks/
+│   │   │            └── useUsers.js
 │   │   ├── Agents/                 # Quản lý Thiết bị
 │   │   │   ├── AgentDetail.jsx     # Xem chi tiết thông số
 │   │   │   ├── Agents.jsx          # Danh sách máy trạm
+│   │   │   │── hook/
+│   │   │   │    └── useAgents.js    
 │   │   │   └── components/
+│   │   │       ├── AgentActions.jsx  
 │   │   │       ├── AgentUSB.jsx      
 │   │   │       ├── AgentLogs.jsx     
-│   │   │       └── AgentSoftware.jsx           
-│   │   ├── AI/                 
-│   │   │   └── AIChatAssistant.jsx # Trợ lý ảo AI
+│   │   │       └── AgentSoftware.jsx     
+│   │   ├── approvals/   
+│   │   │   ├── components/
+│   │   │   │   └── ApprovalList.jsx
+│   │   │   ├── hooks/
+│   │   │   │   └── useApprovals.js
+│   │   │   └── ApprovalCenter.jsx  
+│   │   ├── KnowledgeBase/                 
+│   │   │   ├── Documents.jsx     
+│   │   │   └── hook/
+│   │   │       └── useDocuments.js   
+│   │   ├── IncidentReport/                 
+│   │   │   ├── components/
+│   │   │   │   ├── IncidentTable.jsx
+│   │   │   │   └── DetailParts/
+│   │   │   │        └── IncidentActionBox.jsx
+│   │   │   │        └── IncidentHeader.jsx
+│   │   │   │        └── IncidentInfoSidebar.jsx
+│   │   │   │        └── IncidentPlaybook.jsx
+│   │   │   │        └── IncidentTimeline.jsx
+│   │   │   ├── IncidentManager.jsx 
+│   │   │   └── IncidentDetail.jsx
+│   │   ├── policies/          # Quản trị Tuân thủ & Tri thức
+│   │   │   ├── components/
+│   │   │   │   ├── PolicyForm.jsx
+│   │   │   │   ├── PolicyList.jsx
+│   │   │   │   ├── PolicyOverview.jsx
+│   │   │   │   └── PolicyShared.jsx
+│   │   │   ├── hooks/
+│   │   │   │   ├── usePolicies.js
+│   │   │   └── PolicyCenter.jsx     # Giao diện tổng hợp luật    
+│   │   ├── AIChat/                 
+│   │   │   ├── components/
+│   │   │   │   ├── ChatSidebar.jsx
+│   │   │   │   ├── ChatWindow.jsx
+│   │   │   │   ├── MessageBubble.jsx
+│   │   │   │   └── ThinkingBlock.jsx
+│   │   │   ├── hooks/
+│   │   │   │   └── useChat.js
+│   │   │   └── AIChatPage.jsx
 │   │   ├── Auth/                   # Xác thực
 │   │   │   ├── Login.jsx
 │   │   │   └── Register.jsx
 │   │   └── Dashboard/              # Tổng quan
-│   │       ├── Alerts.jsx          
+│   │       ├── components/
+│   │       │   └── DashboardTable.jsx
+│   │       ├── UserStats.jsx       
 │   │       └── Dashboard.jsx       
-│   ├── styles/
+│   ├── styles/                  
+│   │    ├── animations.css
+│   │    │── auth.css
+│   │    ├── components.css
+│   │    ├── index.css
+│   │    └── dashboard.css
 │   ├── App.js                      # Định tuyến React Router, bảo vệ Route theo Role
 │   └── index.js
-├── tailwind.config.js          
+├── Dockerfile    
+├── tailwind.config.js     
+├── postcss.config.js    
 └── .env
 1. Luồng Xác thực và Phân quyền (RBAC Flow)
 Level 1 (Staff): Thấy menu Máy trạm, AI Trợ lý và Dashboard. Không có quyền thay đổi luật.

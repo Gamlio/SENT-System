@@ -57,7 +57,15 @@ func InitDB() {
 		// 7. Nhóm Phê duyệt
 		&models.ApprovalTicket{},
 	)
-
+	if !DB.Migrator().HasTable(&models.IncidentActivity{}) {
+		fmt.Println("⚠️ Bảng IncidentActivity CHƯA CÓ. Đang ép tạo bảng...")
+		err := DB.Migrator().CreateTable(&models.IncidentActivity{})
+		if err != nil {
+			fmt.Printf("🚨 LỖI NGHIÊM TRỌNG TỪ POSTGRES KHI TẠO BẢNG: %v\n", err)
+		} else {
+			fmt.Println("✅ Đã ép tạo bảng IncidentActivity thành công!")
+		}
+	}
 	if err != nil {
 		fmt.Printf("❌ Lỗi Migration: %v\n", err)
 	} else {

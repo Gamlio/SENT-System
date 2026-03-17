@@ -96,6 +96,7 @@ func ReviewTicket(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi kích hoạt tài liệu"})
 				return
 			}
+
 		}
 	} else if req.Status == "REJECTED" {
 		switch ticket.ModuleType {

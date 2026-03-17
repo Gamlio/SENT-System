@@ -51,6 +51,7 @@ func GetIncidentDetail(c *gin.Context) {
 	err := database.DB.
 		Preload("Agent").           // Lấy thông tin máy trạm
 		Preload("Alerts").          // Lấy các cảnh báo gốc
+		Preload("Assignee").        // Lấy thông tin người được phân công (nếu có)
 		Preload("Activities.User"). // Lấy thông tin người chat (Avatar, tên)
 		Preload("Activities", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at asc") // Sắp xếp tin nhắn từ cũ đến mới
@@ -98,10 +99,10 @@ func AddIncidentActivity(c *gin.Context) {
 	// 2. Lấy dữ liệu Text từ Form
 	actionType := c.PostForm("action_type")
 	content := c.PostForm("content")
-
+	resolutionSummary := c.PostForm("resolution_summary")
 	// 3. Xử lý File Upload (Nếu có)
 	form, _ := c.MultipartForm()
-	var imageURLs models.JSONStringArray // Sử dụng đúng kiểu mảng JSON
+	var imageURLs []string // Sử dụng đúng kiểu mảng JSON
 
 	if form != nil {
 		files := form.File["files"]
@@ -141,11 +142,14 @@ func AddIncidentActivity(c *gin.Context) {
 	} else if actionType == "INVESTIGATE" {
 		newStatus = "Investigating"
 	}
-
+	var pUserID *uint
+	if userID != 0 {
+		pUserID = &userID
+	}
 	// 6. Lưu Activity vào DB
 	activity := models.IncidentActivity{
 		IncidentID: incident.ID,
-		UserID:     userID,
+		UserID:     pUserID,
 		ActionType: actionType,
 		Content:    content,
 		OldStatus:  oldStatus,
@@ -163,10 +167,19 @@ func AddIncidentActivity(c *gin.Context) {
 	}
 
 	// Cập nhật trạng thái Incident nếu có thay đổi
+	// Cập nhật trạng thái Incident và BÁO CÁO TỔNG KẾT
+	updates := map[string]interface{}{}
 	if oldStatus != newStatus {
-		if err := tx.Model(&incident).Update("status", newStatus).Error; err != nil {
+		updates["status"] = newStatus
+	}
+	if actionType == "RESOLVE" && resolutionSummary != "" {
+		updates["resolution_summary"] = resolutionSummary // <--- LƯU BÁO CÁO VÀO DB
+	}
+
+	if len(updates) > 0 {
+		if err := tx.Model(&incident).Updates(updates).Error; err != nil {
 			tx.Rollback()
-			c.JSON(500, gin.H{"error": "Lỗi cập nhật trạng thái"})
+			c.JSON(500, gin.H{"error": "Lỗi cập nhật sự cố"})
 			return
 		}
 	}
@@ -240,4 +253,78 @@ func normalizeCategory(value string, inputCategory string) string {
 func isNumeric(s string) bool {
 	match, _ := regexp.MatchString("^[0-9]+$", s)
 	return match
+}
+
+// PUT /api/v1/incidents/:id/assign
+func AssignIncident(c *gin.Context) {
+	id := c.Param("id")
+
+	// Lấy UserID an toàn chống Crash
+	var userID uint = 0
+	if val, exists := c.Get("userID"); exists && val != nil {
+		switch v := val.(type) {
+		case uint:
+			userID = v
+		case float64:
+			userID = uint(v)
+		case int:
+			userID = uint(v)
+		}
+	} else if val, exists := c.Get("user_id"); exists && val != nil {
+		if v, ok := val.(uint); ok {
+			userID = v
+		}
+	}
+
+	if userID == 0 {
+		c.JSON(401, gin.H{"error": "Không xác định được danh tính. Vui lòng đăng nhập lại!"})
+		return
+	}
+
+	// Cập nhật người thụ lý và đổi trạng thái sang Investigating
+	if err := database.DB.Model(&models.Incident{}).Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"assignee_id": userID,
+			"status":      "Investigating",
+		}).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Lỗi cập nhật"})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "Đã nhận xử lý sự cố"})
+}
+func ExecuteLiveAction(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Command string `json:"command"` // "ISOLATE_NETWORK", "KILL_PROCESS"
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Dữ liệu lệnh không hợp lệ"})
+		return
+	}
+
+	var incident models.Incident
+	if err := database.DB.Preload("Agent").First(&incident, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "Không tìm thấy sự cố"})
+		return
+	}
+
+	// Tạo System Log lưu vào DB để truy vết (Ai làm gì, ở đâu)
+	logContent := fmt.Sprintf("⚡ LỆNH THỰC THI TỪ XA: [%s]\n> Mục tiêu: %s (%s)\n> Phản hồi: Đã đưa lệnh vào hàng đợi, chờ Agent thực thi...", req.Command, incident.Agent.Hostname, incident.Agent.IPAddress)
+
+	activity := models.IncidentActivity{
+		IncidentID: incident.ID,
+		UserID:     nil, // nil = Hệ thống/System
+		ActionType: "LIVE_RESPONSE",
+		Content:    logContent,
+		CreatedAt:  time.Now(),
+	}
+	database.DB.Create(&activity)
+
+	// TODO: Tương lai sẽ gọi MQTT/WebSocket push xuống Agent tại đây.
+
+	c.JSON(200, gin.H{
+		"message":  "Đã bắn lệnh xuống thiết bị",
+		"activity": activity,
+	})
 }

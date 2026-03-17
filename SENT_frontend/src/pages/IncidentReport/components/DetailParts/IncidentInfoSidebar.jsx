@@ -3,7 +3,7 @@ import React from 'react';
 import { Monitor, Cpu, Network, ShieldAlert, Clock } from 'lucide-react';
 import IncidentPlaybook from './IncidentPlaybook';
 const IncidentInfoSidebar = ({ incident, onUpdate }) => { // Nhận thêm prop onUpdate
-    const agent = incident.Agent || {};
+    const agent = incident.agent || {};
 
     return (
         <div className="w-[400px] border-r border-slate-800 bg-[#1e293b]/30 overflow-y-auto p-5 shrink-0">

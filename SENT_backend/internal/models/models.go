@@ -1,23 +1,10 @@
 package models
 
 import (
-	"database/sql/driver"
-	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
 )
-
-type JSONStringArray []string
-
-// Value: Chuyển Go Struct thành JSON để lưu vào Database
-func (a JSONStringArray) Value() (driver.Value, error) {
-	// Nếu mảng rỗng hoặc nil, lưu là "[]" thay vì NULL để tránh lỗi Scan sau này
-	if len(a) == 0 {
-		return "[]", nil
-	}
-	return json.Marshal(a)
-}
 
 // --- NHÓM 1: TỔ CHỨC & QUẢN TRỊ GLOBAL ---
 type Organization struct {
@@ -51,9 +38,8 @@ type User struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	// Bỏ gorm:"unique", thay bằng uniqueIndex kết hợp với org_id
-	Username string `gorm:"uniqueIndex:idx_org_user;not null" json:"username"`
-	OrgID    *uint  `gorm:"uniqueIndex:idx_org_user" json:"org_id"`
-
+	Username     string `gorm:"uniqueIndex:idx_org_user;not null" json:"username"`
+	OrgID        *uint  `gorm:"uniqueIndex:idx_org_user" json:"org_id"`
 	PasswordHash string `gorm:"not null" json:"-"`
 	FullName     string `json:"full_name"`
 	Phone        string `json:"phone"`
@@ -149,7 +135,12 @@ type Incident struct {
 	Description  string `json:"description"`   // Mô tả ngắn gọn
 	PlaybookName string `json:"playbook_name"` // Tên quy trình xử lý áp dụng
 	AIAnalysis   string `json:"ai_analysis"`   // Kết quả phân tích từ AI
+	// [MỚI] Thông tin người được phân công xử lý (nếu có)
+	AssigneeID *uint `json:"assignee_id" gorm:"index"`
+	Assignee   *User `json:"assignee" gorm:"foreignKey:AssigneeID"`
 
+	// [MỚI THÊM] Báo cáo sau khi đóng Case
+	ResolutionSummary string `json:"resolution_summary" gorm:"type:text"`
 	// Alerts liên quan
 	Alerts []SecurityAlert `gorm:"foreignKey:IncidentID" json:"alerts"`
 
@@ -163,15 +154,15 @@ type IncidentActivity struct {
 	ID        uint      `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 
-	IncidentID uint `json:"incident_id" gorm:"index"`
-	UserID     uint `json:"user_id"` // Người thực hiện (0 nếu là System/AI)
-	User       User `json:"user" gorm:"foreignKey:UserID"`
+	IncidentID uint  `json:"incident_id" gorm:"index"`
+	UserID     *uint `json:"user_id"` // Người thực hiện (0 nếu là System/AI)
+	User       User  `json:"user" gorm:"foreignKey:UserID"`
 
-	ActionType string          `json:"action_type"` // COMMENT, STATUS_CHANGE, AI_ANALYSIS
-	Content    string          `json:"content"`     // Nội dung chi tiết
-	OldStatus  string          `json:"old_status"`  // Trạng thái cũ
-	NewStatus  string          `json:"new_status"`  // Trạng thái mới
-	Images     JSONStringArray `json:"images" gorm:"type:text"`
+	ActionType string   `json:"action_type"` // COMMENT, STATUS_CHANGE, AI_ANALYSIS
+	Content    string   `json:"content"`     // Nội dung chi tiết
+	OldStatus  string   `json:"old_status"`  // Trạng thái cũ
+	NewStatus  string   `json:"new_status"`  // Trạng thái mới
+	Images     []string `json:"images" gorm:"serializer:json"`
 }
 
 type SecurityAlert struct {
@@ -220,8 +211,8 @@ type UniversalPolicy struct {
 	PolicyType string `json:"policy_type" gorm:"default:'BLACKLIST'"`
 	IsActive   bool   `json:"is_active" gorm:"default:true"`
 
-	TargetType  string          `json:"target_type" gorm:"default:'GLOBAL'"`
-	TargetHWIDs JSONStringArray `json:"target_hwids" gorm:"type:json"`
+	TargetType  string   `json:"target_type" gorm:"default:'GLOBAL'"`
+	TargetHWIDs []string `json:"target_hwids" gorm:"serializer:json"`
 
 	IncidentID *uint `json:"incident_id"`
 

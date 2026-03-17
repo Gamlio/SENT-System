@@ -11,12 +11,12 @@ import Dashboard from './pages/Dashboard/Dashboard.jsx';
 import AgentList from './pages/Agents/Agents.jsx';
 import AgentDetail from './pages/Agents/AgentDetail.jsx'; 
 import IncidentList from './pages/IncidentReport/IncidentManager.jsx';
-import IncidentDetailPanel from './pages/IncidentReport/components/IncidentDetailPanel.jsx';
 import AIChatPage from './pages/AIChat/AIChatPage.jsx';
 import ApprovalCenter from './pages/approvals/ApprovalCenter.jsx';
 import PolicyCenter from './pages/policies/PolicyCenter.jsx'; 
+import IncidentDetail from './pages/IncidentReport/IncidentDetail.jsx';
 import Documents from './pages/KnowledgeBase/Documents.jsx';     
-import UserManagement from './pages/Admin/System/UserManagement.jsx';   
+import UserManagement from './pages/User/UserManagement.jsx';   
 
 // IMPORT DRAWER MỚI TẠO
 import GlobalCopilotDrawer from './components/GlobalCopilotDrawer.jsx'; 
@@ -77,7 +77,7 @@ function App() {
                 <Route path="/agents/:hwid" element={<ProtectedRoute requiredPermission="view_agents"><AgentDetail /></ProtectedRoute>} />
                 
                 <Route path="/incidents" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentList /></ProtectedRoute>} />
-                <Route path="/incidents/:id" element={<ProtectedRoute requiredPermission="manage_incidents"><IncidentDetailPanel /></ProtectedRoute>} />
+                <Route path="/incidents/:id" element={<IncidentDetail />} />
                 <Route path="/approvals" element={<ProtectedRoute ><ApprovalCenter /></ProtectedRoute>} />
 
                 {/* Compliance & Knowledge Base Routes */}

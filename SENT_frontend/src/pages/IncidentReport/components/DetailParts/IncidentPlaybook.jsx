@@ -1,80 +1,112 @@
 import React, { useState, useEffect } from 'react';
-import { CheckSquare, Square, ShieldCheck } from 'lucide-react';
+import { Bot, TerminalSquare, Loader2, CheckCircle, Lock, Cpu, ArrowRight } from 'lucide-react';
 import axiosInstance from '../../../../api/axios';
 
 const IncidentPlaybook = ({ incident, onUpdate }) => {
-    const [steps, setSteps] = useState([]);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [aiSteps, setAiSteps] = useState(null);
 
-    // Parse JSON từ DB khi load
+    // Giả lập AI phân tích sự cố khi vừa mở lên
     useEffect(() => {
-        if (incident.playbook_progress) {
-            try {
-                const data = JSON.parse(incident.playbook_progress);
-                setSteps(data.steps || []);
-            } catch (e) {
-                setSteps([]);
+        if (!incident || incident.status === 'Resolved') return;
+        
+        // Nếu chưa có Playbook AI, tự động chạy hiệu ứng phân tích
+        setAnalyzing(true);
+        const timer = setTimeout(() => {
+            // Sinh kịch bản động dựa trên loại sự cố
+            let steps = [];
+            if (incident.type?.includes('Malware') || incident.type?.includes('AI_')) {
+                steps = [
+                    { id: 1, action: 'ISOLATE', text: 'Cô lập máy trạm khỏi mạng LAN để tránh lây lan.', icon: Lock, color: 'text-red-400', btn: 'Cô lập ngay' },
+                    { id: 2, action: 'SCAN', text: 'Ra lệnh cho Agent quét toàn bộ hệ thống (Full Scan).', icon: Cpu, color: 'text-orange-400', btn: 'Quét hệ thống' }
+                ];
+            } else if (incident.type?.includes('USB')) {
+                steps = [
+                    { id: 1, action: 'EJECT', text: 'Ngắt kết nối cổng USB trái phép ngay lập tức.', icon: TerminalSquare, color: 'text-blue-400', btn: 'Ngắt cổng USB' },
+                ];
+            } else {
+                steps = [
+                    { id: 1, action: 'NOTIFY', text: 'Gửi cảnh báo đến màn hình người dùng.', icon: TerminalSquare, color: 'text-indigo-400', btn: 'Gửi cảnh báo' }
+                ];
             }
-        }
-    }, [incident]);
+            
+            setAiSteps(steps);
+            setAnalyzing(false);
+        }, 2000); // 2s giả lập AI thinking
 
-    // Hàm toggle checkbox
-    const toggleStep = async (index) => {
-        const newSteps = [...steps];
-        newSteps[index].done = !newSteps[index].done;
-        setSteps(newSteps);
+        return () => clearTimeout(timer);
+    }, [incident.type]);
 
-        // Gọi API lưu ngay lập tức
-        try {
-            await axiosInstance.put(`/incidents/${incident.ID}/playbook`, { steps: newSteps });
-            onUpdate(); // Refresh để cha biết
-        } catch (err) {
-            alert("Lỗi lưu tiến độ!");
+    // Hàm thực thi lệnh trực tiếp từ hướng dẫn của AI
+    const executeAIAction = async (step) => {
+        if(window.confirm(`Thực thi lệnh: ${step.text}? Hành động này sẽ can thiệp trực tiếp vào máy trạm.`)) {
+            try {
+                // Gọi API ExecuteLiveAction của Backend Go
+                await axiosInstance.post(`/incidents/${incident.ID}/execute`, { command: step.action });
+                alert(`Đã gửi lệnh [${step.action}] thành công!`);
+                onUpdate(); // Reload lại màn hình để cập nhật Timeline
+            } catch (err) {
+                alert("Lỗi khi gửi lệnh xuống Agent.");
+            }
         }
     };
 
-    // Tính % hoàn thành
-    const progress = Math.round((steps.filter(s => s.done).length / steps.length) * 100) || 0;
+    if (incident.status === 'Resolved') {
+        return (
+            <div className="bg-emerald-900/20 border border-emerald-500/30 p-4 rounded-xl text-center">
+                <CheckCircle size={30} className="mx-auto text-emerald-500 mb-2"/>
+                <p className="text-emerald-400 font-bold text-sm">Hồ sơ đã được đóng</p>
+                <p className="text-emerald-500/70 text-xs mt-1">Playbook đã hoàn tất vòng đời.</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="bg-[#1e293b] rounded-xl border border-slate-700 p-5 mb-6 shadow-lg">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                    <ShieldCheck size={16}/> Quy trình xử lý (Playbook)
-                </h3>
-                <span className="text-[10px] font-bold bg-slate-800 px-2 py-1 rounded text-white border border-slate-600">
-                    {progress}% Hoàn thành
-                </span>
+        <div className="bg-[#0f172a] rounded-xl border border-indigo-500/30 overflow-hidden shadow-[0_0_20px_rgba(99,102,241,0.1)] relative">
+            
+            {/* Header của AI */}
+            <div className="bg-indigo-900/40 p-3 border-b border-indigo-500/30 flex justify-between items-center">
+                <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest">
+                    <Bot size={16} className={analyzing ? 'animate-pulse' : ''} /> 
+                    AI Copilot Guidance
+                </div>
+                {!analyzing && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,1)]"></div>}
             </div>
 
-            {/* Thanh Progress Bar */}
-            <div className="w-full h-1.5 bg-slate-800 rounded-full mb-4 overflow-hidden">
-                <div 
-                    className="h-full bg-emerald-500 transition-all duration-500 ease-out" 
-                    style={{ width: `${progress}%` }}
-                ></div>
-            </div>
-
-            {/* Danh sách Steps */}
-            <div className="space-y-3">
-                {steps.map((step, idx) => (
-                    <div 
-                        key={idx} 
-                        onClick={() => toggleStep(idx)}
-                        className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                            step.done 
-                            ? 'bg-emerald-900/10 border-emerald-500/30 text-emerald-100' 
-                            : 'bg-slate-900/50 border-slate-700 hover:border-slate-500 text-slate-300'
-                        }`}
-                    >
-                        <div className={`mt-0.5 ${step.done ? 'text-emerald-400' : 'text-slate-500'}`}>
-                            {step.done ? <CheckSquare size={18}/> : <Square size={18}/>}
-                        </div>
-                        <div className="text-sm select-none">
-                            <span className="font-bold mr-2 text-xs opacity-50">BƯỚC {step.id}:</span>
-                            <span className={step.done ? 'line-through opacity-70' : ''}>{step.text}</span>
+            <div className="p-4">
+                {analyzing ? (
+                    <div className="flex flex-col items-center justify-center py-6 text-indigo-400 space-y-3">
+                        <Loader2 size={28} className="animate-spin"/>
+                        <p className="text-xs font-mono animate-pulse">Đang phân tích ngữ cảnh sự cố...</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4 animate-in fade-in duration-500">
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                            Dựa trên cảnh báo <span className="font-bold text-white">[{incident.type}]</span>, hệ thống AI khuyến nghị các bước phản ứng tức thời sau:
+                        </p>
+                        
+                        <div className="space-y-3">
+                            {aiSteps?.map((step) => (
+                                <div key={step.id} className="bg-slate-900 border border-slate-700 p-3 rounded-lg flex flex-col gap-3 group hover:border-indigo-500/50 transition">
+                                    <div className="flex items-start gap-2">
+                                        <step.icon size={16} className={`${step.color} mt-0.5 shrink-0`} />
+                                        <p className="text-[13px] text-slate-200 leading-snug">{step.text}</p>
+                                    </div>
+                                    
+                                    {/* Nút Thực thi Lệnh động */}
+                                    <div className="flex justify-end">
+                                        <button 
+                                            onClick={() => executeAIAction(step)}
+                                            className="px-3 py-1.5 bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 hover:bg-indigo-600 hover:text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 group-hover:shadow-[0_0_10px_rgba(99,102,241,0.3)]"
+                                        >
+                                            {step.btn} <ArrowRight size={12}/>
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
-                ))}
+                )}
             </div>
         </div>
     );

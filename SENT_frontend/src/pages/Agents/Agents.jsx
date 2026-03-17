@@ -6,7 +6,7 @@ import {
     X, UserCheck, LayoutList, ArrowUpDown // Thêm icon ArrowUpDown
 } from 'lucide-react'; 
 import { useAgents, getTimeAgo } from './hooks/useAgents'; 
-import { useUsers } from '../Admin/System/hooks/useUsers'; 
+import { useUsers } from '../User/hooks/useUsers'; 
 import AgentActions from './components/AgentActions'; 
 import axios from '../../api/axios';
 

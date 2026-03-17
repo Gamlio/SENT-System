@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ShieldAlert, Search, AlertTriangle, CheckCircle, BookOpen } from 'lucide-react';
-import Pagination from '../../../components/common/Pagination';
+import Pagination from '../../../../components/common/Pagination';
 
 // [CẬP NHẬT MÀU SẮC SOC CHUẨN]
 const getPriorityColor = (priority) => {

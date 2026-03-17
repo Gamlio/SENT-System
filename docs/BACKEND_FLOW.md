@@ -42,10 +42,14 @@ SENT_backend/
 │   │   │   └── auth_handlers.go     (Xử lý Login, Register)
 │   │   ├── users/
 │   │   │   └── user_handlers.go     (Đổi tên từ admin_handlers.go, chứa CreateUser, GetUsers...)
+│   │   ├── approvals/
+│   │   │   └── approval_handlers.go.go  
 │   │   ├── agents/
 │   │   │   └── agent_handlers.go    (Đổi tên từ asset_handlers.go)
 │   │   ├── policies/
 │   │   │   └── policy_handlers.go   (Quản lý file AI Docs và Luật kỹ thuật)
+│   │   ├── incidents/
+│   │   │   └── incident_handlers.go
 │   │   └── dashboard/
 │   │       └── dashboard_handlers.go(Thống kê tổng quan)   # Xử lý file tài liệu (Docs) và luật (Universal Policy)
 │   ├── auth/
@@ -59,11 +63,15 @@ SENT_backend/
 │   ├── repository/               # REPOSITORY: Truy vấn DB 
 │   │   └── policy_repo.go        
 │   └── service/                  # SERVICE: Xử lý logic nghiệp vụ
-│       ├── agent_data/           # Chuyên xử lý lưu trữ dữ liệu từ Agent
-│            ├── inventory.go      # Xử lý thông tin phần cứng
-│            ├── software.go       # Xử lý danh sách phần mềm
-│            ├── usb.go            # Xử lý log USB
-│            └── telemetry.go      # Xử lý Port và mạng
+│       ├── ai/         
+│       │    └── chat_service.go 
+│       ├── scoring/           
+│       │    └── score_service.go 
+│       ├── agent_data/           
+│       │    ├── inventory.go      # Xử lý thông tin phần cứng
+│       │    ├── software.go       # Xử lý danh sách phần mềm
+│       │    ├── usb.go            # Xử lý log USB
+│       │    └── telemetry.go      # Xử lý Port và mạng
 │       ├── security/             # Chuyên logic nghiệp vụ an ninh
 │       │   ├── ai_analysis.go    # Phân tích hành vi bằng AI
 │       │   ├── alerts.go         # Logic tạo và quản lý cảnh báo
@@ -74,48 +82,3 @@ SENT_backend/
 ├── .env                          # SECRET_KEY, DB_URL, PORT
 ├── go.mod
 └── go.sum
-
-
-Luồng xử lý dữ liệu Agent (Data Pipeline)
-Bước 1: Tiếp nhận (Ingestion)
-API POST /api/v1/agents/push nhận gói tin JSON từ Agent.
-
-Agent Handler:
-
-Kiểm tra CompanyCode.
-
-Tìm hoặc Tạo mới (FindOrCreate) bản ghi Agent trong DB.
-
-LƯU Ý QUAN TRỌNG: Ở bước này, Handler chỉ cập nhật LastSeen. Tuyệt đối KHÔNG ghi đè IPAddress bằng IP kết nối (để tránh lỗi ::1 khi chạy Localhost).
-
-Bước 2: Phân loại & Xử lý (Processing)
-Dựa vào trường log_type, dữ liệu được chuyển cho Service tương ứng:
-
-Telemetry Service (telemetry.go):
-
-Nhận danh sách open_ports và ip_address từ Agent.
-
-Cập nhật trường IPAddress trong bảng agents bằng giá trị chính xác từ Agent gửi lên.
-
-So sánh Hash Port để quyết định có ghi đè bảng open_ports hay không.
-
-Inventory Service (inventory.go):
-
-Cập nhật thông tin CPU, RAM, OS. Hỗ trợ nhận diện các OS khác nhau (Windows 10/11, Ubuntu, macOS).
-
-Software Service (software.go):
-
-Xóa danh sách phần mềm cũ -> Thêm danh sách mới (Cơ chế Sync đầy đủ).
-
-Future: Kích hoạt quét lỗ hổng (Vulnerability Scan) ngay sau khi lưu.
-
-USB Service (usb.go):
-
-Ghi nhận lịch sử cắm rút vào bảng usb_logs.
-
-Kiểm tra đối chiếu với Whitelist để sinh cảnh báo (Alert) nếu thiết bị lạ.
-
-API Phục vụ Frontend
-GET /agents: Trả về danh sách máy trạm kèm trạng thái Online/Offline (tính toán dựa trên LastSeen > 2 phút).
-
-GET /agents/:hwid: Trả về chi tiết máy trạm, preload toàn bộ quan hệ (Inventory, Software, USB Logs, Alerts).
