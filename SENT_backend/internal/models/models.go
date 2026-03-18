@@ -112,9 +112,36 @@ type AgentInventory struct {
 
 type SoftwareItem struct {
 	gorm.Model
-	AgentHWID    string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
-	SoftwareName string `json:"software_name"`
-	Version      string `json:"version"`
+	AgentHWID       string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
+	SoftwareName    string `json:"software_name"`
+	Version         string `json:"version"`
+	Publisher       string `json:"publisher"`
+	InstallLocation string `json:"install_location"`
+	FileHash        string `json:"file_hash" gorm:"index"` // Mã SHA-256 của file .exe. Index để tra cứu YARA cực nhanh.
+	Status          string `json:"status"`                 // INSTALLED, GHOST_REGISTRY
+	IsRunning       bool   `json:"is_running"`
+}
+
+type OpenPort struct {
+	gorm.Model
+	AgentHWID   string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
+	Port        int    `json:"port"`
+	ProcessName string `json:"process_name"`
+}
+
+type USBLog struct {
+	gorm.Model
+	AgentHWID  string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
+	DeviceName string `json:"device_name"`
+	DeviceID   string `json:"device_id"`
+
+	VID          string `json:"vid"`                            // Vendor ID (Nhà sản xuất)
+	PID          string `json:"pid"`                            // Product ID (Mã sản phẩm)
+	SerialNumber string `json:"serial_number"`                  // Số series độc nhất
+	DeviceHash   string `json:"device_hash" gorm:"uniqueIndex"` // Vân tay độc nhất của USB = Hash(VID+PID+Serial)
+
+	IsWhitelisted bool   `json:"is_whitelisted"`
+	EventType     string `json:"event_type"`
 }
 
 // --- NHÓM 4: GIÁM SÁT AN NINH & SỰ CỐ (ĐÃ REFACTOR THEO PLAYBOOK) ---
@@ -158,11 +185,11 @@ type IncidentActivity struct {
 	UserID     *uint `json:"user_id"` // Người thực hiện (0 nếu là System/AI)
 	User       User  `json:"user" gorm:"foreignKey:UserID"`
 
-	ActionType string   `json:"action_type"` // COMMENT, STATUS_CHANGE, AI_ANALYSIS
-	Content    string   `json:"content"`     // Nội dung chi tiết
-	OldStatus  string   `json:"old_status"`  // Trạng thái cũ
-	NewStatus  string   `json:"new_status"`  // Trạng thái mới
-	Images     []string `json:"images" gorm:"serializer:json"`
+	ActionType string `json:"action_type"` // COMMENT, STATUS_CHANGE, AI_ANALYSIS
+	Content    string `json:"content"`     // Nội dung chi tiết
+	OldStatus  string `json:"old_status"`  // Trạng thái cũ
+	NewStatus  string `json:"new_status"`  // Trạng thái mới
+	Images     string `json:"images"`
 }
 
 type SecurityAlert struct {
@@ -179,22 +206,6 @@ type SecurityAlert struct {
 	Description string `json:"description"`
 	Severity    string `json:"severity"`
 	IsResolved  bool   `json:"is_resolved" gorm:"default:false"`
-}
-
-type OpenPort struct {
-	gorm.Model
-	AgentHWID   string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
-	Port        int    `json:"port"`
-	ProcessName string `json:"process_name"`
-}
-
-type USBLog struct {
-	gorm.Model
-	AgentHWID     string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
-	DeviceName    string `json:"device_name"`
-	DeviceID      string `json:"device_id"`
-	IsWhitelisted bool   `json:"is_whitelisted"`
-	EventType     string `json:"event_type"`
 }
 
 // --- NHÓM 5: CHÍNH SÁCH TẬP TRUNG ---
@@ -231,6 +242,8 @@ type PolicyDocument struct {
 	IsProcessed bool   `gorm:"default:false" json:"is_processed"`
 	OrgID       uint   `json:"org_id" gorm:"index"`
 
+	OriginalPath   string `json:"original_path"`    // Lưu file gốc (Word, PDF, Excel...)
+	DisplayPdfPath string `json:"display_pdf_path"` // MẶC ĐỊNH LÀ PDF ĐỂ RENDER LÊN WEB
 	// [MỚI] ĐỒNG BỘ: Luồng phê duyệt tài liệu (tránh up file rác)
 	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"`
 	UploadedBy     string `json:"uploaded_by"`

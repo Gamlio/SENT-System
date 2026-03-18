@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axiosInstance from '../../api/axios';
 import { 
-    ShieldAlert, Monitor, Network, Clock, UserCheck, ArrowLeft, Bot, 
-    TerminalSquare, AlertTriangle, Fingerprint, Lock, Terminal, X, Zap 
+    ShieldAlert, Monitor, Network, Clock, UserCheck, ArrowLeft, AlertTriangle, Fingerprint, Terminal, X, Zap 
 } from 'lucide-react';
 
 import IncidentTimeline from './components/DetailParts/IncidentTimeline';
@@ -74,42 +73,33 @@ const IncidentDetail = () => {
         } catch (err) { alert("Lỗi khi nhận xử lý!"); }
     };
 
-    const handleAction = async (type, content, files = [], resolutionSummary = '') => {
-        if (type === 'RESOLVE') {
-            try {
-                const steps = JSON.parse(incident.playbook_progress || '{}').steps || [];
-                if (steps.some(s => !s.done)) {
-                    alert("⛔ KHÔNG THỂ ĐÓNG SỰ CỐ!\nBạn chưa hoàn thành hết các bước trong Playbook.");
-                    return; 
-                }
-            } catch (e) {}
-        }
+   const handleAction = async (type, text, files, summary) => {
         try {
             const formData = new FormData();
             formData.append('action_type', type);
-            formData.append('content', content);
-            if (resolutionSummary) formData.append('resolution_summary', resolutionSummary);
-            files.forEach(f => formData.append('files', f));
+            formData.append('content', text || summary || '');
 
-            await axiosInstance.post(`/incidents/${id}/activity`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-            fetchDetail(); 
-        } catch (err) { alert("Lỗi khi gửi dữ liệu!"); }
-    };
+            // Đính kèm tất cả file ảnh vào form
+            if (files && files.length > 0) {
+                files.forEach(file => {
+                    formData.append('images', file);
+                });
+            }
 
-    const handleIsolateNetwork = async () => {
-        if(window.confirm("CẢNH BÁO: Cắt toàn bộ mạng máy trạm? Hành động này sẽ được ghi log Audit!")) {
-            setTerminalOpen(true);
-            setTerminalLogs(['[SYSTEM] Bắt đầu gọi API ExecuteLiveAction...']);
-            try {
-                await axiosInstance.post(`/incidents/${id}/execute`, { command: 'ISOLATE_NETWORK' });
-                setTimeout(() => setTerminalLogs(prev => [...prev, `[INFO] Gửi payload tới Endpoint thành công.`]), 800);
-                setTimeout(() => setTerminalLogs(prev => [...prev, '[AGENT] Đang ngắt card mạng ngoại vi...']), 1500);
-                setTimeout(() => setTerminalLogs(prev => [...prev, '[SUCCESS] Máy trạm đã bị ngắt khỏi hệ thống mạng!']), 2500);
-                setTimeout(() => fetchDetail(), 3000); 
-            } catch (error) { setTerminalLogs(prev => [...prev, '[ERROR] Đứt kết nối tới Agent hoặc Server lỗi.']); }
+            // [SỬA LỖI Ở ĐÂY]: Gửi trực tiếp formData, KHÔNG tự set Content-Type.
+            // Axios sẽ tự động gán header multipart/form-data kèm mã boundary chuẩn xác.
+            await axiosInstance.post(`/incidents/${id}/activity`, formData);
+            
+            // Refetch lại dữ liệu để giao diện cập nhật ngay lập tức
+            const res = await axiosInstance.get(`/incidents/${id}`);
+            setIncident(res.data);
+            
+        } catch (error) {
+            console.error("Lỗi cập nhật:", error);
+            alert("Không thể cập nhật sự cố! Vui lòng kiểm tra Console log.");
         }
     };
-
+  
     if (loading || !incident) return (
         <div className="h-screen bg-[#050B14] flex flex-col items-center justify-center gap-4">
             <Zap size={40} className="text-emerald-500 animate-pulse"/>
@@ -235,27 +225,6 @@ const IncidentDetail = () => {
                                 Nhận Triage Case Này
                             </button>
                         )}
-                    </div>
-
-                    <div>
-                        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2"><TerminalSquare size={14}/> Live Response</h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button 
-                                onClick={handleIsolateNetwork}
-                                disabled={incident.status === 'Resolved'}
-                                className="flex flex-col items-center justify-center gap-2 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 hover:bg-red-500 hover:text-white transition group disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-                            >
-                                <Lock size={20} className="group-hover:scale-110 transition-transform"/>
-                                <span className="text-[10px] font-bold uppercase text-center leading-tight">Cô lập<br/>Mạng</span>
-                            </button>
-                            <button 
-                                disabled={incident.status === 'Resolved'}
-                                className="flex flex-col items-center justify-center gap-2 p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl text-purple-400 hover:bg-purple-500 hover:text-white transition group disabled:opacity-30 disabled:cursor-not-allowed"
-                            >
-                                <Bot size={20} className="group-hover:scale-110 transition-transform"/>
-                                <span className="text-[10px] font-bold uppercase text-center leading-tight">Hỏi AI<br/>Phân tích</span>
-                            </button>
-                        </div>
                     </div>
 
                     <div>

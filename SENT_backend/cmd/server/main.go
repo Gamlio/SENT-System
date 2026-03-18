@@ -118,6 +118,7 @@ func main() {
 
 				incidentsGroup.PUT("/:id/assign", incidents.AssignIncident)
 				incidentsGroup.POST("/:id/execute", incidents.ExecuteLiveAction)
+				incidentsGroup.POST("/:id/ai-analyze", incidents.AnalyzeIncidentAI)
 			}
 			aiGroup := protected.Group("/ai")
 			{

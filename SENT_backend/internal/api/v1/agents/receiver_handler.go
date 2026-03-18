@@ -1,168 +1,196 @@
 package agents
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"sent_backend/internal/service/agent_data"
-	"sent_backend/internal/service/scoring" // <--- Import service tính điểm
 	"sent_backend/internal/service/security"
-	"time"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-// PushDataHandler: Tiếp nhận dữ liệu từ Agent v3.1
-func PushDataHandler(c *gin.Context) {
-	var req struct {
-		LogType     string      `json:"log_type"`
-		CompanyCode string      `json:"company_code"`
-		HWID        string      `json:"hwid"`
-		Hostname    string      `json:"hostname"`
-		Data        interface{} `json:"data"`
-	}
+// Cấu trúc Payload chuẩn từ Agent gửi lên
+type AgentPayload struct {
+	LogType     string          `json:"log_type"`
+	CompanyCode string          `json:"company_code"`
+	HWID        string          `json:"hwid"`
+	Hostname    string          `json:"hostname"`
+	Data        json.RawMessage `json:"data"`
+}
 
+// Struct hứng dữ liệu từ Agent (Phải khớp 100% với Agent)
+type AgentSoftwareRecord struct {
+	SoftwareName    string `json:"software_name"`
+	Version         string `json:"version"`
+	Publisher       string `json:"publisher"`
+	InstallLocation string `json:"install_location"`
+	FileHash        string `json:"file_hash"`
+	Status          string `json:"status"`
+	IsRunning       bool   `json:"is_running"`
+}
+
+type AgentUSBRecord struct {
+	DeviceName   string `json:"device_name"`
+	DeviceID     string `json:"device_id"`
+	VID          string `json:"vid"`
+	PID          string `json:"pid"`
+	SerialNumber string `json:"serial_number"`
+	DeviceHash   string `json:"device_hash"`
+	EventType    string `json:"event_type"`
+}
+
+// PushDataHandler: Gateway tiếp nhận dữ liệu tốc độ cao
+func PushDataHandler(c *gin.Context) {
+	var req AgentPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
-	// 1. XÁC THỰC CÔNG TY
-	var org models.Organization
-	if err := database.DB.Where("company_code = ?", req.CompanyCode).First(&org).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Mã công ty không tồn tại hoặc sai"})
+	var agent models.Agent
+	if err := database.DB.Where("hw_id = ? AND org_id IN (SELECT id FROM organizations WHERE company_code = ?)", req.HWID, req.CompanyCode).First(&agent).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Agent không hợp lệ"})
 		return
 	}
 
-	// 1.5. TÌM VÙNG (REGION) MẶC ĐỊNH
-	var region models.Region
-	if err := database.DB.Where("org_id = ?", org.ID).First(&region).Error; err != nil {
-		region = models.Region{
-			OrgID:       org.ID,
-			Name:        "Trụ sở chính",
-			EnrollToken: "AUTO-" + req.CompanyCode,
-		}
-		database.DB.Create(&region)
-	}
+	// Đẩy vào hàng đợi xử lý ngầm (Goroutine)
+	go ProcessAgentDataAsync(req, agent)
 
-	// 2. TÌM HOẶC TẠO AGENT
-	var agent models.Agent
-	result := database.DB.Where("hw_id = ?", req.HWID).First(&agent)
+	c.JSON(http.StatusOK, gin.H{"message": "Data accepted", "status": "ACTIVE"})
+}
 
-	if result.Error != nil {
-		// Máy mới -> Tạo mới (Lần đầu thì lấy IP kết nối làm tạm)
-		agent = models.Agent{
-			HWID:      req.HWID,
-			OrgID:     org.ID,
-			RegionID:  region.ID,
-			Hostname:  req.Hostname,
-			IPAddress: c.ClientIP(), // Tạm thời lấy IP kết nối
-			Status:    "online",
-			LastSeen:  time.Now(),
-		}
-		if err := database.DB.Create(&agent).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi lưu Agent: " + err.Error()})
-			return
-		}
-	} else {
-		// Máy cũ -> Cập nhật trạng thái
-		updates := map[string]interface{}{
-			// [QUAN TRỌNG] ĐÃ XÓA DÒNG "ip_address": c.ClientIP()
-			// Để không ghi đè IP thật mà Telemetry đã gửi lên
-			"last_seen": time.Now(),
-			"status":    "online",
-		}
-
-		// Chỉ cập nhật IP từ kết nối nếu IP trong DB đang rỗng hoặc lỗi
-		if agent.IPAddress == "" || agent.IPAddress == "::1" || agent.IPAddress == "127.0.0.1" {
-			updates["ip_address"] = c.ClientIP()
-		}
-
-		// Tự sửa lỗi mất OrgID/RegionID
-		if agent.OrgID == 0 {
-			updates["org_id"] = org.ID
-		}
-		if agent.RegionID == 0 {
-			updates["region_id"] = region.ID
-		}
-
-		database.DB.Model(&agent).Updates(updates)
-	}
-	// 3. XỬ LÝ DỮ LIỆU LOG & KÍCH HOẠT TÍNH ĐIỂM
-	switch req.LogType {
-	case "inventory":
-		agent_data.ProcessInventory(agent, req.Data)
-	case "telemetry":
-		agent_data.ProcessTelemetry(agent, req.Data)
-		go func() {
-			security.AnalyzeBehaviorAI(agent.HWID, "telemetry", req.Data)
-			scoring.RecalculateRiskScore(agent.HWID) // <--- Cập nhật điểm sau khi phân tích
-		}()
+// Xử lý ngầm
+func ProcessAgentDataAsync(payload AgentPayload, agent models.Agent) {
+	switch payload.LogType {
 	case "software":
-		agent_data.ProcessSoftware(agent, req.Data)
-		go func() {
-			security.CheckSoftwareCompliance(agent, req.Data)
-			scoring.RecalculateRiskScore(agent.HWID) // <--- Cập nhật điểm
-		}()
+		var records []AgentSoftwareRecord
+		if err := json.Unmarshal(payload.Data, &records); err == nil {
+			AnalyzeSoftwareBehavior(records, agent)
+		}
 	case "usb":
-		agent_data.ProcessUSB(agent, req.Data)
-		go func() {
-			security.AnalyzeBehaviorAI(agent.HWID, "usb", req.Data)
-			scoring.RecalculateRiskScore(agent.HWID) // <--- Cập nhật điểm
-		}()
-	case "alert":
-		alertMap, ok := req.Data.(map[string]interface{})
-		if ok {
-			// 1. Lấy dữ liệu từ Agent gửi lên
-			alertType := fmt.Sprintf("%v", alertMap["alert_type"])
-			desc := fmt.Sprintf("%v", alertMap["message"])
+		var records []AgentUSBRecord
+		if err := json.Unmarshal(payload.Data, &records); err == nil {
+			AnalyzeUSBBehavior(records, agent)
+		}
+	}
+}
 
-			// 2. MAPPING THEO MỨC ĐỘ ƯU TIÊN (Khớp với 5 Use-case chuẩn SOC)
-			priority := "P4"
-			severity := "Low"
+// Lưu Software và Check Hash
+func AnalyzeSoftwareBehavior(records []AgentSoftwareRecord, agent models.Agent) {
+	// Xóa log cũ để cập nhật list phần mềm mới nhất
+	database.DB.Where("agent_hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
 
-			switch alertType {
-			case "Firewall Disabled": // [MỚI] Tắt tường lửa
-				priority = "P1"
-				severity = "Critical"
-			case "Malware/AV Alert": // [MỚI] Mã độc / Tắt Antivirus
-				priority = "P2"
-				severity = "High"
-			case "Unpatched OS": // [MỚI] Thiếu bản vá Windows
-				priority = "P3"
-				severity = "Medium"
-			case "Unauthorized Port": // Mở cổng mạng nguy hiểm
-				priority = "P2"
-				severity = "High"
-			case "Software Violation": // Phần mềm cấm
-				priority = "P3"
-				severity = "Medium"
-			case "USB Violation": // Cắm USB lạ
-				priority = "P3"
-				severity = "Medium"
+	for _, rec := range records {
+		// Lưu DB
+		sw := models.SoftwareItem{
+			AgentHWID:       agent.HWID,
+			SoftwareName:    rec.SoftwareName,
+			Version:         rec.Version,
+			Publisher:       rec.Publisher,
+			InstallLocation: rec.InstallLocation,
+			FileHash:        rec.FileHash,
+			Status:          rec.Status,
+			IsRunning:       rec.IsRunning,
+		}
+		database.DB.Create(&sw)
+
+		// --- CASE 1: MÃ ĐỘC (YARA/Threat Intel Match) ---
+		if rec.FileHash != "" && CheckHashAgainstThreatIntel(rec.FileHash) {
+			security.TriggerSecurityEvent(agent,
+				"Malware Detected", // Exact Type
+				"[P1] Cảnh báo Mã Độc (YARA Match)",
+				fmt.Sprintf("Tiến trình '%s' chứa mã băm độc hại: %s", rec.SoftwareName, rec.FileHash),
+				"P1",
+			)
+		}
+
+		// --- CASE 2: LẨN TRÁNH (Ghost Registry) ---
+		if rec.Status == "GHOST_REGISTRY" {
+			security.TriggerSecurityEvent(agent,
+				"Defense Evasion", // Kỹ thuật lẩn tránh
+				"[P2] Xóa dấu vết phần mềm (Ghost Registry)",
+				fmt.Sprintf("Phần mềm '%s' đã bị xóa file vật lý nhưng vẫn giữ lại Registry. Có dấu hiệu che giấu hành vi.", rec.SoftwareName),
+				"P2",
+			)
+		}
+
+		// --- CASE 3: PHẦN MỀM CẤM (Ví dụ: Torrent) ---
+		if CheckBannedSoftware(rec.SoftwareName) {
+			security.TriggerSecurityEvent(agent,
+				"Software Violation",
+				"[P3] Cài đặt phần mềm bị cấm",
+				fmt.Sprintf("Phát hiện phần mềm vi phạm chính sách công ty: %s", rec.SoftwareName),
+				"P3",
+			)
+		}
+	}
+}
+
+// 2. PHÂN TÍCH USB (Bắt Case: USB lạ / BadUSB)
+func AnalyzeUSBBehavior(records []AgentUSBRecord, agent models.Agent) {
+	for _, rec := range records {
+		var existing models.USBLog
+		err := database.DB.Where("agent_hw_id = ? AND device_hash = ?", agent.HWID, rec.DeviceHash).First(&existing).Error
+
+		if err != nil { // Lần đầu cắm USB này
+			usb := models.USBLog{
+				AgentHWID:  agent.HWID,
+				DeviceName: rec.DeviceName,
+				DeviceID:   rec.DeviceID,
+				VID:        rec.VID,
+				PID:        rec.PID,
+				DeviceHash: rec.DeviceHash,
+				EventType:  rec.EventType,
 			}
+			database.DB.Create(&usb)
 
-			// 3. Tạo Alert lưu vào DB
-			newAlert := models.SecurityAlert{
-				OrgID:       agent.OrgID,
-				HWID:        agent.HWID,
-				AlertType:   alertType,
-				Title:       fmt.Sprintf("[%s] %s", priority, alertType),
-				Description: desc,
-				Severity:    severity,
-				Priority:    priority,
-				IsResolved:  false,
-			}
-			database.DB.Create(&newAlert)
+			// --- CASE 4: USB LẠ CHƯA DUYỆT ---
+			security.TriggerSecurityEvent(agent,
+				"USB Violation",
+				"[P3] Cắm thiết bị ngoại vi trái phép",
+				fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, PID: %s). Yêu cầu xác thực phần cứng.", rec.DeviceName, rec.VID, rec.PID),
+				"P3",
+			)
+		}
+	}
+}
 
-			// 4. Gọi hàm Gom nhóm Alert vào Incident (Nếu bạn đã tạo hàm này ở file security)
-			go security.GroupAlertToIncident(&newAlert)
+// 3. PHÂN TÍCH TƯỜNG LỬA / MẠNG (Nếu bạn gửi log Telemetry lên)
+func AnalyzeTelemetry(firewallOff bool, agent models.Agent) {
+	// --- CASE 5: TẮT TƯỜNG LỬA ---
+	if firewallOff {
+		security.TriggerSecurityEvent(agent,
+			"Firewall Disabled",
+			"[P1] Tường lửa hệ thống bị vô hiệu hóa",
+			"Tường lửa của hệ điều hành đã bị tắt. Máy trạm mất lớp khiên bảo vệ mạng.",
+			"P1",
+		)
+	}
+}
 
-			// 5. Cập nhật điểm rủi ro
-			go scoring.RecalculateRiskScore(agent.HWID)
+// --- Mock Checkers ---
+func CheckHashAgainstThreatIntel(hash string) bool {
+	// Giả lập hash của 1 con virus
+	maliciousHashes := map[string]bool{"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": true}
+	return maliciousHashes[hash]
+}
+
+func CheckBannedSoftware(name string) bool {
+	// Khai báo mảng chứa các từ khóa phần mềm bị cấm
+	banned := []string{"utorrent", "cheat engine", "idm"}
+
+	// Chuyển tên phần mềm về chữ thường để dễ so sánh
+	nameLower := strings.ToLower(name)
+
+	// Sử dụng biến banned để kiểm tra
+	for _, b := range banned {
+		if strings.Contains(nameLower, b) {
+			return true // Báo vi phạm nếu chứa từ khóa cấm
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "processed", "type": req.LogType})
+	return false
 }

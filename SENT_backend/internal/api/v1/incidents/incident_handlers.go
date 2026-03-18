@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+	"sent_backend/internal/service/ai"
+	"sent_backend/internal/service/scoring"
 	"strings"
 	"time"
 
@@ -70,125 +72,100 @@ func GetIncidentDetail(c *gin.Context) {
 func AddIncidentActivity(c *gin.Context) {
 	id := c.Param("id")
 
-	// 1. [FIX CRITICAL] Lấy User ID an toàn (Chống Crash)
-	var userID uint = 0 // Mặc định là 0 (System) nếu không tìm thấy user
-
-	// Thử lấy key "userID" (CamelCase)
-	if val, exists := c.Get("userID"); exists && val != nil {
-		switch v := val.(type) {
-		case uint:
-			userID = v
-		case float64: // JWT đôi khi trả về float64
-			userID = uint(v)
-		case int:
-			userID = uint(v)
-		}
-	} else if val, exists := c.Get("user_id"); exists && val != nil {
-		// Thử lấy key "user_id" (SnakeCase) dự phòng
-		if v, ok := val.(uint); ok {
-			userID = v
-		}
-	}
-
-	// Nếu bắt buộc phải đăng nhập mới được comment, bỏ comment dòng dưới:
-	// if userID == 0 {
-	// 	c.JSON(http.StatusUnauthorized, gin.H{"error": "Vui lòng đăng nhập lại"})
-	// 	return
-	// }
-
-	// 2. Lấy dữ liệu Text từ Form
+	// 1. DÙNG MULTIPART FORM (Cho phép nhận cả text và file ảnh)
 	actionType := c.PostForm("action_type")
 	content := c.PostForm("content")
-	resolutionSummary := c.PostForm("resolution_summary")
-	// 3. Xử lý File Upload (Nếu có)
-	form, _ := c.MultipartForm()
-	var imageURLs []string // Sử dụng đúng kiểu mảng JSON
 
-	if form != nil {
-		files := form.File["files"]
-		if len(files) > 0 {
-			// Tạo thư mục lưu trữ nếu chưa có
-			uploadPath := "uploads/evidence"
-			if _, err := os.Stat(uploadPath); os.IsNotExist(err) {
-				os.MkdirAll(uploadPath, os.ModePerm)
-			}
-
-			for _, file := range files {
-				// Tạo tên file an toàn: timestamp_filename
-				filename := fmt.Sprintf("%d_%s", time.Now().Unix(), filepath.Base(file.Filename))
-				dst := filepath.Join(uploadPath, filename)
-
-				if err := c.SaveUploadedFile(file, dst); err == nil {
-					// Chuyển đường dẫn thô thành URL web (thay \ bằng / cho chuẩn JSON)
-					webPath := "/" + filepath.ToSlash(dst)
-					imageURLs = append(imageURLs, webPath)
-				}
-			}
-		}
-	}
-
-	// 4. Tìm Sự cố trong DB
-	var incident models.Incident
-	if err := database.DB.First(&incident, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy sự cố"})
+	if actionType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu action_type"})
 		return
 	}
 
-	// 5. Logic chuyển đổi trạng thái
+	// 2. LẤY USER ID AN TOÀN TUYỆT ĐỐI (Chống Panic sập Server)
+	var uid uint
+	if val, exists := c.Get("userID"); exists {
+		switch v := val.(type) {
+		case float64:
+			uid = uint(v)
+		case uint:
+			uid = v
+		case int:
+			uid = uint(v)
+		}
+	} else if val, exists := c.Get("user_id"); exists {
+		switch v := val.(type) {
+		case float64:
+			uid = uint(v)
+		case uint:
+			uid = v
+		case int:
+			uid = uint(v)
+		}
+	}
+
+	// 3. TÌM HỒ SƠ SỰ CỐ
+	var incident models.Incident
+	if err := database.DB.First(&incident, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy hồ sơ sự cố"})
+		return
+	}
+
 	oldStatus := incident.Status
 	newStatus := oldStatus
-	if actionType == "RESOLVE" {
-		newStatus = "Resolved"
-	} else if actionType == "INVESTIGATE" {
+
+	// 4. XỬ LÝ CHUYỂN TRẠNG THÁI & HẠ ĐIỂM RỦI RO
+	if actionType == "INVESTIGATE" && oldStatus == "Open" {
 		newStatus = "Investigating"
+		database.DB.Model(&incident).Updates(map[string]interface{}{
+			"status":      newStatus,
+			"assignee_id": uid,
+		})
+	} else if actionType == "RESOLVE" {
+		newStatus = "Resolved"
+		database.DB.Model(&incident).Update("status", newStatus)
+		// Đóng tất cả cảnh báo con
+		database.DB.Model(&models.SecurityAlert{}).Where("incident_id = ?", incident.ID).Update("is_resolved", true)
+		// Hạ nhiệt điểm rủi ro của máy trạm (Bắt buộc import service scoring)
+		scoring.RecalculateRiskScore(incident.AgentHWID)
 	}
-	var pUserID *uint
-	if userID != 0 {
-		pUserID = &userID
+
+	// 5. XỬ LÝ LƯU FILE ẢNH VÀO Ổ CỨNG
+	var imagePaths []string
+	form, err := c.MultipartForm()
+	if err == nil {
+		files := form.File["images"]
+		uploadDir := "uploads/incidents"
+		os.MkdirAll(uploadDir, os.ModePerm) // Đảm bảo thư mục tồn tại
+
+		for _, file := range files {
+			// Tạo tên file độc nhất tránh trùng lặp
+			filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), file.Filename)
+			filepathStr := filepath.Join(uploadDir, filename)
+
+			if err := c.SaveUploadedFile(file, filepathStr); err == nil {
+				// Chuyển đường dẫn thành web path (/uploads/incidents/...)
+				webPath := "/" + filepath.ToSlash(filepathStr)
+				imagePaths = append(imagePaths, webPath)
+			}
+		}
 	}
-	// 6. Lưu Activity vào DB
+
+	// Convert mảng ảnh thành chuỗi JSON để lưu DB
+	imagesJSON, _ := json.Marshal(imagePaths)
+
+	// 6. TẠO LỊCH SỬ TIMELINE
 	activity := models.IncidentActivity{
 		IncidentID: incident.ID,
-		UserID:     pUserID,
+		UserID:     &uid,
 		ActionType: actionType,
 		Content:    content,
 		OldStatus:  oldStatus,
 		NewStatus:  newStatus,
-		CreatedAt:  time.Now(),
-		Images:     imageURLs, // Lưu mảng URL ảnh
+		Images:     string(imagesJSON), // Lưu mảng ảnh
 	}
+	database.DB.Create(&activity)
 
-	tx := database.DB.Begin()
-	if err := tx.Create(&activity).Error; err != nil {
-		tx.Rollback()
-		fmt.Println("Lỗi lưu Activity:", err)
-		c.JSON(500, gin.H{"error": "Lỗi lưu dữ liệu"})
-		return
-	}
-
-	// Cập nhật trạng thái Incident nếu có thay đổi
-	// Cập nhật trạng thái Incident và BÁO CÁO TỔNG KẾT
-	updates := map[string]interface{}{}
-	if oldStatus != newStatus {
-		updates["status"] = newStatus
-	}
-	if actionType == "RESOLVE" && resolutionSummary != "" {
-		updates["resolution_summary"] = resolutionSummary // <--- LƯU BÁO CÁO VÀO DB
-	}
-
-	if len(updates) > 0 {
-		if err := tx.Model(&incident).Updates(updates).Error; err != nil {
-			tx.Rollback()
-			c.JSON(500, gin.H{"error": "Lỗi cập nhật sự cố"})
-			return
-		}
-	}
-	tx.Commit()
-
-	// Preload User để trả về Frontend hiển thị tên người vừa comment ngay lập tức
-	database.DB.Preload("User").First(&activity, activity.ID)
-
-	c.JSON(200, activity)
+	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công", "activity": activity})
 }
 
 // PUT /api/v1/incidents/:id/playbook
@@ -326,5 +303,22 @@ func ExecuteLiveAction(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message":  "Đã bắn lệnh xuống thiết bị",
 		"activity": activity,
+	})
+}
+
+// POST /api/v1/incidents/:id/ai-analyze
+func AnalyzeIncidentAI(c *gin.Context) {
+	id := c.Param("id")
+
+	// Gọi hàm AI trong chat_service.go (nhớ import package chứa hàm đó nếu khác)
+	// Giả sử hàm đó nằm trong package `ai`
+	analysis, err := ai.AnalyzeIncidentWithAI(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"analysis": analysis,
 	})
 }

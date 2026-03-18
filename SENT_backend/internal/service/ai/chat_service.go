@@ -14,7 +14,7 @@ import (
 const OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 
 // const AI_MODEL = "qwen2.5:3b"
-const AI_MODEL = "qwen3:4b"
+const AI_MODEL = "qwen3.5:4b"
 
 // const AI_MODEL = "phi3"
 
@@ -109,4 +109,63 @@ func ChatWithPolicy(userQuestion string) (string, string, error) {
 	// 4. Tách suy nghĩ và câu trả lời
 	thought, answer := parseAIResponse(aiResp.Response)
 	return thought, answer, nil
+}
+
+// AnalyzeIncidentWithAI: Trợ lý AI chuyên phân tích Sự cố (Chỉ đọc, không hành động)
+func AnalyzeIncidentWithAI(incidentID string) (string, error) {
+	var incident models.Incident
+
+	// 1. Lấy dữ liệu Sự cố + Máy trạm + Cảnh báo
+	err := database.DB.Preload("Agent").Preload("Alerts").Where("id = ?", incidentID).First(&incident).Error
+	if err != nil {
+		return "", fmt.Errorf("không tìm thấy hồ sơ sự cố")
+	}
+
+	// 2. Đóng gói Alerts thành JSON
+	alertsJSON, _ := json.Marshal(incident.Alerts)
+
+	// 3. Prompt "Cố vấn" (Khóa quyền hành động)
+	prompt := fmt.Sprintf(`[SYSTEM]
+Bạn là SENT Copilot - Chuyên gia phân tích An ninh mạng (SOC Tier 3).
+Nhiệm vụ: Đọc các cảnh báo trong Hồ sơ sự cố và báo cáo cho Quản trị viên.
+
+[GIỚI HẠN TUYỆT ĐỐI]
+1. Bạn CHỈ được phép đọc và tư vấn. Bạn KHÔNG CÓ QUYỀN thực thi lệnh.
+2. CẤM sử dụng thẻ <tool_call>.
+3. Trình bày 3 phần: [TÓM TẮT] - [ĐÁNH GIÁ RỦI RO] - [ĐỀ XUẤT XỬ LÝ].
+
+[DỮ LIỆU SỰ CỐ (INCIDENT #%d)]
+- Tên sự cố: %s (Mức độ: %s)
+- Máy trạm: %s (IP: %s)
+- Danh sách cảnh báo chi tiết:
+%s
+
+[USER]
+Hãy phân tích sự cố này và cho tôi biết nên làm gì tiếp theo.`,
+		incident.ID, incident.Type, incident.Severity,
+		incident.Agent.Hostname, incident.Agent.IPAddress,
+		string(alertsJSON),
+	)
+
+	// 4. Gọi tới Ollama (Nên dùng model 3b/4b với nhiệt độ 0.2)
+	reqBody := OllamaRequest{
+		Model:  AI_MODEL, // Dùng AI_MODEL bạn đã định nghĩa ở trên
+		Prompt: prompt,
+		Stream: false,
+	}
+
+	reqBytes, _ := json.Marshal(reqBody)
+	resp, err := http.Post(OLLAMA_URL, "application/json", bytes.NewBuffer(reqBytes))
+	if err != nil {
+		return "", fmt.Errorf("lỗi kết nối Ollama")
+	}
+	defer resp.Body.Close()
+
+	var oResp OllamaResponse
+	if err := json.NewDecoder(resp.Body).Decode(&oResp); err != nil {
+		return "", fmt.Errorf("lỗi đọc phản hồi")
+	}
+
+	_, answer := parseAIResponse(oResp.Response)
+	return answer, nil
 }

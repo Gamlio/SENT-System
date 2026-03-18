@@ -1,50 +1,63 @@
 package agent_data
 
 import (
-	"fmt"
+	"encoding/json"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+	"sent_backend/internal/service/security"
 	"time"
 
 	"gorm.io/gorm"
 )
 
-// ProcessTelemetry xử lý danh sách cổng mạng và cập nhật IP
+type AgentTelemetryRecord struct {
+	IPAddress   string            `json:"ip_address"`
+	FirewallOff bool              `json:"firewall_off"` // Hứng thêm trạng thái Tường lửa
+	OpenPorts   []models.OpenPort `json:"open_ports"`
+}
+
 func ProcessTelemetry(agent models.Agent, data interface{}) {
-	telemetryData, ok := data.(map[string]interface{})
-	if !ok {
+	bytes, _ := json.Marshal(data)
+	var payload AgentTelemetryRecord
+	if err := json.Unmarshal(bytes, &payload); err != nil {
 		return
 	}
 
-	// 1. Cập nhật trạng thái Agent
+	// 1. Cập nhật trạng thái máy
 	updateFields := map[string]interface{}{
 		"status":    "online",
 		"last_seen": time.Now(),
 	}
-
-	if ip, exists := telemetryData["ip_address"]; exists && ip != "" {
-		updateFields["ip_address"] = fmt.Sprintf("%v", ip)
+	if payload.IPAddress != "" {
+		updateFields["ip_address"] = payload.IPAddress
 	}
 	database.DB.Model(&agent).Updates(updateFields)
 
-	// 2. Vì Agent đã băm Hash ở Local, nếu có Data gửi lên tức là Cổng mạng đã thay đổi.
-	// Ta chỉ việc Parse và lưu thẳng vào Database.
-	var payload struct {
-		OpenPorts []models.OpenPort `json:"open_ports"`
+	// 2. BẮT CASE: TẮT TƯỜNG LỬA
+	if payload.FirewallOff {
+		security.TriggerSecurityEvent(agent,
+			"Firewall Disabled",
+			"[P1] Tường lửa hệ thống bị tắt",
+			"Lớp phòng thủ Tường lửa (OS Firewall) đã bị vô hiệu hóa.",
+			"P1",
+		)
 	}
 
-	if err := MapToStruct(data, &payload); err != nil {
-		return
-	}
-
-	// 3. Xóa port cũ, thêm port mới bằng Transaction
+	// 3. Xóa port cũ, lưu port mới
 	database.DB.Transaction(func(tx *gorm.DB) error {
 		tx.Where("agent_hw_id = ?", agent.HWID).Delete(&models.OpenPort{})
+		for _, port := range payload.OpenPorts {
+			port.AgentHWID = agent.HWID
+			tx.Create(&port)
 
-		for _, p := range payload.OpenPorts {
-			p.AgentHWID = agent.HWID
-			if err := tx.Create(&p).Error; err != nil {
-				return err
+			// BẮT CASE: RDP / Telnet
+			if port.Port == 3389 {
+				security.TriggerSecurityEvent(agent,
+					"Unauthorized Port",
+					"[P2] Mở cổng Remote Desktop trái phép",
+					"Phát hiện cổng 3389 (RDP) đang mở public, nguy cơ bị brute-force.",
+					"P2",
+				)
 			}
 		}
 		return nil

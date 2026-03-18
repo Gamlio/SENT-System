@@ -54,8 +54,8 @@ func CheckSoftwareCompliance(agent models.Agent, data interface{}) {
 		for _, p := range policies {
 			if p.Category == "SOFTWARE_BLACKLIST" && p.Value == swName {
 				violationFound = true
-				// Gọi CreateAlert (Hàm này giờ đã tự tạo Incident + Playbook)
-				CreateAlert(agent, "Software Violation",
+				// gọi bên alerts.go để tạo Alert và Incident
+				TriggerSecurityEvent(agent, "Software Violation",
 					fmt.Sprintf("Phát hiện phần mềm cấm: %s", swName),
 					"Máy trạm đã cài đặt phần mềm nằm trong danh sách đen.", "Medium")
 			}

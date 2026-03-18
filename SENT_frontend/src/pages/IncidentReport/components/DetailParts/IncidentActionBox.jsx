@@ -31,7 +31,7 @@ const IncidentActionBox = ({ status, onAction, sending }) => {
                 <textarea 
                     value={resolutionSummary}
                     onChange={(e) => setResolutionSummary(e.target.value)}
-                    placeholder="- Nguyên nhân: Người dùng tải phần mềm lậu.\n- Khắc phục: Đã xóa file, quét lại toàn bộ ổ C..."
+                    placeholder="- Nguyên nhân: Người dùng tải phần mềm lậu.&#10;- Khắc phục: Đã xóa file, quét lại toàn bộ ổ C..."
                     className="w-full bg-[#0A101D] text-emerald-100 text-sm p-4 rounded-xl border border-emerald-900/50 focus:border-emerald-500 outline-none resize-none h-32 mb-4"
                 />
                 <div className="flex justify-end gap-3">

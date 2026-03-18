@@ -1,50 +1,209 @@
 package collector
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"golang.org/x/sys/windows/registry"
 )
 
-func CollectSoftware() interface{} {
+// 1. Khai báo Struct cho Sensor
+type SoftwareSensor struct{}
+
+// 2. Cấu trúc JSON chuẩn gửi về Backend
+type SoftwareRecord struct {
+	SoftwareName    string `json:"software_name"`
+	Version         string `json:"version"`
+	Publisher       string `json:"publisher"`
+	InstallLocation string `json:"install_location"`
+	FileHash        string `json:"file_hash"`  // Dùng để Backend so khớp YARA/Threat Intel
+	Status          string `json:"status"`     // INSTALLED, GHOST_REGISTRY
+	IsRunning       bool   `json:"is_running"` // Check xem phần mềm có đang mở không
+}
+
+// 3. Khai báo tên định danh của Log
+func (s *SoftwareSensor) Name() string {
+	return "software"
+}
+
+// 4. Đưa logic cũ vào hàm Collect()
+func (s *SoftwareSensor) Collect() interface{} {
+	var softwareList []SoftwareRecord
+
+	// 1. Lấy danh sách tiến trình đang chạy (Cross-platform bằng gopsutil)
+	runningProcs := getRunningProcesses()
+
+	// --- XỬ LÝ CHO WINDOWS ---
 	if runtime.GOOS == "windows" {
-		var list []map[string]string
-		k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, registry.ENUMERATE_SUB_KEYS|registry.QUERY_VALUE)
-		if err != nil {
-			return list
+		paths := []string{
+			`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`,
+			`SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`,
 		}
-		defer k.Close()
 
-		names, _ := k.ReadSubKeyNames(-1)
-		for _, name := range names {
-			sk, _ := registry.OpenKey(k, name, registry.QUERY_VALUE)
-			displayName, _, _ := sk.GetStringValue("DisplayName")
-			displayVersion, _, _ := sk.GetStringValue("DisplayVersion")
-			if displayName != "" {
-				list = append(list, map[string]string{"software_name": displayName, "version": displayVersion})
+		for _, path := range paths {
+			k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.ENUMERATE_SUB_KEYS|registry.QUERY_VALUE)
+			if err != nil {
+				continue
 			}
-			sk.Close()
+
+			names, _ := k.ReadSubKeyNames(-1)
+			for _, name := range names {
+				sk, _ := registry.OpenKey(k, name, registry.QUERY_VALUE)
+
+				displayName, _, _ := sk.GetStringValue("DisplayName")
+				displayVersion, _, _ := sk.GetStringValue("DisplayVersion")
+				publisher, _, _ := sk.GetStringValue("Publisher")
+				installLocation, _, _ := sk.GetStringValue("InstallLocation")
+				displayIcon, _, _ := sk.GetStringValue("DisplayIcon") // Thường chứa đường dẫn đến file .exe chính
+
+				if displayName != "" {
+					status := "INSTALLED"
+					fileHash := ""
+
+					// LỚP 2: CHECK CHÉO Ổ CỨNG (Ghost Registry)
+					if installLocation != "" {
+						cleanPath := strings.Trim(installLocation, "\"")
+						if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
+							status = "GHOST_REGISTRY"
+						}
+					}
+
+					// BĂM FILE (HASHING) - Tìm file .exe chính từ DisplayIcon
+					if displayIcon != "" {
+						exePath := strings.Split(displayIcon, ",")[0] // Xóa phần index icon (VD: app.exe,0)
+						exePath = strings.Trim(exePath, "\"")
+						if strings.HasSuffix(strings.ToLower(exePath), ".exe") {
+							fileHash = calculateSHA256(exePath)
+						}
+					}
+
+					// LỚP 3: CHECK CHÉO RAM (Đang chạy hay không?)
+					isRunning := isProcessRunning(displayName, runningProcs)
+
+					softwareList = append(softwareList, SoftwareRecord{
+						SoftwareName:    displayName,
+						Version:         displayVersion,
+						Publisher:       publisher,
+						InstallLocation: installLocation,
+						FileHash:        fileHash,
+						Status:          status,
+						IsRunning:       isRunning,
+					})
+				}
+				sk.Close()
+			}
+			k.Close()
 		}
-		return list
+		return softwareList
 	}
 
+	// --- XỬ LÝ CHO LINUX (Debian/Ubuntu) ---
 	if runtime.GOOS == "linux" {
-		cmd := exec.Command("dpkg-query", "-W", "-f=${Package};${Version}\n")
+		cmd := exec.Command("dpkg-query", "-W", "-f=${Package};${Version};${Maintainer}\\n")
 		out, err := cmd.Output()
-		if err != nil {
-			return []map[string]string{}
-		}
+		if err == nil {
+			lines := strings.Split(string(out), "\n")
+			for _, line := range lines {
+				parts := strings.Split(line, ";")
+				if len(parts) >= 2 && parts[0] != "" {
+					publisher := ""
+					if len(parts) >= 3 {
+						publisher = parts[2]
+					}
 
-		var list []map[string]string
-		for _, line := range strings.Split(string(out), "\n") {
-			parts := strings.Split(line, ";")
-			if len(parts) == 2 {
-				list = append(list, map[string]string{"software_name": parts[0], "version": parts[1]})
+					isRunning := isProcessRunning(parts[0], runningProcs)
+
+					softwareList = append(softwareList, SoftwareRecord{
+						SoftwareName: parts[0],
+						Version:      parts[1],
+						Publisher:    publisher,
+						Status:       "INSTALLED",
+						IsRunning:    isRunning,
+					})
+				}
 			}
 		}
-		return list
+		return softwareList
 	}
-	return []map[string]string{}
+
+	// --- XỬ LÝ CHO MACOS (Darwin) ---
+	if runtime.GOOS == "darwin" {
+		// Quét nhanh thư mục /Applications
+		apps, err := os.ReadDir("/Applications")
+		if err == nil {
+			for _, app := range apps {
+				if strings.HasSuffix(app.Name(), ".app") {
+					appName := strings.TrimSuffix(app.Name(), ".app")
+					isRunning := isProcessRunning(appName, runningProcs)
+
+					softwareList = append(softwareList, SoftwareRecord{
+						SoftwareName:    appName,
+						InstallLocation: filepath.Join("/Applications", app.Name()),
+						Status:          "INSTALLED",
+						IsRunning:       isRunning,
+					})
+				}
+			}
+		}
+		return softwareList
+	}
+
+	return softwareList
+}
+
+// ==========================================
+// CÁC HÀM PHỤ TRỢ (NINJA HELPERS)
+// ==========================================
+
+// getRunningProcesses: Lấy danh sách tiến trình đa nền tảng (Dùng gopsutil)
+func getRunningProcesses() map[string]bool {
+	procMap := make(map[string]bool)
+	procs, err := process.Processes()
+	if err != nil {
+		return procMap
+	}
+
+	for _, p := range procs {
+		name, err := p.Name()
+		if err == nil {
+			cleanName := strings.ToLower(strings.TrimSuffix(name, ".exe"))
+			procMap[cleanName] = true
+		}
+	}
+	return procMap
+}
+
+// isProcessRunning: So khớp tên phần mềm với danh sách tiến trình
+func isProcessRunning(softwareName string, runningProcs map[string]bool) bool {
+	cleanSWName := strings.ToLower(softwareName)
+	// Tìm kiếm tương đối (Ví dụ: "Google Chrome" sẽ match với tiến trình "chrome")
+	for procName := range runningProcs {
+		if strings.Contains(cleanSWName, procName) || strings.Contains(procName, cleanSWName) {
+			return true
+		}
+	}
+	return false
+}
+
+// calculateSHA256: Hàm băm file siêu nhẹ, không load toàn bộ file vào RAM
+func calculateSHA256(filePath string) string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return ""
+	}
+
+	return hex.EncodeToString(hash.Sum(nil))
 }

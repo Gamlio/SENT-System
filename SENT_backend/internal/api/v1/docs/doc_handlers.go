@@ -97,10 +97,11 @@ func GetDocuments(c *gin.Context) {
 		query = query.Where("approval_status = ?", status)
 	}
 
-	if err := query.Order("created_at desc").Find(&docs).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Lỗi truy vấn"})
+	if err := database.DB.Where("approval_status = ?", "APPROVED").Find(&docs).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Lỗi truy xuất tài liệu"})
 		return
 	}
+
 	c.JSON(200, docs)
 }
 

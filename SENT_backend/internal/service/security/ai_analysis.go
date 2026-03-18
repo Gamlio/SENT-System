@@ -42,11 +42,11 @@ func analyzeNetworkAI(agent models.Agent, data interface{}) {
 
 		// RDP Port -> Tạo Alert -> Tự động sinh Incident kèm Playbook xử lý Port lạ
 		if portNum == 3389 {
-			CreateAlert(agent, "Unauthorized Port", "Rủi ro RDP (3389)",
+			TriggerSecurityEvent(agent, "Unauthorized Port", "Rủi ro RDP (3389)",
 				"AI phát hiện cổng Remote Desktop đang mở public. Nguy cơ tấn công cao.", "Critical")
 		}
 		if portNum == 23 {
-			CreateAlert(agent, "Unauthorized Port", "Giao thức Telnet (23)",
+			TriggerSecurityEvent(agent, "Unauthorized Port", "Giao thức Telnet (23)",
 				"Cổng Telnet không an toàn đang mở.", "High")
 		}
 	}
@@ -64,7 +64,7 @@ func analyzeSoftwareAI(agent models.Agent, data interface{}) {
 
 		// Ví dụ logic AI đơn giản (Sau này thay bằng Model thật)
 		if strings.Contains(name, "miner") || strings.Contains(name, "hack") {
-			CreateAlert(agent, "AI_MALWARE_SUSPICION", "Nghi ngờ phần mềm độc hại",
+			TriggerSecurityEvent(agent, "AI_MALWARE_SUSPICION", "Nghi ngờ phần mềm độc hại",
 				fmt.Sprintf("AI phát hiện phần mềm có tên khả nghi: %s", name), "High")
 		}
 	}

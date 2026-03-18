@@ -6,6 +6,7 @@ import axios from '../../api/axios';
 import AgentUSB from './components/AgentUSB';
 import AgentSoftware from './components/AgentSoftware';
 import AgentLogs from './components/AgentLogs';
+// import AgentPort from './components/AgentPort';
 
 const AgentDetail = () => {
     const { hwid } = useParams();
@@ -68,18 +69,7 @@ const AgentDetail = () => {
                             </div>
                         );
                     })()}
-
-                    {/* 2. BADGE ĐIỂM RỦI RO (RISK SCORE) */}
-                    <div className={`px-3 py-1.5 rounded-full border text-[10px] font-black tracking-wider flex items-center gap-1.5 ${
-                        agent.risk_score >= 80 ? 'bg-red-500/10 border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' :
-                        agent.risk_score >= 50 ? 'bg-orange-500/10 border-orange-500/50 text-orange-400' :
-                        agent.risk_score >= 20 ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400' :
-                        'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                    }`}>
-                        <ShieldAlert size={14} /> 
-                        RISK SCORE: {agent.risk_score || 0}
-                    </div>
-
+                    
                     {/* 3. BADGE PHÊ DUYỆT ZERO TRUST */}
                     <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
                         agent.status === 'ACTIVE' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
@@ -105,6 +95,43 @@ const AgentDetail = () => {
                 {/* CỘT 1: CẤU HÌNH & QUẢN LÝ */}
                 <div className="space-y-6">
                     
+                    {/* --- [MỚI] Card Điểm Rủi Ro Trực Quan --- */}
+                    <div className="p-5 bg-slate-900/80 rounded-3xl border border-slate-700/50 shadow-xl relative overflow-hidden">
+                        <div className="flex justify-between items-end mb-4 relative z-10">
+                            <div>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Điểm rủi ro (Auto-Scored)</p>
+                                <div className="flex items-baseline gap-1">
+                                    <span className={`text-4xl font-black tracking-tighter ${
+                                        agent.risk_score > 70 ? 'text-red-500' : 
+                                        agent.risk_score > 30 ? 'text-yellow-500' : 
+                                        'text-emerald-500'
+                                    }`}>{agent.risk_score || 0}</span>
+                                    <span className="text-xs text-slate-500 font-bold">/ 100</span>
+                                </div>
+                            </div>
+                            <div className={`px-2.5 py-1.5 rounded text-[10px] font-black border tracking-widest ${
+                                agent.risk_score > 70 ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
+                                agent.risk_score > 30 ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 
+                                'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                            }`}>
+                                {agent.risk_score > 70 ? 'NGUY HIỂM' : agent.risk_score > 30 ? 'CẢNH BÁO' : 'AN TOÀN'}
+                            </div>
+                        </div>
+                        
+                        {/* Thanh Process Bar */}
+                        <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden relative z-10 mt-2">
+                            <div 
+                                className={`h-2.5 rounded-full transition-all duration-1000 ${
+                                    agent.risk_score > 70 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : 
+                                    agent.risk_score > 30 ? 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.8)]' : 
+                                    'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]'
+                                }`} 
+                                style={{ width: `${agent.risk_score || 0}%` }}
+                            ></div>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-3 italic relative z-10">* Điểm được tính toán tự động dựa trên các Sự cố đang mở.</p>
+                    </div>
+
                     {/* Card Cấu hình */}
                     <div className="bg-[#1e293b] p-5 rounded-3xl border border-slate-800 shadow-xl">
                         <h3 className="text-xs font-black text-slate-500 uppercase flex items-center gap-2 mb-4 tracking-widest">
@@ -154,6 +181,10 @@ const AgentDetail = () => {
                 <div>
                     <AgentUSB usbLogs={agent.usb_logs || []} />
                 </div>
+                {/* CỘT 4: Danh sách Cổng  */}
+                {/* <div>
+                    <AgentPort portLogs={agent.port_logs || []} />
+                </div> */}
             </div>
 
             {/* --- PHẦN DƯỚI: NHẬT KÝ CẢNH BÁO (Full Width) --- */}
@@ -170,7 +201,7 @@ const AgentDetail = () => {
 const InfoRow = ({ label, value }) => (
     <div className="flex justify-between text-xs border-b border-slate-800/50 pb-2 last:border-0">
         <span className="text-slate-500 font-bold">{label}</span>
-        <span className="text-white font-mono truncate max-w-[60%]">{value}</span>
+        <span className="text-white font-mono truncate max-w-[60%]">{value || 'N/A'}</span>
     </div>
 );
 

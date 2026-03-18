@@ -1,16 +1,11 @@
-import React, { useMemo, useEffect, useRef } from 'react';
-import { User, Activity, AlertOctagon, FileText} from 'lucide-react';
+import React, { useMemo } from 'react';
+import { User, Activity, AlertOctagon, FileText } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL;
 
 const IncidentTimeline = ({ incident }) => {
-    // TẠO MỎ NEO ĐỂ TỰ ĐỘNG CUỘN XUỐNG DƯỚI
-    const messagesEndRef = useRef(null);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
+    
+    // Tạo danh sách sự kiện (Đã tích hợp Fix lỗi parse JSON Ảnh)
     const timelineEvents = useMemo(() => {
         if (!incident) return [];
 
@@ -22,28 +17,38 @@ const IncidentTimeline = ({ incident }) => {
                 content: `Hệ thống SENT phát hiện sự cố: ${incident.type || 'N/A'}`,
                 user: { username: 'SENT System', is_system: true }
             },
-            ...(incident.activities || incident.Activities || []).map(act => ({
-                id: act.id,
-                type: act.action_type,
-                created_at: act.created_at,
-                content: act.content,
-                user: act.user,
-                old_status: act.old_status,
-                new_status: act.new_status,
-                images: act.images // Mảng link ảnh
-            }))
+            ...(incident.activities || incident.Activities || []).map(act => {
+                // TẠO MẢNG CHỨA ẢNH AN TOÀN TRÁNH SẬP GIAO DIỆN
+                let parsedImages = [];
+                try {
+                    if (act.images && typeof act.images === 'string') {
+                        parsedImages = JSON.parse(act.images);
+                    } else if (Array.isArray(act.images)) {
+                        parsedImages = act.images;
+                    }
+                } catch (error) {
+                    console.error("Lỗi parse ảnh từ Database:", error);
+                    parsedImages = []; // Gán mảng rỗng nếu lỗi
+                }
+
+                return {
+                    id: act.id,
+                    type: act.action_type,
+                    created_at: act.created_at || act.CreatedAt,
+                    content: act.content,
+                    user: act.user,
+                    old_status: act.old_status,
+                    new_status: act.new_status,
+                    images: parsedImages // Sử dụng mảng đã được Fix
+                };
+            })
         ];
 
+        // Sắp xếp sự kiện cũ nhất lên đầu
         return events.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     }, [incident]);
 
-    // GỌI HÀM CUỘN MỖI KHI TIMELINE CÓ SỰ THAY ĐỔI
-    useEffect(() => {
-        scrollToBottom();
-    }, [timelineEvents]);
-
     return (
-        // Đã xóa overflow-y-auto và flex-1 ở đây để nhường quyền cuộn cho component cha
         <div className="space-y-2 pb-4">
             {timelineEvents.map((event, idx) => {
                 const isSystem = event.user?.is_system || !event.user;
@@ -60,12 +65,13 @@ const IncidentTimeline = ({ incident }) => {
                             }`}>
                                 {isSystem ? <AlertOctagon size={18}/> : <User size={18}/>}
                             </div>
+                            {/* Đường kẻ dọc giữa các Node */}
                             {idx !== timelineEvents.length - 1 && (
                                 <div className="w-0.5 flex-1 bg-slate-800 my-1 rounded-full"></div>
                             )}
                         </div>
 
-                        {/* 2. NỘI DUNG CHAT */}
+                        {/* 2. NỘI DUNG CHAT & BÁO CÁO */}
                         <div className="flex-1 min-w-0 pb-6">
                             <div className="flex items-center gap-2 mb-1.5 pl-1">
                                 <span className="text-xs font-bold text-slate-300">{userName}</span>
@@ -77,6 +83,7 @@ const IncidentTimeline = ({ incident }) => {
                             <div className="bg-[#1e293b] p-4 rounded-xl border border-slate-700 shadow-sm text-sm text-slate-300 whitespace-pre-wrap break-words leading-relaxed">
                                 {event.content}
 
+                                {/* RENDER KHỐI ẢNH ĐÍNH KÈM NẾU CÓ */}
                                 {event.images && event.images.length > 0 && (
                                     <div className="mt-4 pt-3 border-t border-slate-700/80">
                                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-3 flex items-center gap-1.5">
@@ -92,6 +99,7 @@ const IncidentTimeline = ({ incident }) => {
                                     </div>
                                 )}
                                 
+                                {/* LOG ĐỔI TRẠNG THÁI */}
                                 {event.old_status !== event.new_status && event.old_status && (
                                     <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-center gap-2 text-xs font-mono font-bold text-indigo-400">
                                         <Activity size={12}/> Đổi trạng thái: <span className="text-slate-400 line-through">{event.old_status}</span> ➜ {event.new_status}
@@ -102,7 +110,6 @@ const IncidentTimeline = ({ incident }) => {
                     </div>
                 );
             })}
-           
         </div>
     );
 };
