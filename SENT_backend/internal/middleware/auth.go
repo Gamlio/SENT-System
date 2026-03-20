@@ -14,33 +14,37 @@ import (
 
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 1. Lấy chuỗi Authorization từ Header
+		var tokenString string
+
+		// 1. ƯU TIÊN 1: Lấy từ Header (Dùng cho các API Axios bình thường)
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Yêu cầu mã xác thực (Token)"})
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+
+		// 2. ƯU TIÊN 2: Lấy từ Query URL (Dùng cho thẻ <img src="...?token=...">)
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
+
+		// 3. Nếu tìm cả 2 nơi đều không thấy -> Từ chối truy cập
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Yêu cầu mã xác thực (Token không được để trống)"})
 			c.Abort()
 			return
 		}
 
-		// 2. Tách chuỗi để lấy Token (Định dạng: Bearer <token>)
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Định dạng Token không hợp lệ"})
-			c.Abort()
-			return
-		}
-		tokenString := parts[1] // Bây giờ tokenString đã được sử dụng
-
-		// 3. Giải mã và kiểm tra Token (Parse JWT)
+		// 4. Giải mã và kiểm tra Token (Parse JWT)
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			// Kiểm tra thuật toán mã hóa (HS256)
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("thuật toán không khớp: %v", token.Header["alg"])
 			}
-			return []byte(os.Getenv("SECRET_KEY")), nil // Sử dụng SECRET_KEY từ .env
+			return []byte(os.Getenv("SECRET_KEY")), nil
 		})
 
-		// 4. Xử lý lỗi Token hết hạn hoặc sai
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token đã hết hạn hoặc không hợp lệ"})
 			c.Abort()
@@ -55,7 +59,6 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// 6. Truy vấn người dùng từ Database dựa trên "sub" (Username)
 		username := claims["sub"].(string)
 
 		// Lấy org_id từ token (JWT lưu số dưới dạng float64)
@@ -67,7 +70,7 @@ func AuthRequired() gin.HandlerFunc {
 		}
 		orgID := uint(orgIDFloat)
 
-		// 7. Truy vấn CHÍNH XÁC người dùng đó TẠI công ty đó
+		// 6. Truy vấn CHÍNH XÁC người dùng đó TẠI công ty đó
 		var user models.User
 		if err := database.DB.Where("username = ? AND org_id = ?", username, orgID).First(&user).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Người dùng không tồn tại"})
@@ -75,14 +78,12 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// --- BẮT BUỘC PHẢI THÊM ĐOẠN NÀY ---
-		// 8. Bơm thông tin vào Context để API CreateUser có thể lấy ra bằng c.Get("org_id")
+		// 7. Bơm thông tin vào Context (Chú ý các key: user_id, org_id)
 		c.Set("user_id", user.ID)
 		c.Set("username", user.Username)
 		c.Set("org_id", *user.OrgID)
 		c.Set("role", user.Role)
 
-		// 9. Cấp phép cho request đi qua trạm kiểm soát để vào API chính
 		c.Next()
 	}
 }

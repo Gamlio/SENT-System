@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, ShieldCheck, Terminal, Lock, Usb, Cpu, Server, Briefcase, UserX, X } from 'lucide-react';
+import { MoreVertical, ShieldCheck, Terminal, Lock, Usb, Cpu, Server, Briefcase, UserX,Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import AppDialog from '../../../components/AppDialog';
 import axios from '../../../api/axios'; // Đảm bảo đường dẫn axios chuẩn
 
 const AgentActions = ({ agent }) => {
@@ -8,7 +9,15 @@ const AgentActions = ({ agent }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [showTypeModal, setShowTypeModal] = useState(false);
     const menuRef = useRef(null);
-
+    const [dialogConfig, setDialogConfig] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        type: 'info',
+        isAlertOnly: false,
+        onConfirm: null
+    });
+    const closeDialog = () => setDialogConfig({ ...dialogConfig, isOpen: false });
     // Xử lý click ra ngoài để đóng menu
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -21,17 +30,61 @@ const AgentActions = ({ agent }) => {
     }, []);
 
     // Gọi API cập nhật phân loại
-    const handleChangeType = async (type) => {
+   const handleChangeType = async (type) => {
         try {
             await axios.put(`/agents/${agent.hwid}/device-type`, { device_type: type });
-            alert("Đã cập nhật phân loại! Điểm rủi ro (Risk Score) đã được hệ thống tính toán lại tự động.");
             setShowTypeModal(false);
-            window.location.reload(); // Tải lại trang để cập nhật Badge UI ngay lập tức
+            setDialogConfig({
+                isOpen: true,
+                title: 'Thành công!',
+                message: 'Đã cập nhật phân loại thiết bị. Điểm rủi ro (Risk Score) đã được tính toán lại.',
+                type: 'success',
+                isAlertOnly: true,
+                onConfirm: () => window.location.reload()
+            });
         } catch (err) {
-            alert("Có lỗi xảy ra khi cập nhật phân loại thiết bị!");
+            setDialogConfig({
+                isOpen: true, title: 'Lỗi cập nhật', message: 'Không thể cập nhật phân loại thiết bị.', type: 'danger', isAlertOnly: true
+            });
         }
     };
-
+const handleDeleteAgent = () => {
+        setIsOpen(false); // Đóng menu thả xuống
+        
+        // Mở Dialog Hỏi "Bạn có chắc chắn?"
+        setDialogConfig({
+            isOpen: true,
+            title: 'Yêu cầu gỡ bỏ máy trạm?',
+            message: `Bạn đang gửi yêu cầu gỡ bỏ hệ thống giám sát trên máy ${agent.hostname} (${agent.hwid}). Thao tác này cần SOC Admin phê duyệt.`,
+            type: 'danger',
+            isAlertOnly: false,
+            confirmText: 'Gửi yêu cầu xóa',
+            onConfirm: async () => {
+                closeDialog();
+                try {
+                    await axios.post(`/agents/${agent.hwid}/request-delete`);
+                    // Gọi API thành công -> Bật Dialog báo thành công
+                    setDialogConfig({
+                        isOpen: true,
+                        title: 'Đã gửi yêu cầu',
+                        message: 'Đơn xin gỡ bỏ thiết bị đã được chuyển đến Trung tâm Phê duyệt.',
+                        type: 'success',
+                        isAlertOnly: true,
+                        onConfirm: () => window.location.reload()
+                    });
+                } catch (err) {
+                    // Lỗi -> Bật Dialog báo lỗi
+                    setDialogConfig({
+                        isOpen: true,
+                        title: 'Từ chối yêu cầu',
+                        message: err.response?.data?.error || "Không thể gửi yêu cầu xóa lúc này.",
+                        type: 'warning',
+                        isAlertOnly: true
+                    });
+                }
+            }
+        });
+    };
     return (
         <div className="relative flex items-center" ref={menuRef}>
             <button 
@@ -83,9 +136,21 @@ const AgentActions = ({ agent }) => {
                     <button className="w-full text-left px-4 py-3 text-sm text-red-500/50 flex items-center gap-3 cursor-not-allowed" title="Sắp ra mắt">
                         <Lock size={16} /> Khóa máy từ xa
                     </button>
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteAgent(); // Gọi hàm xóa mới
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-3 transition"
+                    >
+                        <Trash2 size={16} /> Yêu cầu Gỡ bỏ
+                    </button>
                 </div>
             )}
-
+            <AppDialog 
+                {...dialogConfig} 
+                onClose={closeDialog} 
+            />
             {/* [MỚI] MODAL PHÂN LOẠI THIẾT BỊ */}
             {showTypeModal && (
                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>

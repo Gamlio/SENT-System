@@ -79,16 +79,22 @@ const IncidentDetail = () => {
             formData.append('action_type', type);
             formData.append('content', text || summary || '');
 
-            // Đính kèm tất cả file ảnh vào form
             if (files && files.length > 0) {
                 files.forEach(file => {
                     formData.append('images', file);
                 });
             }
 
-            // [SỬA LỖI Ở ĐÂY]: Gửi trực tiếp formData, KHÔNG tự set Content-Type.
-            // Axios sẽ tự động gán header multipart/form-data kèm mã boundary chuẩn xác.
-            await axiosInstance.post(`/incidents/${id}/activity`, formData);
+            // [SỬA LỖI CHỐT HẠ]: Ép Axios phải gửi dạng multipart/form-data
+            // Ghi đè mọi cấu hình mặc định của axiosInstance
+            await axiosInstance({
+                method: 'post',
+                url: `/incidents/${id}/activity`,
+                data: formData,
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
             
             // Refetch lại dữ liệu để giao diện cập nhật ngay lập tức
             const res = await axiosInstance.get(`/incidents/${id}`);
@@ -96,7 +102,13 @@ const IncidentDetail = () => {
             
         } catch (error) {
             console.error("Lỗi cập nhật:", error);
-            alert("Không thể cập nhật sự cố! Vui lòng kiểm tra Console log.");
+            
+            // In lỗi chi tiết ra màn hình để dễ bắt bệnh nếu còn vướng
+            if (error.response && error.response.data) {
+                alert(`Lỗi Server: ${error.response.data.error}`);
+            } else {
+                alert("Không thể cập nhật sự cố! Vui lòng kiểm tra Console log.");
+            }
         }
     };
   

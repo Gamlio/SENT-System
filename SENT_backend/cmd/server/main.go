@@ -59,6 +59,7 @@ func main() {
 		agentPublicGroup := v1Group.Group("/agents")
 		{
 			agentPublicGroup.POST("/push", agents.PushDataHandler)
+			agentPublicGroup.POST("/enroll", agents.EnrollAgent)
 		}
 		protected := v1Group.Group("")
 		protected.Use(middleware.AuthRequired()) // <--- CHỐT BẢO VỆ NẰM Ở ĐÂY
@@ -77,10 +78,12 @@ func main() {
 				agentsGroup.GET("", agents.GetAgents)
 				agentsGroup.GET("/:hwid", agents.GetAgentDetail)
 				agentsGroup.GET("/:hwid/logs", agents.GetAgentLogs)
-
+				agentsGroup.POST("/generate-token", agents.GenerateEnrollmentToken)
 				agentsGroup.PUT("/:hwid/assign", agents.AssignManager)
 				agentsGroup.PUT("/:hwid/device-type", agents.UpdateDeviceType)
 				agentPublicGroup.GET("/sync-policies", policies.SyncPoliciesForAgent)
+				agentsGroup.POST("/:hwid/request-delete", agents.RequestDeleteAgent)
+				agentsGroup.POST("/bulk-request-delete", agents.RequestBulkDeleteAgents)
 			}
 
 			aiDocs := protected.Group("/docs")
@@ -140,6 +143,11 @@ func main() {
 
 				// Admin thao tác: Duyệt hoặc Từ chối
 				approvalsGroup.PUT("/:id/review", approvals.ReviewTicket)
+			}
+			filesGroup := protected.Group("/files")
+			{
+				// GET /api/v1/files/incidents/:filename
+				filesGroup.GET("/incidents/:filename", incidents.GetIncidentImage)
 			}
 		}
 	}

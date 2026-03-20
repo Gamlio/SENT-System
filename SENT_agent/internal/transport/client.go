@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"sent_agent/internal/config"
 	"sent_agent/internal/utils"
 )
 
@@ -19,13 +18,13 @@ const (
 	LOG_FILE   = "agent_history.log"
 )
 
+// XÓA bỏ trường CompanyCode ở đây
 type Payload struct {
-	Type        string      `json:"type"`
-	LogType     string      `json:"log_type"`
-	HWID        string      `json:"hwid"`
-	Hostname    string      `json:"hostname"`
-	CompanyCode string      `json:"company_code"`
-	Data        interface{} `json:"data"`
+	Type     string      `json:"type"`
+	LogType  string      `json:"log_type"`
+	HWID     string      `json:"hwid"`
+	Hostname string      `json:"hostname"`
+	Data     interface{} `json:"data"`
 }
 
 type Client struct {
@@ -37,7 +36,6 @@ var AgentClient = &Client{
 	LastHashes: make(map[string]string),
 }
 
-// [CẬP NHẬT] Đổi hàm trả về string để main.go biết trạng thái (ACTIVE, PENDING, REJECTED)
 func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, force bool) string {
 	c.Mutex.Lock()
 	currentHash := utils.CalculateHash(data)
@@ -50,20 +48,20 @@ func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, f
 	c.LastHashes[logType] = currentHash
 	c.Mutex.Unlock()
 
+	// Đã xóa config.Current.CompanyCode
 	payload := Payload{
-		Type:        "DATA",
-		LogType:     logType,
-		HWID:        hwid,
-		Hostname:    hostname,
-		CompanyCode: config.Current.CompanyCode,
-		Data:        data,
+		Type:     "DATA",
+		LogType:  logType,
+		HWID:     hwid,
+		Hostname: hostname,
+		Data:     data,
 	}
 
 	jsonBytes, _ := json.Marshal(payload)
 	resp, err := http.Post(SERVER_URL, "application/json", bytes.NewBuffer(jsonBytes))
 
 	status := "OK"
-	serverState := "ACTIVE" // Mặc định là Active nếu gọi thành công
+	serverState := "ACTIVE"
 
 	if err != nil {
 		status = "FAIL: " + err.Error()
@@ -73,18 +71,17 @@ func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, f
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		status = fmt.Sprintf("HTTP %d", resp.StatusCode)
 
-		// [MỚI] Bắt lỗi 403 từ Server để lấy trạng thái PENDING/REJECTED
 		if resp.StatusCode == http.StatusForbidden {
 			var errResp map[string]interface{}
 			json.Unmarshal(bodyBytes, &errResp)
 			if state, ok := errResp["status"].(string); ok {
-				serverState = state // Trả về "PENDING" hoặc "REJECTED"
+				serverState = state
 			}
 		}
 	}
 
 	logToFile("DATA", logType, status)
-	return serverState // Trả trạng thái về cho main.go xử lý
+	return serverState
 }
 
 func logToFile(pType, lType, status string) {
@@ -96,21 +93,19 @@ func logToFile(pType, lType, status string) {
 	}
 }
 
-// Thêm cấu trúc cho Dữ liệu Cảnh báo
 type AlertData struct {
 	AlertType string `json:"alert_type"`
 	Message   string `json:"message"`
 	Severity  string `json:"severity"`
 }
 
-// Hàm gửi cảnh báo khẩn cấp (Bỏ qua kiểm tra Hash, gửi lập tức)
 func (c *Client) SendAlert(hwid, hostname, alertType, message, severity string) {
+	// Đã xóa config.Current.CompanyCode
 	alertPayload := Payload{
-		Type:        "ALERT", // Phân biệt với DATA bình thường
-		LogType:     "alert",
-		HWID:        hwid,
-		Hostname:    hostname,
-		CompanyCode: config.Current.CompanyCode,
+		Type:     "ALERT",
+		LogType:  "alert",
+		HWID:     hwid,
+		Hostname: hostname,
 		Data: AlertData{
 			AlertType: alertType,
 			Message:   message,

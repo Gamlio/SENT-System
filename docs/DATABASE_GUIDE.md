@@ -1,70 +1,37 @@
-# HỆ THỐNG CƠ SỞ DỮ LIỆU SENT v3.2 (Optimized for Multi-tenant)
-Hệ thống sử dụng PostgreSQL với ORM Gorm. Dưới đây là lược đồ CSDL cập nhật phục vụ cho hệ thống giám sát đa nền tảng.
+# HỆ THỐNG CƠ SỞ DỮ LIỆU SENT v4.0 (Enterprise SOC Architecture)
 
-## I. NHÓM QUẢN TRỊ (Core Admin)
-1.  **organizations**: Quản lý đa khách hàng (Multi-tenant).
-2.  **users**: Người dùng hệ thống (Admin/Staff).
-3.  **regions**: Phân vùng địa lý/chi nhánh của máy trạm.
+Hệ thống sử dụng PostgreSQL với ORM Gorm, thiết kế theo chuẩn Multi-tenant (Đa khách hàng) và tối ưu hóa cho quy trình Auto-Triage (Tự động phân luồng sự cố).
 
-## II. NHÓM GIÁM SÁT THIẾT BỊ (Device Monitoring)
-Đây là nhóm bảng cốt lõi, lưu trữ dữ liệu từ Agent gửi về.
+## I. NHÓM QUẢN TRỊ GLOBAL (Core Admin)
+1. **organizations**: Quản lý đa khách hàng/công ty.
+2. **users**: Người dùng hệ thống (Admin, Trưởng ca SOC, Helpdesk).
+3. **regions**: Phân vùng địa lý/chi nhánh của máy trạm.
 
-### 1. agents (Bảng chủ)
-Lưu thông tin định danh và trạng thái sống.
-* `hw_id` (PK): Mã phần cứng duy nhất (VD: UUID của Mainboard).
-* `hostname`: Tên máy tính.
-* `ip_address`: IP LAN (Được cập nhật bởi Telemetry Service).
-* `status`: Trạng thái (online/offline).
-* `last_seen`: Thời điểm cuối cùng nhận được gói tin bất kỳ.
+## II. NHÓM QUẢN LÝ TÀI SẢN (Asset Management)
+Lưu trữ thông tin định danh và trạng thái thiết bị từ Ninja Agent gửi về.
+1. **agents** (Bảng chủ): 
+   - `hw_id` (PK): Mã phần cứng duy nhất.
+   - `status`: Trạng thái Zero-Trust (`PENDING`, `ACTIVE`, `REJECTED`, `ISOLATED`).
+   - `risk_score`: Điểm rủi ro động (Tính toán realtime dựa trên Sự cố).
+   - `device_type`: Chức vụ thiết bị (SERVER, IT_ADMIN, GUEST) để tính trọng số rủi ro.
+2. **agent_inventories**: Cấu hình phần cứng (OS, CPU, RAM).
 
-### 2. agent_inventories
-Lưu cấu hình phần cứng tĩnh.
-* `os_info`: Hệ điều hành (VD: "Windows 11 Pro", "Ubuntu 22.04 LTS").
-* `cpu_model`: Tên Chip xử lý.
-* `ram_total_gb`: Dung lượng RAM thực tế.
+## III. NHÓM DỮ LIỆU VIỄN TRẮC (Telemetry & Logs)
+Nhận dữ liệu thô từ Agent qua thuật toán Differential Reporting.
+1. **software_items**: Danh sách phần mềm (Kèm `file_hash` và trạng thái `GHOST_REGISTRY`).
+2. **usb_logs**: Lịch sử cắm USB (Kèm `vid`, `pid`, `device_hash`).
+3. **open_ports**: Các cổng mạng đang mở (Phát hiện Tường lửa tắt, mở port 3389/22).
 
-### 3. open_ports (Telemetry)
-Lưu trạng thái mạng thời gian thực.
-* `port`: Số hiệu cổng đang mở (Listen).
-* `process_name`: Tên tiến trình chiếm dụng cổng (VD: `sshd`, `nginx`, `svchost.exe`).
+## IV. NHÓM VẬN HÀNH SOC (Incident Response)
+Trái tim của hệ thống, áp dụng thuật toán Exact Matching Correlation.
+1. **security_alerts**: Cảnh báo đơn lẻ (Log thô vi phạm). Luôn được gắn vào một `Incident` thông qua `incident_id`.
+2. **incidents**: Hồ sơ Sự cố (Gom nhóm các Alert cùng loại trong 24h).
+   - `type`: Tên gia tộc lỗi (VD: `Malware Detected`, `Firewall Disabled`).
+   - `status`: Tiến trình xử lý (`Open`, `Investigating`, `Resolved`).
+3. **incident_activities**: Nhật ký tương tác (Timeline).
+   - Lưu trữ lệnh điều tra, File/Ảnh bằng chứng hậu kiểm (`images`), và báo cáo từ AI Copilot.
 
-### 4. software_items
-Lưu danh sách phần mềm đã cài đặt.
-* `software_name`: Tên ứng dụng.
-* `version`: Phiên bản.
-* *Lưu ý:* Bảng này được làm mới (Refresh) hoàn toàn mỗi khi Agent báo cáo thay đổi.
-
-### 5. agent_snapshots
-Bảng phụ trợ kỹ thuật, dùng để tối ưu băng thông.
-* `last_port_hash`: Mã băm của lần gửi Port cuối cùng.
-* `last_software_hash`: Mã băm của lần gửi Software cuối cùng.
-
-## III. NHÓM AN NINH & SỰ CỐ (Security)
-
-### 1. usb_logs
-Lưu lịch sử kết nối thiết bị ngoại vi.
-* `device_name`: Tên thiết bị (VD: "Kingston DataTraveler").
-* `device_id`: VID/PID của USB.
-* `event_type`: "plugged" (cắm) hoặc "unplugged" (rút).
-* `is_whitelisted`: Cờ đánh dấu thiết bị có nằm trong danh sách tin cậy không.
-
-### 2. incidents & security_alerts
-* **security_alerts:** Các cảnh báo lẻ tẻ (VD: Cắm USB lạ, Phần mềm đen).
-* **incidents:** Sự cố tổng hợp (Gom nhiều alert lại để xử lý theo quy trình).
-4. **agents**: Bảng định danh máy trạm (Primary Key: `hw_id`).
-5. **agent_inventories**: Cấu hình phần cứng (CPU, RAM, OS).
-6. **software_items**: Danh sách phần mềm thu thập từ Agent.
-7. **agent_snapshots**: Lưu trữ mã băm (Hash) để thực hiện Differential Reporting.
-
-## IV. NHÓM 4: GIÁM SÁT AN NINH & SỰ CỐ (SOC/IR)
-8. **incidents**: Hồ sơ điều tra sự cố tập trung.
-   - Tổng hợp nhiều cảnh báo thuộc về 1 máy trạm.
-   - `ai_analysis`: Trường lưu trữ kịch bản Playbook do AI (RAG) tự động sinh ra.
-   - `status`: Quản lý luồng (Open / Resolved).
-9. **security_alerts**: Cảnh báo kỹ thuật chi tiết (Bằng chứng số). Liên kết với bảng `incidents` qua `incident_id`.
-10. **security_events**, **open_ports**, **usb_logs**: Các nhật ký thô (Raw logs) từ Endpoint.
-
-## V. NHÓM 5: CHÍNH SÁCH TẬP TRUNG (Compliance & RAG)
-11. **universal_policies**: Luật kỹ thuật dạng cứng (Cấm cổng, cấm phần mềm).
-12. **policy_documents**: Hồ sơ tài liệu vật lý (PDF/Word). Đóng vai trò là Vector Knowledge Base để AI đọc và sinh Playbook.
-
+## V. NHÓM TRI THỨC & AI (AI RAG & Policies)
+1. **universal_policies**: Bộ luật bảo mật do Admin cấu hình (Blacklist/Whitelist).
+2. **policy_documents**: Tài liệu PDF/Word đã upload (Làm Knowledge Base cho AI).
+3. **ai_chat_sessions** & **ai_chat_logs**: Lịch sử hỏi đáp giữa Admin và SENT Copilot.

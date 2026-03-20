@@ -1,34 +1,70 @@
-PHẦN 1: MÔ HÌNH TOÁN HỌC CỦA THUẬT TOÁN RISK SCORINGĐể điểm số thực sự phản ánh đúng rủi ro mà không bị lạm phát (Alert Fatigue), một sự kiện bảo mật (Event) từ khi sinh ra đến khi tính vào tổng điểm của máy trạm phải đi qua 4 Trọng số (Weights).
-1. Các Trọng số thành phần (The 4 Pillars of Risk)
-$W_{base}$ (Base Severity - Mức độ cơ bản): Điểm gốc của hành vi vi phạm.Critical (Tắt Antivirus, Phát hiện Malware): 80 điểm.High (Cắm USB lạ, Mở Port rủi ro cao như 3389): 60 điểm.Medium (Cài phần mềm Crack/Torrent): 30 điểm.Low (Lỗi cấu hình nhỏ): 10 điểm.
+# SENT SOC - MÔ HÌNH CHẤM ĐIỂM RỦI RO ĐỘNG (Dynamic Risk Scoring v4.0)
 
-$W_{time}$ (Temporal Escalation - Thang độ thời gian): Lỗi càng để lâu không ai xử lý (Helpdesk chưa vào cuộc), rủi ro càng tăng.Dưới 4 giờ: 1.0 (Chưa phạt).Từ 4h - 24h: 1.2 (Phạt x1.2).Trên 24h: 1.5 (Cảnh báo đỏ, Helpdesk đang bỏ sót việc).
+Tài liệu này mô tả thuật toán chấm điểm rủi ro (Risk Score) của hệ thống SENT SOC. 
+Phiên bản 4.0 đánh dấu sự chuyển đổi từ việc "Chấm điểm từng Cảnh báo (Alert)" sang "Chấm điểm theo Hồ sơ Sự cố (Incident)", giúp phản ánh chính xác tình trạng sức khỏe của máy trạm theo thời gian thực và chống lạm phát điểm.
 
-$W_{freq}$ (Frequency - Tần suất vi phạm): Đánh giá tính "cố tình" của người dùng.Vi phạm lần đầu: 1.0.Lặp lại cùng 1 lỗi (VD: Cắm đi cắm lại cái USB bị cấm 5 lần trong ngày): 1.3 (Hệ số ngoan cố).
+---
 
-$W_{asset}$ (Asset Criticality - Tầm quan trọng của tài sản): Máy của Giám đốc (CEO) hoặc Máy chủ (Server) dính 1 lỗi Medium sẽ nguy hiểm hơn máy của nhân viên thực tập dính lỗi Medium.Máy chủ / Lãnh đạo (Tier 1): 1.5Nhân viên chính thức (Tier 2): 1.0Máy Public / Khách (Tier 3): 0.8
+## PHẦN 1: TRIẾT LÝ THIẾT KẾ (THE PHILOSOPHY)
 
-2. Công thức tính điểm của MỘT Sự kiện (Event Risk Score - $E$)
-Điểm của một cảnh báo cụ thể sẽ biến thiên theo thời gian và tần suất:
+1. **Incident-Based (Dựa trên Sự cố):** Một máy trạm bị nhiễm virus có thể sinh ra 100 cảnh báo (Alerts) giống nhau. Hệ thống SENT sẽ gom chúng thành 1 Sự cố (Incident) duy nhất. Điểm rủi ro được tính trên Sự cố này, do đó điểm không bị cộng dồn vô lý lên hàng nghìn điểm.
+2. **Real-time Cooling (Tự động hạ nhiệt):** Khi Trưởng ca SOC tiến hành điều tra và bấm "Đóng Case" (Resolved), điểm rủi ro của máy trạm sẽ ngay lập tức được tính toán lại và tụt giảm về mức an toàn.
+3. **Asset-Aware (Nhận thức Tài sản):** Cùng một lỗi "Cắm USB lạ", nếu xảy ra trên máy Lễ tân thì rủi ro thấp, nhưng nếu xảy ra trên máy Domain Controller (Server) thì rủi ro cực kỳ nghiêm trọng.
 
-    $$E_i = W_{base} \times W_{time} \times W_{freq}$$3.
+---
 
-Công thức tính Tổng điểm của Máy trạm (Total Asset Risk Score - $R$)Áp dụng mô hình Weighted Max-Score (Lấy lỗi nặng nhất làm gốc, các lỗi phụ chỉ đóng góp một phần nhỏ để chống lạm phát),
-  sau đó nhân với mức độ quan trọng của thiết bị:
-  
-   $$R_{total} = \left( \max(E_1, E_2, ..., E_n) + \alpha \sum_{j \neq \max} E_j \right) \times W_{asset}$$
-Trong đó:
-$\max(E)$ là sự kiện có điểm cao nhất hiện tại.
-$\alpha$ là hệ số suy giảm cho các lỗi phụ (Thường chọn $\alpha = 0.15$ hoặc $15\%$).
-$R_{total}$ luôn được giới hạn (Cap) tối đa là 100 điểm.
+## PHẦN 2: MÔ HÌNH TOÁN HỌC & CÁC TRỌNG SỐ
 
-PHẦN 2: LUỒNG VẬN HÀNH "HUMAN-IN-THE-LOOP" (Quy trình nghiệp vụ Helpdesk)
-Vì Agent chỉ đóng vai trò "Camera giám sát", luồng rủi ro sẽ diễn ra như sau:
-Phát hiện: Agent gửi log "Nhân viên A cài uTorrent" về Backend.
+### 1. Phân loại Mức độ Sự cố ($S_{base}$)
+Mỗi Sự cố (Incident) khi được tạo ra sẽ mang một mức độ nghiêm trọng (Severity/Priority) gốc:
+- **Critical (P1):** 80 điểm *(VD: Mã độc, Tắt Tường lửa, Tắt Antivirus)*
+- **High (P2):** 60 điểm *(VD: Ghost Registry, Mở Port 3389 trái phép)*
+- **Medium (P3):** 30 điểm *(VD: Cắm USB chưa duyệt, Cài phần mềm Crack/Torrent)*
+- **Low (P4):** 10 điểm *(VD: Lỗi cấu hình nhẹ)*
 
-Tính điểm lần 1: Backend chạy thuật toán, gán điểm $E_1 = 30$. Điểm máy của A lên 30 (Mức Vàng).
-Leo thang (Escalation): Qua 1 ngày (24h), Helpdesk lười không xử lý, nhân viên A vẫn không gỡ uTorrent. Thuật toán tự chạy lại: $E_1 = 30 \times 1.5 = 45$. Máy chuyển sang mức Cam.
+### 2. Trọng số Tài sản ($W_{asset}$)
+Dựa trên chức vụ (Device Type) của thiết bị trong mạng Doanh nghiệp:
+- **Máy chủ (SERVER - Tier 1):** $W_{asset} = 2.0$ (Nhân đôi rủi ro).
+- **Máy Quản trị IT (IT_ADMIN - Tier 2):** $W_{asset} = 1.5$.
+- **Máy Văn phòng chuẩn (STANDARD - Tier 3):** $W_{asset} = 1.0$.
+- **Máy Khách/Lễ tân (GUEST - Tier 4):** $W_{asset} = 0.8$ (Giảm nhẹ rủi ro).
 
-Can thiệp (Helpdesk Action): Helpdesk thấy máy A đỏ chót, bèn gọi điện: "Anh A gỡ ngay phần mềm và viết báo cáo giải trình trên Web cho em".
+---
 
-Giảm trừ (Decay): Nhân viên gỡ app. Helpdesk lên Dashboard bấm "Đã xử lý (Resolved)". Sự kiện $E_1$ bị loại khỏi thuật toán. Điểm máy A lập tức tụt về 0.
+## PHẦN 3: CÔNG THỨC TÍNH TỔNG ĐIỂM (WEIGHTED MAX-SCORE)
+
+Để chống lại việc cộng dồn điểm quá mức khi một máy dính nhiều Sự cố khác nhau cùng lúc, SENT SOC áp dụng công thức **Weighted Max-Score**.
+
+**Công thức:**
+$$R_{total} = \left( S_{max} + \alpha \sum S_{secondary} \right) \times W_{asset}$$
+
+**Giải thích:**
+- Lấy điểm của **Sự cố nặng nhất ($S_{max}$)** đang MỞ làm điểm mốc cơ sở.
+- Các Sự cố phụ ($S_{secondary}$) đang MỞ khác chỉ đóng góp một hệ số rất nhỏ $\alpha$ (Mặc định SENT sử dụng $\alpha = 0.15$ tức $15\%$) vào tổng điểm.
+- Cuối cùng nhân với Trọng số thiết bị ($W_{asset}$).
+- **Giới hạn (Cap):** Điểm $R_{total}$ luôn được chặn tối đa là **100 điểm**.
+
+---
+
+## PHẦN 4: VÍ DỤ VẬN HÀNH THỰC TẾ (USE CASE)
+
+**Bối cảnh:** Máy tính `PC-KETOAN` (Tier 3 -> $W_{asset} = 1.0$) đang hoạt động bình thường (0 điểm).
+
+1. **08:00 AM:** Kế toán cắm USB lạ.
+   - Hệ thống lập Incident `[USB Violation]` (P3 -> 30đ).
+   - Điểm máy trạm: $30 \times 1.0 = 30$ điểm. (Màu Vàng - Cảnh báo).
+
+2. **09:00 AM:** Virus từ USB lây vào máy, tự động tắt Tường lửa.
+   - Hệ thống lập Incident `[Firewall Disabled]` (P1 -> 80đ).
+   - Tính lại điểm: Lỗi nặng nhất là P1 (80). Lỗi phụ là P3 (30).
+   - Công thức: $(80 + 15\% \times 30) \times 1.0 = 80 + 4.5 = 84.5$ điểm.
+   - Điểm máy trạm: **85 điểm**. (Màu Đỏ - Nguy hiểm).
+
+3. **10:00 AM:** Nhân viên SOC vào hệ thống, điều tra và đóng Case `[Firewall Disabled]`.
+   - Case P1 chuyển sang Resolved (Bị loại khỏi công thức tính).
+   - Máy chỉ còn Case P3 đang Open.
+   - Điểm máy trạm tự động tụt về: **30 điểm**.
+
+4. **10:30 AM:** SOC đóng nốt Case `[USB Violation]`.
+   - Máy sạch bóng sự cố.
+   - Điểm máy trạm: **0 điểm** (Màu Xanh - An toàn).

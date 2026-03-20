@@ -52,10 +52,10 @@ func ProcessAgentData(payload AgentPayload) {
 		agent_data.ProcessSoftware(agent, payload.Data)
 	case "usb":
 		agent_data.ProcessUSB(agent, payload.Data)
-	case "telemetry":
-		agent_data.ProcessTelemetry(agent, payload.Data)
-	case "inventory":
-		agent_data.ProcessInventory(agent, payload.Data)
+	case "network": // <--- CASE MỚI THAY THẾ TELEMETRY
+		agent_data.ProcessNetwork(agent, payload.Data)
+	case "ports": // <--- CASE MỚI DÀNH RIÊNG CHO PORT
+		agent_data.ProcessPorts(agent, payload.Data)
 	default:
 		log.Printf("⚠️ Cảnh báo: Loại log không hợp lệ [%s] từ máy %s", payload.LogType, agent.Hostname)
 	}

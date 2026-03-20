@@ -72,38 +72,40 @@ func GetIncidentDetail(c *gin.Context) {
 func AddIncidentActivity(c *gin.Context) {
 	id := c.Param("id")
 
-	// 1. DÙNG MULTIPART FORM (Cho phép nhận cả text và file ảnh)
+	// [QUAN TRỌNG NHẤT]: XÓA BỎ ShouldBindJSON.
+	// Ép Gin đọc Multipart Form (Tối đa 32MB) để nhận được cả Text lẫn Ảnh
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+		fmt.Println("Lỗi đọc form:", err)
+	}
+
+	// Đọc Text từ FormData
 	actionType := c.PostForm("action_type")
 	content := c.PostForm("content")
 
+	// Nếu vẫn trống nghĩa là Frontend gửi sai
 	if actionType == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu action_type"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Backend không nhận được action_type."})
 		return
 	}
 
-	// 2. LẤY USER ID AN TOÀN TUYỆT ĐỐI (Chống Panic sập Server)
+	// Lấy UserID an toàn chống Crash
 	var uid uint
-	if val, exists := c.Get("userID"); exists {
+	if val, exists := c.Get("userID"); exists && val != nil {
 		switch v := val.(type) {
-		case float64:
-			uid = uint(v)
 		case uint:
 			uid = v
+		case float64:
+			uid = uint(v)
 		case int:
 			uid = uint(v)
 		}
-	} else if val, exists := c.Get("user_id"); exists {
-		switch v := val.(type) {
-		case float64:
-			uid = uint(v)
-		case uint:
+	} else if val, exists := c.Get("user_id"); exists && val != nil {
+		if v, ok := val.(uint); ok {
 			uid = v
-		case int:
-			uid = uint(v)
 		}
 	}
 
-	// 3. TÌM HỒ SƠ SỰ CỐ
+	// Tìm Hồ sơ Sự cố
 	var incident models.Incident
 	if err := database.DB.First(&incident, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy hồ sơ sự cố"})
@@ -113,7 +115,7 @@ func AddIncidentActivity(c *gin.Context) {
 	oldStatus := incident.Status
 	newStatus := oldStatus
 
-	// 4. XỬ LÝ CHUYỂN TRẠNG THÁI & HẠ ĐIỂM RỦI RO
+	// --- LOGIC XỬ LÝ CHUYỂN TRẠNG THÁI ---
 	if actionType == "INVESTIGATE" && oldStatus == "Open" {
 		newStatus = "Investigating"
 		database.DB.Model(&incident).Updates(map[string]interface{}{
@@ -123,37 +125,66 @@ func AddIncidentActivity(c *gin.Context) {
 	} else if actionType == "RESOLVE" {
 		newStatus = "Resolved"
 		database.DB.Model(&incident).Update("status", newStatus)
-		// Đóng tất cả cảnh báo con
+
+		// Đóng TẤT CẢ các cảnh báo (Alerts)
 		database.DB.Model(&models.SecurityAlert{}).Where("incident_id = ?", incident.ID).Update("is_resolved", true)
-		// Hạ nhiệt điểm rủi ro của máy trạm (Bắt buộc import service scoring)
+
+		// HẠ ĐIỂM RỦI RO NGAY LẬP TỨC
 		scoring.RecalculateRiskScore(incident.AgentHWID)
 	}
 
-	// 5. XỬ LÝ LƯU FILE ẢNH VÀO Ổ CỨNG
+	// --- LOGIC LƯU FILE ẢNH VÀO Ổ CỨNG ---
 	var imagePaths []string
 	form, err := c.MultipartForm()
-	if err == nil {
+
+	// Lấy OrgID của User đang thao tác để tạo thư mục riêng
+	var currentUser models.User
+	database.DB.First(&currentUser, uid)
+	orgID := currentUser.OrgID
+
+	if err == nil && form != nil {
 		files := form.File["images"]
-		uploadDir := "uploads/incidents"
-		os.MkdirAll(uploadDir, os.ModePerm) // Đảm bảo thư mục tồn tại
+
+		// 1. CHIA THƯ MỤC THEO CÔNG TY: uploads/org_1/incidents/
+		uploadDir := fmt.Sprintf("uploads/org_%d/incidents", *orgID)
+		os.MkdirAll(uploadDir, os.ModePerm)
 
 		for _, file := range files {
-			// Tạo tên file độc nhất tránh trùng lặp
+			// 2. KIỂM TRA ĐUÔI FILE (Extension)
+			ext := strings.ToLower(filepath.Ext(file.Filename))
+			allowedExts := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".pdf": true}
+			if !allowedExts[ext] {
+				fmt.Println("Khóa file rác:", file.Filename)
+				continue // Bỏ qua file không hợp lệ
+			}
+
+			// 3. KIỂM TRA MAGIC BYTES (MIME TYPE) CHỐNG ĐỔI ĐUÔI GIẢ MẠO
+			openedFile, _ := file.Open()
+			buffer := make([]byte, 512) // Đọc 512 byte đầu tiên
+			openedFile.Read(buffer)
+			openedFile.Close()
+
+			mimeType := http.DetectContentType(buffer)
+			if !strings.HasPrefix(mimeType, "image/") && mimeType != "application/pdf" {
+				fmt.Println("Khóa file giả mạo MIME:", file.Filename)
+				continue
+			}
+
+			// Lưu file an toàn
 			filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), file.Filename)
 			filepathStr := filepath.Join(uploadDir, filename)
 
 			if err := c.SaveUploadedFile(file, filepathStr); err == nil {
-				// Chuyển đường dẫn thành web path (/uploads/incidents/...)
-				webPath := "/" + filepath.ToSlash(filepathStr)
-				imagePaths = append(imagePaths, webPath)
+				// 4. CHỈ LƯU TÊN FILE VÀO DB (Không lưu nguyên đường dẫn thật)
+				imagePaths = append(imagePaths, filename)
 			}
 		}
 	}
 
-	// Convert mảng ảnh thành chuỗi JSON để lưu DB
+	// Convert mảng đường dẫn ảnh thành JSON String
 	imagesJSON, _ := json.Marshal(imagePaths)
 
-	// 6. TẠO LỊCH SỬ TIMELINE
+	// --- LƯU TIMELINE (NHẬT KÝ HOẠT ĐỘNG) ---
 	activity := models.IncidentActivity{
 		IncidentID: incident.ID,
 		UserID:     &uid,
@@ -161,11 +192,38 @@ func AddIncidentActivity(c *gin.Context) {
 		Content:    content,
 		OldStatus:  oldStatus,
 		NewStatus:  newStatus,
-		Images:     string(imagesJSON), // Lưu mảng ảnh
+		Images:     string(imagesJSON), // Ghi ảnh vào DB
 	}
 	database.DB.Create(&activity)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công", "activity": activity})
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Cập nhật thành công",
+		"activity": activity,
+	})
+}
+
+func GetIncidentImage(c *gin.Context) {
+	filename := c.Param("filename")
+
+	// Lấy User từ Context (Do Middleware AuthRequired đã nạp vào)
+	userIDVal, _ := c.Get("userID")
+	var user models.User
+	if err := database.DB.First(&user, userIDVal).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không xác định được danh tính"})
+		return
+	}
+
+	// Trỏ tới đúng thư mục của công ty User đó
+	filePath := fmt.Sprintf("uploads/org_%d/incidents/%s", *user.OrgID, filename)
+
+	// Kiểm tra file có tồn tại không
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy file hoặc bạn không có quyền xem!"})
+		return
+	}
+
+	// Trả file về cho trình duyệt
+	c.File(filePath)
 }
 
 // PUT /api/v1/incidents/:id/playbook

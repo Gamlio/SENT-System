@@ -1,0 +1,5 @@
+{
+  "enroll_token": "01-79BC5CA6",
+  "secret_key": "d5457dbe3f60b653baa7eca2ecc5a4e9",
+  "backend_url": "http://localhost:8000"
+}

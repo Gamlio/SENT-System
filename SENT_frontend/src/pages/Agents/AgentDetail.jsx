@@ -6,6 +6,7 @@ import axios from '../../api/axios';
 import AgentUSB from './components/AgentUSB';
 import AgentSoftware from './components/AgentSoftware';
 import AgentLogs from './components/AgentLogs';
+import AgentPort from './components/AgentPort';
 // import AgentPort from './components/AgentPort';
 
 const AgentDetail = () => {
@@ -182,9 +183,10 @@ const AgentDetail = () => {
                     <AgentUSB usbLogs={agent.usb_logs || []} />
                 </div>
                 {/* CỘT 4: Danh sách Cổng  */}
-                {/* <div>
-                    <AgentPort portLogs={agent.port_logs || []} />
-                </div> */}
+               <div>
+                    {/* Chú ý: Backend trả về field open_ports, bạn check kỹ API nhé. Nếu là port_logs thì đổi lại */}
+                    <AgentPort portLogs={agent.open_ports || []} />
+                </div>
             </div>
 
             {/* --- PHẦN DƯỚI: NHẬT KÝ CẢNH BÁO (Full Width) --- */}

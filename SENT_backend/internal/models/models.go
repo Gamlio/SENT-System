@@ -96,12 +96,22 @@ type Agent struct {
 	RiskScore  int    `json:"risk_score" gorm:"default:0"`
 	Status     string `json:"status" gorm:"default:'PENDING'"`
 	DeviceType string `json:"device_type" gorm:"default:'OFFICE'"`
+
+	SecretKey string `json:"-"`
 	// [MỚI] ĐỒNG BỘ: Lưu người đã cấp phép máy trạm này
 	ApprovedBy string `json:"approved_by"`
 
 	Incidents []Incident `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"incidents"`
 }
+type EnrollmentToken struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
 
+	Token     string    `gorm:"uniqueIndex;not null" json:"token"`
+	OrgID     uint      `json:"org_id"`
+	ExpiresAt time.Time `json:"expires_at"` // Hạn sử dụng (VD: 24h)
+	CreatedBy string    `json:"created_by"` // Username của Admin đã tạo mã
+}
 type AgentInventory struct {
 	gorm.Model
 	AgentHWID  string `gorm:"column:agent_hw_id;uniqueIndex" json:"agent_hwid"`

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { User, Activity, AlertOctagon, FileText } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL;
-
+const token = localStorage.getItem('token')
 const IncidentTimeline = ({ incident }) => {
     
     // Tạo danh sách sự kiện (Đã tích hợp Fix lỗi parse JSON Ảnh)
@@ -91,10 +91,10 @@ const IncidentTimeline = ({ incident }) => {
                                         </p>
                                         <div className="flex flex-wrap gap-3">
                                             {event.images.map((img, i) => (
-                                                <a key={i} href={`${API_URL}${img}`} target="_blank" rel="noreferrer" className="block w-36 h-24 rounded-lg overflow-hidden border border-slate-600 hover:border-indigo-500 hover:shadow-lg transition relative group bg-black">
-                                                    <img src={`${API_URL}${img}`} alt="evidence" className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition"/>
-                                                </a>
-                                            ))}
+                                            <a key={i} href={`${API_URL}/files/incidents/${img}?token=${token}`} target="_blank" rel="noreferrer" className="block w-36 h-24 rounded-lg overflow-hidden border border-slate-600 hover:border-indigo-500 hover:shadow-lg transition relative group bg-black">
+                                                <img src={`${API_URL}/files/incidents/${img}?token=${token}`} alt="evidence" className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition"/>
+                                            </a>
+                                        ))}
                                         </div>
                                     </div>
                                 )}

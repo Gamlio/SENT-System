@@ -3,6 +3,7 @@ package approvals
 import (
 	"fmt"
 	"net/http"
+	"sent_backend/internal/api/v1/approvals/strategies" // Import thư mục strategies vừa tạo
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 
@@ -10,15 +11,13 @@ import (
 )
 
 // GET /api/v1/approvals
-// Lấy danh sách các đơn cần duyệt
 func GetTickets(c *gin.Context) {
-	status := c.Query("status")      // PENDING, APPROVED, REJECTED
-	module := c.Query("module_type") // AGENT, POLICY, DOCUMENT
+	status := c.Query("status")
+	module := c.Query("module_type")
 
 	var tickets []models.ApprovalTicket
 	query := database.DB.Model(&models.ApprovalTicket{})
 
-	// Mặc định chỉ lấy đơn đang chờ
 	if status != "" {
 		query = query.Where("status = ?", status)
 	} else {
@@ -34,12 +33,11 @@ func GetTickets(c *gin.Context) {
 }
 
 // PUT /api/v1/approvals/:id/review
-// Trưởng phòng SOC thực hiện duyệt hoặc từ chối
 func ReviewTicket(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
-		Status     string `json:"status"`      // Bắt buộc: "APPROVED" hoặc "REJECTED"
-		ReviewNote string `json:"review_note"` // Lý do từ chối (nếu có)
+		Status     string `json:"status"`
+		ReviewNote string `json:"review_note"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,7 +45,6 @@ func ReviewTicket(c *gin.Context) {
 		return
 	}
 
-	// 1. Tìm đơn trong DB
 	var ticket models.ApprovalTicket
 	if err := database.DB.First(&ticket, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đơn yêu cầu"})
@@ -59,13 +56,26 @@ func ReviewTicket(c *gin.Context) {
 		return
 	}
 
-	// Bắt đầu Transaction (Đảm bảo an toàn dữ liệu)
+	// 1. TÌM CHIẾN LƯỢC XỬ LÝ DỰA VÀO MODULE TYPE
+	strategy := strategies.GetStrategy(ticket.ModuleType)
+	if strategy == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Hệ thống chưa hỗ trợ loại phê duyệt này!"})
+		return
+	}
+
 	tx := database.DB.Begin()
 
-	// 2. Cập nhật trạng thái Đơn (Ticket)
+	// 2. Cập nhật trạng thái Ticket
+	// Lấy tên người duyệt từ Context (đã gán bởi JWT Middleware)
+	usernameVal, exists := c.Get("username")
+	if exists {
+		ticket.ReviewedBy = usernameVal.(string)
+	} else {
+		ticket.ReviewedBy = "System_Admin"
+	}
+
 	ticket.Status = req.Status
 	ticket.ReviewNote = req.ReviewNote
-	ticket.ReviewedBy = "Admin_SOC" // TODO: Sau này lấy từ JWT Token của người đăng nhập
 
 	if err := tx.Save(&ticket).Error; err != nil {
 		tx.Rollback()
@@ -73,40 +83,19 @@ func ReviewTicket(c *gin.Context) {
 		return
 	}
 
-	// 3. [QUAN TRỌNG] Tự động cập nhật bảng đích dựa theo Module
+	// 3. THỰC THI NGHIỆP VỤ BẰNG STRATEGY
+	var processErr error
 	if req.Status == "APPROVED" {
-		switch ticket.ModuleType {
-		case "AGENT_ENROLL":
-			// Kích hoạt máy trạm
-			if err := tx.Model(&models.Agent{}).Where("id = ?", ticket.TargetID).Update("status", "ACTIVE").Error; err != nil {
-				tx.Rollback()
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi kích hoạt máy trạm"})
-				return
-			}
-		case "POLICY_CREATE":
-			// Kích hoạt luật bảo mật
-			if err := tx.Model(&models.UniversalPolicy{}).Where("id = ?", ticket.TargetID).Update("approval_status", "APPROVED").Error; err != nil {
-				tx.Rollback()
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi kích hoạt chính sách"})
-				return
-			}
-		case "DOCUMENT_UPLOAD":
-			if err := tx.Model(&models.PolicyDocument{}).Where("id = ?", ticket.TargetID).Update("approval_status", "APPROVED").Error; err != nil {
-				tx.Rollback()
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi kích hoạt tài liệu"})
-				return
-			}
-
-		}
+		processErr = strategy.OnApprove(tx, &ticket)
 	} else if req.Status == "REJECTED" {
-		switch ticket.ModuleType {
-		case "AGENT_ENROLL":
-			tx.Model(&models.Agent{}).Where("id = ?", ticket.TargetID).Update("status", "REJECTED")
-		case "POLICY_CREATE":
-			tx.Model(&models.UniversalPolicy{}).Where("id = ?", ticket.TargetID).Update("approval_status", "REJECTED")
-		case "DOCUMENT_UPLOAD":
-			tx.Model(&models.PolicyDocument{}).Where("id = ?", ticket.TargetID).Update("approval_status", "REJECTED")
-		}
+		processErr = strategy.OnReject(tx, &ticket)
+	}
+
+	// Nếu xử lý đích bị lỗi -> Rollback toàn bộ
+	if processErr != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi cập nhật bảng dữ liệu đích"})
+		return
 	}
 
 	tx.Commit()
