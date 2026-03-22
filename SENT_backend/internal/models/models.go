@@ -143,14 +143,14 @@ type OpenPort struct {
 
 type USBLog struct {
 	gorm.Model
-	AgentHWID  string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
+	AgentHWID  string `gorm:"column:agent_hw_id;index:idx_agent_usb_hash" json:"agent_hwid"`
 	DeviceName string `json:"device_name"`
 	DeviceID   string `json:"device_id"`
 
-	VID          string `json:"vid"`                            // Vendor ID (Nhà sản xuất)
-	PID          string `json:"pid"`                            // Product ID (Mã sản phẩm)
-	SerialNumber string `json:"serial_number"`                  // Số series độc nhất
-	DeviceHash   string `json:"device_hash" gorm:"uniqueIndex"` // Vân tay độc nhất của USB = Hash(VID+PID+Serial)
+	VID          string `json:"vid"`                                         // Vendor ID (Nhà sản xuất)
+	PID          string `json:"pid"`                                         // Product ID (Mã sản phẩm)
+	SerialNumber string `json:"serial_number"`                               // Số series độc nhất
+	DeviceHash   string `json:"device_hash" gorm:"index:idx_agent_usb_hash"` // Vân tay độc nhất của USB = Hash(VID+PID+Serial)
 
 	IsWhitelisted bool   `json:"is_whitelisted"`
 	EventType     string `json:"event_type"`

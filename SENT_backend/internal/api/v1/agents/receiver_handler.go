@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm/clause"
 )
 
 // Cấu trúc Payload chuẩn từ Agent gửi lên
@@ -45,6 +46,10 @@ type AgentUSBRecord struct {
 	SerialNumber string `json:"serial_number"`
 	DeviceHash   string `json:"device_hash"`
 	EventType    string `json:"event_type"`
+}
+type AgentPortRecord struct {
+	Port        int    `json:"port"`
+	ProcessName string `json:"process_name"`
 }
 
 // Hàm kiểm tra Chữ ký HMAC
@@ -119,6 +124,11 @@ func ProcessAgentDataAsync(payload AgentPayload, agent models.Agent) {
 		if err := json.Unmarshal(payload.Data, &records); err == nil {
 			AnalyzeUSBBehavior(records, agent)
 		}
+	case "port": // <--- THÊM CASE NÀY (hoặc "network" tùy Agent gửi)
+		var records []AgentPortRecord
+		if err := json.Unmarshal(payload.Data, &records); err == nil {
+			SaveAgentPorts(records, agent)
+		}
 	}
 }
 
@@ -189,16 +199,57 @@ func AnalyzeUSBBehavior(records []AgentUSBRecord, agent models.Agent) {
 				DeviceHash: rec.DeviceHash,
 				EventType:  rec.EventType,
 			}
-			database.DB.Create(&usb)
+			// Cơ chế này giúp triệt tiêu hoàn toàn lỗi "Duplicate Key" mà bạn gặp lúc trước
+			result := database.DB.Clauses(clause.OnConflict{
+				// Đối chiếu dựa trên cặp: Máy nào + USB nào
+				Columns: []clause.Column{{Name: "agent_hw_id"}, {Name: "device_hash"}},
+				// Nếu đã có rồi thì chỉ cập nhật trạng thái và thời gian thấy cuối cùng
+				DoUpdates: clause.AssignmentColumns([]string{"event_type", "updated_at"}),
+			}).Create(&usb)
 
-			// --- CASE 4: USB LẠ CHƯA DUYỆT ---
-			security.TriggerSecurityEvent(agent,
-				"USB Violation",
-				"[P3] Cắm thiết bị ngoại vi trái phép",
-				fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, PID: %s). Yêu cầu xác thực phần cứng.", rec.DeviceName, rec.VID, rec.PID),
-				"P3",
-			)
+			if result.Error == nil {
+				// Bước 2: Kiểm tra xem có phải bản ghi MỚI (Lần đầu xuất hiện) không?
+				// GORM sau khi Create/Update sẽ nạp thời gian vào struct usb.
+				// Nếu là tạo mới, CreatedAt sẽ bằng UpdatedAt.
+				isNew := usb.CreatedAt.Unix() == usb.UpdatedAt.Unix()
+
+				if isNew {
+					// --- CHỈ BÁO ĐỘNG NẾU LÀ LẦN ĐẦU TIÊN CẮM VÀO MÁY NÀY ---
+					security.TriggerSecurityEvent(agent,
+						"USB Violation",
+						"[P3] Phát hiện thiết bị ngoại vi mới",
+						fmt.Sprintf("Thiết bị lạ vừa được kết nối: %s (VID: %s, PID: %s).",
+							rec.DeviceName, rec.VID, rec.PID),
+						"P3",
+					)
+				} else {
+					// Đây là USB cũ, máy trạm chỉ đang gửi lại log "nhịp đập" định kỳ
+					// Chúng ta im lặng cập nhật DB mà không bắn cảnh báo nữa.
+				}
+				database.DB.Create(&usb)
+
+				// --- CASE 4: USB LẠ CHƯA DUYỆT ---
+				security.TriggerSecurityEvent(agent,
+					"USB Violation",
+					"[P3] Cắm thiết bị ngoại vi trái phép",
+					fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, PID: %s). Yêu cầu xác thực phần cứng.", rec.DeviceName, rec.VID, rec.PID),
+					"P3",
+				)
+			}
 		}
+	}
+}
+func SaveAgentPorts(records []AgentPortRecord, agent models.Agent) {
+	// Xóa danh sách cổng cũ để cập nhật mới nhất
+	database.DB.Where("agent_hw_id = ?", agent.HWID).Delete(&models.OpenPort{})
+
+	for _, rec := range records {
+		port := models.OpenPort{
+			AgentHWID:   agent.HWID,
+			Port:        rec.Port,
+			ProcessName: rec.ProcessName,
+		}
+		database.DB.Create(&port)
 	}
 }
 

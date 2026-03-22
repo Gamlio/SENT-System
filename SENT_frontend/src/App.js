@@ -86,7 +86,7 @@ function App() {
                 <Route path="/policy-center" element={<ProtectedRoute requiredPermission="policy_view"><PolicyCenter /></ProtectedRoute>} />
                 
                 {/* Lưu ý: Tạm thời bỏ requiredPermission cho Docs vì DB chưa có quyền này */}
-                <Route path="/docs" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
+                <Route path="/docs" element={<ProtectedRoute><Documents requiredPermission="doc_view" /></ProtectedRoute>} />
                 
                 {/* System Admin Routes */}
                 <Route path="/users" element={<ProtectedRoute requiredPermission="user_manage"><UserManagement /></ProtectedRoute>} />

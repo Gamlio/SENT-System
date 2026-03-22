@@ -18,9 +18,10 @@ func GetTickets(c *gin.Context) {
 	var tickets []models.ApprovalTicket
 	query := database.DB.Model(&models.ApprovalTicket{})
 
-	if status != "" {
+	if status != "" && status != "ALL" {
 		query = query.Where("status = ?", status)
-	} else {
+	} else if status == "" {
+		// Mặc định nếu không truyền gì (lần đầu load trang) thì chỉ hiện PENDING
 		query = query.Where("status = ?", "PENDING")
 	}
 

@@ -55,6 +55,7 @@ func GetAgentDetail(c *gin.Context) {
 		Preload("Software").
 		Preload("Alerts").
 		Preload("USBLogs"). // <--- Đã thêm USBLogs
+		Preload("OpenPorts").
 		Preload("Manager"). // <--- BẮT BUỘC THÊM DÒNG NÀY
 		Where("hw_id = ?", hwid).
 		First(&agent).Error
