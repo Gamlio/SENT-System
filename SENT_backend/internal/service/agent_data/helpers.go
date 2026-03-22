@@ -18,7 +18,3 @@ func MapToStruct(input interface{}, output interface{}) error {
 	return json.Unmarshal(b, output)
 }
 
-//func AnalyzeBehaviorAI(hwid string, dataType string, data interface{}) {
-//log.Printf("🤖 AI đang phân tích dữ liệu %s của máy %s...", dataType, hwid)
-// Logic AI sẽ được cắm vào đây sau này
-//}

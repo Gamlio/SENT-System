@@ -78,7 +78,7 @@ type UserPermission struct {
 type Agent struct {
 	HWID      string    `gorm:"primaryKey;column:hw_id" json:"hwid"`
 	OrgID     uint      `gorm:"column:org_id" json:"org_id"`
-	RegionID  uint      `gorm:"column:region_id" json:"region_id"`
+	RegionID  *uint     `gorm:"column:region_id" json:"region_id"`
 	UserID    *uint     `gorm:"column:user_id" json:"user_id"`
 	Hostname  string    `gorm:"column:hostname" json:"hostname"`
 	IPAddress string    `gorm:"column:ip_address" json:"ip_address"`

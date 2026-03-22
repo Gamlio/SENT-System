@@ -3,6 +3,7 @@ package strategies
 import (
 	"encoding/json"
 	"sent_backend/internal/models"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -11,11 +12,18 @@ import (
 type AgentEnrollStrategy struct{}
 
 func (s *AgentEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	return tx.Model(&models.Agent{}).Where("hw_id = ?", ticket.TargetName).Update("status", "ACTIVE").Error
+	return tx.Model(&models.Agent{}).Where("hw_id = ?", ticket.TargetName).
+		Updates(map[string]interface{}{
+			"status":    "ACTIVE",
+			"last_seen": time.Now(), // <--- BUMP NÓ LÊN TRÊN CÙNG
+		}).Error
 }
-
 func (s *AgentEnrollStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	return tx.Model(&models.Agent{}).Where("hw_id = ?", ticket.TargetName).Update("status", "REJECTED").Error
+	return tx.Model(&models.Agent{}).Where("hw_id = ?", ticket.TargetName).
+		Updates(map[string]interface{}{
+			"status":    "REJECTED",
+			"last_seen": time.Now(), // <--- BUMP NÓ LÊN TRÊN CÙNG
+		}).Error
 }
 
 // ==============================================================

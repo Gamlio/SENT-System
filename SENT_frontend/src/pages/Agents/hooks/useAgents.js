@@ -86,7 +86,7 @@ export const useAgents = () => {
     const currentAgents = processedAgents.slice(indexOfFirstItem, indexOfLastItem);
 
     // Reset về trang 1 khi thay đổi bộ lọc
-    useEffect(() => { setCurrentPage(1); }, [searchQuery, sortConfig]);
+    useEffect(() => { setCurrentPage(1); }, [searchQuery, sortConfig, agents.length]);
 
     // D. Dữ liệu biểu đồ
     const onlineCount = agents.filter(a => a.status === 'online').length;

@@ -14,10 +14,19 @@ import (
 
 // GetAgents: Lấy danh sách máy trạm
 func GetAgents(c *gin.Context) {
+	orgIDVal, exists := c.Get("org_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không xác định được danh tính tổ chức"})
+		return
+	}
+	orgID := orgIDVal.(uint)
+
 	var agents []models.Agent
-	// Preload Manager để hiển thị người quản lý
+
+	// [QUAN TRỌNG]: Thêm Order("last_seen DESC") để đẩy máy vừa tương tác lên đầu bảng
 	if err := database.DB.Preload("Manager").
-		Where("status != ?", "RETIRED"). // <--- THÊM DÒNG NÀY
+		Where("org_id = ? AND status != ?", orgID, "RETIRED").
+		Order("last_seen DESC").
 		Find(&agents).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu"})
 		return
@@ -25,12 +34,15 @@ func GetAgents(c *gin.Context) {
 
 	threshold := time.Now().Add(-2 * time.Minute)
 	for i := range agents {
-		if agents[i].LastSeen.After(threshold) {
-			agents[i].Status = "online"
-		} else {
-			agents[i].Status = "offline"
+		if agents[i].Status == "ACTIVE" {
+			if agents[i].LastSeen.After(threshold) {
+				agents[i].Status = "online"
+			} else {
+				agents[i].Status = "offline"
+			}
 		}
 	}
+
 	c.JSON(http.StatusOK, agents)
 }
 

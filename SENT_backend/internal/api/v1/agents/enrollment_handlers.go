@@ -84,7 +84,7 @@ func EnrollAgent(c *gin.Context) {
 	result := database.DB.Where("hw_id = ?", req.HWID).First(&existingAgent)
 
 	if result.Error == nil {
-		// TRƯỜNG HỢP: ĐÃ TỒN TẠI[cite: 38]
+		// TRƯỜNG HỢP: ĐÃ TỒN TẠI
 		database.DB.Model(&existingAgent).Updates(map[string]interface{}{
 			"status":     "PENDING",
 			"secret_key": secretKey,
@@ -103,7 +103,7 @@ func EnrollAgent(c *gin.Context) {
 		database.DB.Create(&alert)
 
 	} else {
-		// TRƯỜNG HỢP: MÁY MỚI HOÀN TOÀN[cite: 38]
+		// TRƯỜNG HỢP: MÁY MỚI HOÀN TOÀN
 		newAgent := models.Agent{
 			HWID:      req.HWID,
 			Hostname:  req.Hostname,
@@ -116,10 +116,9 @@ func EnrollAgent(c *gin.Context) {
 		database.DB.Create(&newAgent)
 	}
 
-	// --- BỔ SUNG LỚP KEO DÍNH: TẠO APPROVAL TICKET ---
-	// Kiểm tra xem máy này đã có Ticket nào đang PENDING chưa để tránh spam vé
+	// --- [SỬA LỖI Ở ĐÂY]: Dùng target_name thay vì target_id ---
 	var existingTicket models.ApprovalTicket
-	ticketExists := database.DB.Where("module_type = ? AND target_id = ? AND status = ?", "AGENT_ENROLL", req.HWID, "PENDING").First(&existingTicket)
+	ticketExists := database.DB.Where("module_type = ? AND target_name = ? AND status = ?", "AGENT_ENROLL", req.HWID, "PENDING").First(&existingTicket)
 
 	if ticketExists.Error != nil {
 		// Chưa có Ticket nào chờ duyệt, tạo mới
@@ -127,10 +126,10 @@ func EnrollAgent(c *gin.Context) {
 			OrgID:        tokenRecord.OrgID,
 			ModuleType:   "AGENT_ENROLL",
 			ActionType:   "ENROLL",
-			TargetID:     0,
-			TargetName:   req.HWID, // Ví dụ: PC-KETOAN-01 (WIN-1234)
+			TargetID:     0,        // Giữ nguyên là 0 vì TargetID là số
+			TargetName:   req.HWID, // Lưu chuỗi HWID vào TargetName
 			Status:       "PENDING",
-			RequestedBy:  "SYSTEM", // Hệ thống tự động tạo do Agent yêu cầu
+			RequestedBy:  "SYSTEM",
 			SnapshotData: fmt.Sprintf(`{"ip": "%s", "action": "Yêu cầu kết nối vào SOC"}`, req.IPAddress),
 		}
 		database.DB.Create(&ticket)

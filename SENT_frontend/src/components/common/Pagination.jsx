@@ -1,89 +1,95 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {
     const [inputPage, setInputPage] = useState("");
 
-    // Reset input khi trang đổi
     useEffect(() => setInputPage(""), [currentPage]);
 
     if (totalPages <= 1) return null;
 
-    // Logic hiển thị số trang thông minh (1 ... 4 5 6 ... 10)
+    const handleJump = (e) => {
+        e.preventDefault();
+        const page = parseInt(inputPage);
+        if (page >= 1 && page <= totalPages) {
+            onPageChange(page);
+        }
+    };
+
     const getPageNumbers = () => {
         const pages = [];
-        const maxVisible = 1; // Số trang hiện bên cạnh trang hiện tại
+        const maxVisible = 3; // Giảm xuống 3 số để gọn hơn
 
-        // Luôn hiện trang 1
-        pages.push(1);
-
-        // Logic dấu ... đầu
-        if (currentPage > maxVisible + 2) {
-            pages.push('...');
-        } else if (currentPage > 2) {
-            // Lấp lỗ hổng nếu khoảng cách nhỏ (VD: 1, 2, [3]...)
-            for (let i = 2; i < currentPage - maxVisible; i++) pages.push(i);
+        if (totalPages <= maxVisible) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            if (currentPage <= 2) {
+                pages.push(1, 2, '...', totalPages);
+            } else if (currentPage >= totalPages - 1) {
+                pages.push(1, '...', totalPages - 1, totalPages);
+            } else {
+                pages.push(1, '...', currentPage, '...', totalPages);
+            }
         }
-
-        // Các trang xung quanh current
-        for (let i = Math.max(2, currentPage - maxVisible); i <= Math.min(totalPages - 1, currentPage + maxVisible); i++) {
-            pages.push(i);
-        }
-
-        // Logic dấu ... cuối
-        if (currentPage < totalPages - maxVisible - 1) {
-            pages.push('...');
-        } else if (currentPage < totalPages - 1) {
-            for (let i = currentPage + maxVisible + 1; i < totalPages; i++) pages.push(i);
-        }
-
-        // Luôn hiện trang cuối
-        if (totalPages > 1) pages.push(totalPages);
-
-        // Lọc trùng lặp (Set) và sort lại cho chắc chắn
-        return [...new Set(pages)].sort((a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : 0));
+        return pages;
     };
 
     return (
-        <div className="flex flex-wrap justify-between items-center gap-4 text-xs font-medium select-none">
+        <div className="flex flex-col items-center gap-3 pt-3 mt-2 border-t border-slate-800/50 w-full">
             
-            {/* Info text */}
-            <span className="text-slate-500">
-                Trang <span className="text-white font-bold">{currentPage}</span> / {totalPages}
-            </span>
+            {/* HÀNG 1: THÔNG TIN TRANG & Ô NHẬP NHANH */}
+            <div className="flex items-center justify-between w-full px-1">
+                <div className="text-[10px] text-slate-500 font-bold uppercase">
+                    Trang <span className="text-white">{currentPage}</span> / {totalPages}
+                </div>
+                
+                {/* Form nhập số trang nhỏ gọn */}
+                <form onSubmit={handleJump} className="flex items-center gap-1">
+                    <span className="text-[9px] text-slate-600">Go to:</span>
+                    <input
+                        type="number"
+                        min="1"
+                        max={totalPages}
+                        value={inputPage}
+                        onChange={(e) => setInputPage(e.target.value)}
+                        className="w-8 h-6 bg-slate-900 border border-slate-700 rounded text-center text-[10px] text-white outline-none focus:border-emerald-500 transition"
+                    />
+                </form>
+            </div>
 
-            <div className="flex items-center gap-1">
-                {/* Nút về đầu */}
+            {/* HÀNG 2: THANH ĐIỀU HƯỚNG CHÍNH */}
+            <div className="flex items-center justify-center bg-slate-900/50 p-1 rounded-lg border border-slate-800 w-full">
+                {/* Về đầu */}
                 <button
                     onClick={() => onPageChange(1)}
                     disabled={currentPage === 1}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                    className="p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 disabled:opacity-20 transition"
                 >
-                    <ChevronsLeft size={16} />
+                    <ChevronsLeft size={12} />
                 </button>
-
-                {/* Nút lùi */}
+                
+                {/* Trang trước */}
                 <button
                     onClick={() => onPageChange(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition mr-1"
+                    className="p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 disabled:opacity-20 transition mr-1"
                 >
-                    <ChevronLeft size={16} />
+                    <ChevronLeft size={12} />
                 </button>
 
-                {/* Danh sách số trang */}
-                <div className="flex items-center gap-1">
+                {/* Dãy số trang */}
+                <div className="flex items-center gap-1 px-2 border-x border-slate-800/50">
                     {getPageNumbers().map((page, index) => (
                         <button
                             key={index}
                             onClick={() => typeof page === 'number' && onPageChange(page)}
                             disabled={page === '...'}
-                            className={`min-w-[28px] h-7 px-1 flex items-center justify-center rounded-lg transition-all ${
+                            className={`min-w-[24px] h-6 flex items-center justify-center rounded text-[10px] font-bold transition ${
                                 page === currentPage
-                                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 font-bold'
+                                    ? 'bg-emerald-500 text-white shadow-sm'
                                     : page === '...'
                                     ? 'text-slate-600 cursor-default'
-                                    : 'text-slate-400 hover:bg-slate-800 hover:text-white border border-transparent hover:border-slate-700'
+                                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                             }`}
                         >
                             {page}
@@ -91,22 +97,22 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
                     ))}
                 </div>
 
-                {/* Nút tiến */}
+                {/* Trang sau */}
                 <button
                     onClick={() => onPageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition ml-1"
+                    className="p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 disabled:opacity-20 transition ml-1"
                 >
-                    <ChevronRight size={16} />
+                    <ChevronRight size={12} />
                 </button>
 
-                {/* Nút về cuối */}
+                {/* Đến cuối */}
                 <button
                     onClick={() => onPageChange(totalPages)}
                     disabled={currentPage === totalPages}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                    className="p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 disabled:opacity-20 transition"
                 >
-                    <ChevronsRight size={16} />
+                    <ChevronsRight size={12} />
                 </button>
             </div>
         </div>

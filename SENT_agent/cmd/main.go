@@ -19,6 +19,7 @@ func main() {
 	hInfo, _ := host.Info()
 
 	// 1. Mẹo Random HWID cho môi trường Test (để giả lập nhiều máy)
+	rand.Seed(time.Now().UnixNano())
 	hwid := fmt.Sprintf("%s-TEST-%d", hInfo.HostID, rand.Intn(9999))
 
 	hostname, _ := os.Hostname()

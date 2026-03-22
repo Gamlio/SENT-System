@@ -1,13 +1,18 @@
 package agents
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/security"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -42,24 +47,63 @@ type AgentUSBRecord struct {
 	EventType    string `json:"event_type"`
 }
 
-// PushDataHandler: Gateway tiếp nhận dữ liệu tốc độ cao
+// Hàm kiểm tra Chữ ký HMAC
+func verifyHMAC(payload []byte, secretKey string, signature string) bool {
+	mac := hmac.New(sha256.New, []byte(secretKey))
+	mac.Write(payload)
+	expectedMAC := hex.EncodeToString(mac.Sum(nil))
+	// Dùng hmac.Equal để chống lại tấn công Timing Attack
+	return hmac.Equal([]byte(expectedMAC), []byte(signature))
+}
+
+// PushDataHandler: Gateway tiếp nhận dữ liệu tốc độ cao (CÓ BẢO MẬT HMAC)
 func PushDataHandler(c *gin.Context) {
+	// 1. Đọc Chữ ký từ Header mà Agent gửi lên
+	clientSignature := c.GetHeader("X-Sent-Signature")
+	if clientSignature == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Signature! Bị chặn bởi Firewall."})
+		return
+	}
+
+	// 2. Đọc toàn bộ Body nguyên bản (Raw Bytes) để băm
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể đọc dữ liệu"})
+		return
+	}
+
+	// 3. Parse JSON lấy HWID
 	var req AgentPayload
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON sai định dạng"})
 		return
 	}
 
+	// 4. Tìm Agent trong Database
 	var agent models.Agent
-	if err := database.DB.Where("hw_id = ? AND org_id IN (SELECT id FROM organizations WHERE company_code = ?)", req.HWID, req.CompanyCode).First(&agent).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Agent không hợp lệ"})
+	if err := database.DB.Where("hw_id = ?", req.HWID).First(&agent).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Thiết bị không tồn tại hoặc chưa đăng ký"})
 		return
 	}
 
-	// Đẩy vào hàng đợi xử lý ngầm (Goroutine)
+	// 5. Nếu máy chưa được duyệt (PENDING) hoặc đã bị xóa (RETIRED) -> Không nhận Data
+	if agent.Status != "ACTIVE" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Thiết bị chưa được cấp phép hoạt động", "status": agent.Status})
+		return
+	}
+
+	// 6. KIỂM TRA CHỮ KÝ (QUAN TRỌNG NHẤT)
+	if !verifyHMAC(bodyBytes, agent.SecretKey, clientSignature) {
+		// Kẻ gian đang cố tình gửi Data giả mạo HWID!
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Sai chữ ký điện tử! Phát hiện hành vi giả mạo (Spoofing)."})
+		return
+	}
+
+	// 7. Mọi thứ OK -> Cập nhật nhịp đập và xử lý Data
+	database.DB.Model(&agent).Update("last_seen", time.Now())
 	go ProcessAgentDataAsync(req, agent)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Data accepted", "status": "ACTIVE"})
+	c.JSON(http.StatusOK, gin.H{"message": "Data accepted", "status": agent.Status})
 }
 
 // Xử lý ngầm

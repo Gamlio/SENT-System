@@ -19,7 +19,7 @@ export const AuthProvider = ({ children }) => {
                     localStorage.clear();
                 }
             }
-            // Luôn luôn phải có dòng này ở cuối để tắt màn hình chờ
+            
             setLoading(false); 
         };
         checkAuth();
@@ -33,7 +33,7 @@ export const AuthProvider = ({ children }) => {
             // 1. CẬP NHẬT: Thêm permissions và lấy đúng tên trường token
             const userData = { 
                 username: res.data.username || loginData.username, 
-                role: res.data.role, // <-- SỬA DÒNG NÀY (Đổi level thành role)
+                role: res.data.role, 
                 org_id: res.data.org_id,
                 company_code: res.data.company_code, 
                 permissions: res.data.permissions || {}

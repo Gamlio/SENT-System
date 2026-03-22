@@ -4,30 +4,51 @@ import (
 	"encoding/json"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"time"
+	"sent_backend/internal/service/security"
+
+	"gorm.io/gorm"
 )
 
-type AgentNetworkRecord struct {
-	IPAddress string `json:"ip_address"`
-	// Tương lai có thể thêm: MACAddress, Gateway, Subnet...
+type AgentTelemetryRecord struct {
+	IPAddress   string            `json:"ip_address"`
+	FirewallOff bool              `json:"firewall_off"` // Hứng thêm trạng thái Tường lửa
+	OpenPorts   []models.OpenPort `json:"open_ports"`
 }
 
-func ProcessNetwork(agent models.Agent, data interface{}) {
+func ProcessTelemetry(agent models.Agent, data interface{}) {
 	bytes, _ := json.Marshal(data)
-	var payload AgentNetworkRecord
+	var payload AgentTelemetryRecord
 	if err := json.Unmarshal(bytes, &payload); err != nil {
 		return
 	}
 
-	// Cập nhật trạng thái máy và IP mới
-	updateFields := map[string]interface{}{
-		"status":    "online",
-		"last_seen": time.Now(),
+	// 2. BẮT CASE: TẮT TƯỜNG LỬA
+	if payload.FirewallOff {
+		security.TriggerSecurityEvent(agent,
+			"Firewall Disabled",
+			"[P1] Tường lửa hệ thống bị tắt",
+			"Lớp phòng thủ Tường lửa (OS Firewall) đã bị vô hiệu hóa.",
+			"P1",
+		)
 	}
 
-	if payload.IPAddress != "" {
-		updateFields["ip_address"] = payload.IPAddress
-	}
+	// 3. Xóa port cũ, lưu port mới
+	database.DB.Transaction(func(tx *gorm.DB) error {
+		tx.Where("agent_hw_id = ?", agent.HWID).Delete(&models.OpenPort{})
+		for _, port := range payload.OpenPorts {
+			port.AgentHWID = agent.HWID
+			tx.Create(&port)
 
-	database.DB.Model(&agent).Updates(updateFields)
+			// BẮT CASE: RDP / Telnet
+			if port.Port == 3389 {
+				security.TriggerSecurityEvent(agent,
+					"Unauthorized Port",
+					"[P2] Mở cổng Remote Desktop trái phép",
+					"Phát hiện cổng 3389 (RDP) đang mở public, nguy cơ bị brute-force.",
+					"P2",
+				)
+			}
+		}
+		return nil
+	})
 }
