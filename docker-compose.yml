@@ -8,8 +8,8 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: your_password_here
-      POSTGRES_DB: sent_database
+      POSTGRES_PASSWORD: "Thanh@123"
+      POSTGRES_DB: sent_db
     ports:
       - "5432:5432"
     volumes:
@@ -28,8 +28,8 @@ services:
       - DB_HOST=db
       - DB_PORT=5432
       - DB_USER=postgres
-      - DB_PASSWORD=your_password_here
-      - DB_NAME=sent_database
+      - DB_PASSWORD="Thanh@123"
+      - DB_NAME=sent_db
       - PORT=8000
 
   # --- FRONTEND ---

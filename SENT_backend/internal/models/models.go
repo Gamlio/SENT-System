@@ -46,22 +46,24 @@ type User struct {
 	Email        string `json:"email"`
 
 	// THAY ĐỔI 1: Thay RoleLevel bằng RoleName rõ ràng
-	Role string `json:"role" gorm:"default:'USER'"` // Có 2 loại: "ADMIN" (Chủ công ty) và "USER" (Nhân viên)
 
 	RiskScore int `json:"risk_score" gorm:"default:0"`
-	// THAY ĐỔI 2: Chia nhỏ quyền (Read / Write)
-	CanViewAgents   bool `json:"can_view_agents" gorm:"default:false"`
-	CanManageAgents bool `json:"can_manage_agents" gorm:"default:false"`
+	// Nhóm Agents
+	PermAgentView   bool `json:"perm_agent_view" gorm:"default:false"`
+	PermAgentAction bool `json:"perm_agent_action" gorm:"default:false"`
+	PermAgentDelete bool `json:"perm_agent_delete" gorm:"default:false"`
 
-	CanViewDocs   bool `json:"can_view_docs" gorm:"default:true"`    // Mặc định ai cũng được đọc tài liệu
-	CanManageDocs bool `json:"can_manage_docs" gorm:"default:false"` // Chỉ người được cấp quyền mới được thêm/sửa
+	PermPolicyView   bool `json:"perm_policy_view" gorm:"default:false"`
+	PermPolicyAction bool `json:"perm_policy_action" gorm:"default:false"`
 
-	CanManagePolicies  bool `json:"can_manage_policies" gorm:"default:false"`
-	CanManageIncidents bool `json:"can_manage_incidents" gorm:"default:false"`
-	CanManageUsers     bool `json:"can_manage_users" gorm:"default:false"`
+	PermIncidentView   bool `json:"perm_incident_view" gorm:"default:false"`
+	PermIncidentAction bool `json:"perm_incident_action" gorm:"default:false"`
 
-	// [MỚI] Quyền quản lý Trung tâm Phê duyệt
-	CanManageApprovals bool `json:"can_manage_approvals" gorm:"default:false"`
+	PermDocView   bool `json:"perm_doc_view" gorm:"default:false"`
+	PermDocManage bool `json:"perm_doc_manage" gorm:"default:false"`
+
+	PermUserManage     bool `json:"perm_user_manage" gorm:"default:false"`
+	PermApprovalManage bool `json:"perm_approval_manage" gorm:"default:false"`
 
 	// [MỚI] ĐỒNG BỘ: Luồng phê duyệt tài khoản mới tạo (Maker - Checker)
 	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"` // PENDING, APPROVED, REJECTED

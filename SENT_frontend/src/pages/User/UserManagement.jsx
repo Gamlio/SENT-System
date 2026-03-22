@@ -10,7 +10,7 @@ import UserDeleteModal from './components/UserDeleteModal';
 
 const UserManagement = () => {
     const { user: currentUser } = useAuth();
-    const canManageUsers = currentUser?.role === 'ADMIN' || currentUser?.can_manage_users;
+    const canManageUsers = currentUser?.permissions?.user_manage === true;
 
     const {
         currentUsers, filteredUsers,

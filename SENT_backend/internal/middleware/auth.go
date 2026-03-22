@@ -82,7 +82,6 @@ func AuthRequired() gin.HandlerFunc {
 		c.Set("user_id", user.ID)
 		c.Set("username", user.Username)
 		c.Set("org_id", *user.OrgID)
-		c.Set("role", user.Role)
 
 		c.Next()
 	}

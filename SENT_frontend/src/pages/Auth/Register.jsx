@@ -1,14 +1,14 @@
 import React, { useState } from 'react'; 
-import { Building2, ArrowLeft, Loader2 } from 'lucide-react';
+import { Building2, ArrowLeft, Loader2,Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../../api/axios';
 
 const Register = () => {
     const navigate = useNavigate();
     
-    // Đã xóa company_code khỏi Form State
-    const [formData, setFormData] = useState({
+ const [formData, setFormData] = useState({
         company_name: '',
+        email: '', // [MỚI]
         username: '',
         password: '',
         confirmPassword: ''
@@ -24,24 +24,21 @@ const Register = () => {
         e.preventDefault();
         setError('');
 
-        if (formData.password !== formData.confirmPassword) {
-            setError('Mật khẩu xác nhận không khớp!');
-            return;
-        }
-
         setLoading(true);
         try {
             const response = await axios.post('/auth/register', {
                 company_name: formData.company_name,
+                email: formData.email, // [MỚI]
                 username: formData.username,
                 password: formData.password
             });
 
-            if (response.status === 200) {
-                // Lấy mã công ty Backend tự sinh và thông báo cho người dùng
+           if (response.status === 200) {
+                // 3. Sửa thông báo thành công
                 const generatedCode = response.data.company_code;
-                alert(`CHÚC MỪNG ĐĂNG KÝ THÀNH CÔNG!\n\nMÃ CÔNG TY CỦA BẠN LÀ:  ${generatedCode}\n\n⚠️ Vui lòng lưu lại Mã công ty này để sử dụng khi đăng nhập.`);
-                navigate('/login'); 
+                alert(`ĐĂNG KÝ THÀNH CÔNG!\n\nMã Công ty của bạn là: ${generatedCode}\n\nHệ thống đã gửi Link Đăng Nhập riêng tư vào Email của bạn. Vui lòng kiểm tra hộp thư!`);
+                // Chuyển hướng thẳng đến trang đăng nhập riêng của công ty đó
+                navigate(`/login/${generatedCode}`); 
             }
         } catch (err) {
             setError(err.response?.data?.error || 'Lỗi kết nối hệ thống!');
@@ -72,7 +69,11 @@ const Register = () => {
                             onChange={handleChange} className="w-full p-3 pl-10 bg-slate-900 rounded-xl border border-slate-700 text-white outline-none focus:border-emerald-500"/>
                     </div>
 
-                    {/* Ô nhập Company Code đã bị xóa hoàn toàn ở đây */}
+                   <div className="relative mt-4">
+                        <Mail className="absolute left-3 top-3.5 text-slate-500" size={20}/>
+                        <input name="email" type="email" placeholder="Email nhận thông báo hệ thống" required
+                            onChange={handleChange} className="w-full p-3 pl-10 bg-slate-900 rounded-xl border border-slate-700 text-white outline-none focus:border-emerald-500"/>
+                    </div>
 
                     <input name="username" type="text" placeholder="Tài khoản Admin" required
                         onChange={handleChange} className="w-full p-3 bg-slate-900 rounded-xl border border-slate-700 text-white outline-none focus:border-emerald-500"/>

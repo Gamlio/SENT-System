@@ -1,6 +1,8 @@
 package users
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
@@ -9,7 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Hàm hỗ trợ: Rút OrgID từ Context một cách an toàn (tránh lỗi Panic)
+// --- HELPERS --- (Giữ nguyên getOrgIDFromContext và getRequesterID)
 func getOrgIDFromContext(c *gin.Context) uint {
 	rawOrgID, exists := c.Get("org_id")
 	if !exists {
@@ -17,194 +19,237 @@ func getOrgIDFromContext(c *gin.Context) uint {
 	}
 	if floatVal, ok := rawOrgID.(float64); ok {
 		return uint(floatVal)
-	} else if uintVal, ok := rawOrgID.(uint); ok {
+	}
+	if uintVal, ok := rawOrgID.(uint); ok {
 		return uintVal
 	}
 	return 0
 }
 
-// TẠO TÀI KHOẢN MỚI (CHỈ TRONG CÔNG TY)
+func getRequesterID(c *gin.Context) uint {
+	rawUserID, exists := c.Get("user_id")
+	if !exists {
+		return 0
+	}
+	if floatVal, ok := rawUserID.(float64); ok {
+		return uint(floatVal)
+	}
+	if uintVal, ok := rawUserID.(uint); ok {
+		return uintVal
+	}
+	return 0
+}
+
+type UserPayload struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	FullName string `json:"full_name"`
+	Phone    string `json:"phone"`
+	Email    string `json:"email"`
+
+	PermAgentView      bool `json:"perm_agent_view"`
+	PermAgentAction    bool `json:"perm_agent_action"`
+	PermAgentDelete    bool `json:"perm_agent_delete"`
+	PermPolicyView     bool `json:"perm_policy_view"`
+	PermPolicyAction   bool `json:"perm_policy_action"`
+	PermIncidentView   bool `json:"perm_incident_view"`
+	PermIncidentAction bool `json:"perm_incident_action"`
+	PermDocView        bool `json:"perm_doc_view"`
+	PermDocManage      bool `json:"perm_doc_manage"`
+	PermUserManage     bool `json:"perm_user_manage"`
+	PermApprovalManage bool `json:"perm_approval_manage"`
+}
+
+// 1. CREATE USER (Đã tích hợp Approval)
 func CreateUser(c *gin.Context) {
 	orgID := getOrgIDFromContext(c)
+	requesterID := getRequesterID(c)
+
 	if orgID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không xác định được tổ chức của bạn"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không xác định được tổ chức"})
 		return
 	}
 
-	var req struct {
-		Username          string `json:"username"`
-		Password          string `json:"password"`
-		FullName          string `json:"full_name"`
-		Phone             string `json:"phone"`
-		Email             string `json:"email"`
-		Role              string `json:"role"`
-		CanManageAgents   bool   `json:"can_manage_agents"`
-		CanManagePolicies bool   `json:"can_manage_policies"`
-		CanManageDocs     bool   `json:"can_manage_docs"`
-		CanManageUsers    bool   `json:"can_manage_users"`
+	var req UserPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu gửi lên không hợp lệ"})
+		return
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+	var requester models.User
+	if err := database.DB.First(&requester, requesterID).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Lỗi xác thực người thực hiện"})
+		return
+	}
+
+	if (req.PermApprovalManage && !requester.PermApprovalManage) ||
+		(req.PermUserManage && !requester.PermUserManage) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền cấp phát các đặc quyền quản trị cao cấp"})
 		return
 	}
 
 	var existingUser models.User
 	if err := database.DB.Where("username = ? AND org_id = ?", req.Username, orgID).First(&existingUser).Error; err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Tên đăng nhập này đã có người sử dụng trong công ty của bạn"})
+		c.JSON(http.StatusConflict, gin.H{"error": "Tên đăng nhập này đã tồn tại trong hệ thống"})
 		return
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi hệ thống khi mã hóa mật khẩu"})
-		return
-	}
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
 
-	// Nếu tạo user Level 2 (Admin) thì tự động full quyền
-	isAdmin := req.Role == "ADMIN"
-
+	// CHÚ Ý: Chuyển Status thành PENDING thay vì APPROVED
 	newUser := models.User{
-		Username:          req.Username,
-		PasswordHash:      string(hashedPassword),
-		FullName:          req.FullName,
-		Phone:             req.Phone,
-		Email:             req.Email,
-		Role:              req.Role,
-		OrgID:             &orgID,
-		CanManageAgents:   isAdmin || req.CanManageAgents,
-		CanManagePolicies: isAdmin || req.CanManagePolicies,
-		CanManageDocs:     isAdmin || req.CanManageDocs,
-		CanManageUsers:    isAdmin || req.CanManageUsers,
+		Username:           req.Username,
+		PasswordHash:       string(hashedPassword),
+		FullName:           req.FullName,
+		Phone:              req.Phone,
+		Email:              req.Email,
+		OrgID:              &orgID,
+		ApprovalStatus:     "PENDING", // <--- Bị khóa cho đến khi duyệt
+		PermAgentView:      req.PermAgentView,
+		PermAgentAction:    req.PermAgentAction,
+		PermAgentDelete:    req.PermAgentDelete,
+		PermPolicyView:     req.PermPolicyView,
+		PermPolicyAction:   req.PermPolicyAction,
+		PermIncidentView:   req.PermIncidentView,
+		PermIncidentAction: req.PermIncidentAction,
+		PermDocView:        req.PermDocView,
+		PermDocManage:      req.PermDocManage,
+		PermUserManage:     req.PermUserManage,
+		PermApprovalManage: req.PermApprovalManage,
 	}
 
-	if err := database.DB.Create(&newUser).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo tài khoản"})
+	// Bắt đầu Transaction
+	tx := database.DB.Begin()
+
+	if err := tx.Create(&newUser).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi hệ thống khi tạo tài khoản"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Tạo tài khoản thành công!"})
+	// TẠO TICKET PHÊ DUYỆT
+	snapshot, _ := json.Marshal(req)
+	ticket := models.ApprovalTicket{
+		OrgID:        orgID,
+		ModuleType:   "USER_CREATE",
+		ActionType:   "CREATE",
+		TargetID:     newUser.ID,
+		TargetName:   fmt.Sprintf("Tài khoản: %s", newUser.Username),
+		Status:       "PENDING",
+		RequestedBy:  requester.Username,
+		SnapshotData: string(snapshot),
+	}
+
+	if err := tx.Create(&ticket).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi tạo đơn phê duyệt"})
+		return
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, gin.H{"message": "Đã gửi yêu cầu cấp tài khoản, vui lòng chờ duyệt!"})
 }
 
-// LẤY DANH SÁCH TÀI KHOẢN (LỌC THEO ORG_ID)
+// 2. GET USERS (Giữ nguyên)
 func GetUsers(c *gin.Context) {
 	orgID := getOrgIDFromContext(c)
 	var usersList []models.User
 
-	// CHỈ TÌM CÁC USER THUỘC VỀ CÔNG TY CỦA MÌNH
-	if err := database.DB.Where("org_id = ?", orgID).Find(&usersList).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi truy vấn danh sách người dùng"})
+	if err := database.DB.Where("org_id = ?", orgID).Order("created_at desc").Find(&usersList).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi truy vấn dữ liệu"})
 		return
 	}
-
 	c.JSON(http.StatusOK, usersList)
 }
 
+// 3. UPDATE USER (Đã tích hợp Approval)
 func UpdateUser(c *gin.Context) {
 	id := c.Param("id")
 	orgID := getOrgIDFromContext(c)
+	requesterID := getRequesterID(c)
 
-	// Lấy Role của người đang thực hiện thao tác (Requester)
-	requesterRole := c.GetString("role") // Middleware đã set cái này
-
-	// 1. Tìm User cần sửa
 	var targetUser models.User
 	if err := database.DB.Where("id = ? AND org_id = ?", id, orgID).First(&targetUser).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
 		return
 	}
 
-	// --- BẢO MẬT: CHẶN QUYỀN NHÂN VIÊN ---
-	if requesterRole != "ADMIN" {
-		// Rule 1: Nhân viên không được phép sửa thông tin của Sếp (Admin)
-		if targetUser.Role == "ADMIN" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền chỉnh sửa tài khoản Quản trị viên (Admin)"})
-			return
-		}
-	}
-	// --------------------------------------
-
-	// 2. Hứng dữ liệu update
-	var req struct {
-		FullName           string `json:"full_name"`
-		Phone              string `json:"phone"`
-		Email              string `json:"email"`
-		Role               string `json:"role"`
-		CanViewAgents      bool   `json:"can_view_agents"`
-		CanManageAgents    bool   `json:"can_manage_agents"`
-		CanViewDocs        bool   `json:"can_view_docs"`
-		CanManageDocs      bool   `json:"can_manage_docs"`
-		CanManagePolicies  bool   `json:"can_manage_policies"`
-		CanManageIncidents bool   `json:"can_manage_incidents"`
-		CanManageUsers     bool   `json:"can_manage_users"`
-	}
-
+	var req UserPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
-	// --- BẢO MẬT: CHẶN LEO THANG ĐẶC QUYỀN ---
-	if requesterRole != "ADMIN" {
-		// Rule 2: Nhân viên không được phép tự set mình hoặc người khác lên ADMIN
-		if req.Role == "ADMIN" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền chỉ định vai trò Admin"})
-			return
-		}
-	}
-	// ------------------------------------------
-
-	// 3. Logic cập nhật
-	// Nếu người thực hiện là Admin -> Update theo ý họ
-	// Nếu là User -> Chỉ update các quyền hạn cho phép (đã lọc ở trên)
-
-	isAdmin := req.Role == "ADMIN" // Logic cũ của bạn
-	updates := map[string]interface{}{
-		"full_name":            req.FullName,
-		"phone":                req.Phone,
-		"email":                req.Email,
-		"role":                 req.Role,
-		"can_view_agents":      isAdmin || req.CanViewAgents,
-		"can_manage_agents":    isAdmin || req.CanManageAgents,
-		"can_view_docs":        isAdmin || req.CanViewDocs,
-		"can_manage_docs":      isAdmin || req.CanManageDocs,
-		"can_manage_policies":  isAdmin || req.CanManagePolicies,
-		"can_manage_incidents": isAdmin || req.CanManageIncidents,
-		"can_manage_users":     isAdmin || req.CanManageUsers,
-	}
-
-	if err := database.DB.Model(&targetUser).Updates(updates).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi cập nhật người dùng"})
+	if targetUser.ID == requesterID && !req.PermUserManage {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Bạn không thể tự tước quyền Quản lý nhân sự của chính mình"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công!"})
+	var requester models.User
+	database.DB.First(&requester, requesterID)
+	if (req.PermApprovalManage && !requester.PermApprovalManage) ||
+		(req.PermUserManage && !requester.PermUserManage) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền cấp phát đặc quyền này"})
+		return
+	}
+
+	// TẠO TICKET SỬA THAY VÌ UPDATE TRỰC TIẾP
+	snapshot, _ := json.Marshal(req)
+	ticket := models.ApprovalTicket{
+		OrgID:        orgID,
+		ModuleType:   "USER_UPDATE",
+		ActionType:   "UPDATE",
+		TargetID:     targetUser.ID,
+		TargetName:   fmt.Sprintf("Sửa quyền: %s", targetUser.Username),
+		Status:       "PENDING",
+		RequestedBy:  requester.Username,
+		SnapshotData: string(snapshot),
+	}
+
+	if err := database.DB.Create(&ticket).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi tạo đơn phê duyệt"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Đã gửi yêu cầu thay đổi quyền, vui lòng chờ duyệt!"})
 }
 
-// XÓA TÀI KHOẢN (CŨNG CẦN BẢO VỆ)
+// 4. DELETE USER (Đã tích hợp Approval)
 func DeleteUser(c *gin.Context) {
 	id := c.Param("id")
 	orgID := getOrgIDFromContext(c)
-	requesterRole := c.GetString("role")
+	requesterID := getRequesterID(c)
 
-	// Tìm user định xóa xem nó là ai
 	var targetUser models.User
 	if err := database.DB.Where("id = ? AND org_id = ?", id, orgID).First(&targetUser).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy tài khoản"})
 		return
 	}
 
-	// Rule: Chỉ Admin mới được xóa Admin
-	if requesterRole != "ADMIN" && targetUser.Role == "ADMIN" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không được phép xóa tài khoản Admin"})
+	if targetUser.ID == requesterID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không thể xóa chính tài khoản đang đăng nhập"})
 		return
 	}
 
-	// Thực hiện xóa
-	if err := database.DB.Delete(&targetUser).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi xóa tài khoản"})
+	var requester models.User
+	database.DB.First(&requester, requesterID)
+
+	// TẠO TICKET XÓA
+	ticket := models.ApprovalTicket{
+		OrgID:        orgID,
+		ModuleType:   "USER_DELETE",
+		ActionType:   "DELETE",
+		TargetID:     targetUser.ID,
+		TargetName:   fmt.Sprintf("Xóa: %s", targetUser.Username),
+		Status:       "PENDING",
+		RequestedBy:  requester.Username,
+		SnapshotData: `{"Lý do": "Yêu cầu gỡ bỏ nhân sự"}`,
+	}
+
+	if err := database.DB.Create(&ticket).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi tạo đơn phê duyệt"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa tài khoản thành công"})
+	c.JSON(http.StatusOK, gin.H{"message": "Đã gửi yêu cầu xóa tài khoản, vui lòng chờ duyệt!"})
 }

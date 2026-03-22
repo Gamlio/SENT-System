@@ -1,15 +1,18 @@
 import { useState, useCallback } from 'react';
-import axios from '../../../api/axios'; // Đảm bảo đường dẫn file axios của bạn đúng
+import axios from '../../../api/axios'; 
 
 export const useApprovals = () => {
     const [tickets, setTickets] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    const fetchTickets = useCallback(async (moduleType = '') => {
+    const fetchTickets = useCallback(async (moduleType = '', status = 'PENDING') => {
         setLoading(true);
         try {
-            const endpoint = moduleType ? `/approvals?status=PENDING&module_type=${moduleType}` : '/approvals?status=PENDING';
-            const res = await axios.get(endpoint);
+            let url = `/approvals?module_type=${moduleType}`;
+            if (status !== 'ALL') {
+                url += `&status=${status}`;
+            }
+            const res = await axios.get(url);
             setTickets(res.data || []);
         } catch (error) {
             console.error("Lỗi lấy danh sách phê duyệt:", error);
@@ -21,12 +24,9 @@ export const useApprovals = () => {
     const reviewTicket = async (id, status, reviewNote = '') => {
         try {
             await axios.put(`/approvals/${id}/review`, { status, review_note: reviewNote });
-            // Cập nhật state UI ngay lập tức
-            setTickets(prev => prev.filter(ticket => ticket.id !== id));
             return { success: true };
         } catch (error) {
-            console.error("Lỗi duyệt đơn:", error);
-            return { success: false, error: "Không thể xử lý yêu cầu" };
+            return { success: false, error: error.response?.data?.error || "Lỗi xử lý" };
         }
     };
 

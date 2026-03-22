@@ -1,64 +1,86 @@
 import React from 'react';
-import { Check, X, ShieldAlert, FileText, Laptop, Shield } from 'lucide-react';
+import { Check, X, Laptop, Shield, FileText, UserPlus, Trash2, Info, Edit } from 'lucide-react';
 
 const ApprovalList = ({ tickets, onReview, loading }) => {
     
-    // Icon và Tên đẹp cho từng Module
-    const getModuleInfo = (moduleType) => {
-        switch (moduleType) {
-            case 'AGENT_ENROLL': return { label: 'Máy trạm mới', icon: <Laptop size={16} className="text-blue-400"/>, bg: 'bg-blue-500/10' };
-            case 'POLICY_CREATE': return { label: 'Tạo Chính sách', icon: <Shield size={16} className="text-emerald-400"/>, bg: 'bg-emerald-500/10' };
-            case 'DOCUMENT_UPLOAD': return { label: 'Tài liệu AI', icon: <FileText size={16} className="text-purple-400"/>, bg: 'bg-purple-500/10' };
-            default: return { label: 'Hệ thống', icon: <ShieldAlert size={16} className="text-amber-400"/>, bg: 'bg-amber-500/10' };
+    const getModuleConfig = (type) => {
+        switch (type) {
+            case 'AGENT_ENROLL': return { label: 'Máy mới', icon: <Laptop size={16} className="text-blue-400"/>, requester: 'Thiết bị (Agent)' };
+            case 'AGENT_DELETE': return { label: 'Gỡ máy', icon: <Trash2 size={16} className="text-red-400"/>, requester: 'Quản trị viên' };
+            case 'POLICY_CREATE': return { label: 'Chính sách', icon: <Shield size={16} className="text-emerald-400"/>, requester: 'SOC Admin' };
+            case 'DOCUMENT_UPLOAD': return { label: 'Tài liệu', icon: <FileText size={16} className="text-purple-400"/>, requester: 'Nhân viên' };
+            case 'USER_CREATE': return { label: 'Nhân sự', icon: <UserPlus size={16} className="text-orange-400"/>, requester: 'CISO' };
+            case 'USER_UPDATE': return { label: 'Đổi quyền', icon: <Edit size={16} className="text-amber-400"/>, requester: 'Admin' };
+            case 'USER_DELETE': return { label: 'Xóa Nhân sự', icon: <Trash2 size={16} className="text-red-400"/>, requester: 'Admin' };
+            default: return { label: 'Khác', icon: <Info size={16} className="text-slate-400"/>, requester: 'Hệ thống' };
         }
     };
 
-    if (loading) return <div className="p-10 text-center text-slate-400">Đang tải dữ liệu...</div>;
-    if (tickets.length === 0) return <div className="p-10 text-center text-slate-500 italic">Hiện không có đơn nào cần phê duyệt.</div>;
+    const renderContent = (ticket) => {
+        try {
+            const data = JSON.parse(ticket.snapshot_data);
+            if (ticket.module_type === 'USER_CREATE') return `Cấp tài khoản: ${data.full_name} (@${data.username})`;
+            if (ticket.module_type === 'USER_UPDATE') return `Đổi quyền cho: ${data.full_name} (@${data.username})`;
+            if (ticket.module_type === 'USER_DELETE') return `Yêu cầu Xóa tài khoản nhân sự`;
+            if (ticket.module_type === 'AGENT_ENROLL') return `Yêu cầu gia nhập: ${data.hostname} (${data.ip})`;
+            if (ticket.module_type === 'AGENT_DELETE') return `Xóa vĩnh viễn: ${ticket.target_name}`;
+            return ticket.target_name;
+        } catch { return ticket.target_name; }
+    };
+
+    if (loading) return <div className="p-10 text-center text-slate-500 animate-pulse">Đang truy vấn dữ liệu...</div>;
+    if (tickets.length === 0) return <div className="p-20 text-center text-slate-600 italic">Không có yêu cầu nào cần xử lý.</div>;
 
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-900/50 text-[10px] uppercase text-slate-500 font-bold sticky top-0">
-                    <tr>
-                        <th className="p-4">Loại Yêu Cầu</th>
-                        <th className="p-4">Đối tượng</th>
-                        <th className="p-4">Người Yêu Cầu</th>
-                        <th className="p-4">Thời gian</th>
-                        <th className="p-4 text-right">Tác vụ</th>
+                <thead>
+                    <tr className="bg-slate-900/50 border-b border-slate-800 text-[10px] uppercase text-slate-500 font-black">
+                        <th className="p-4">Phân loại</th>
+                        <th className="p-4">Chi tiết yêu cầu</th>
+                        <th className="p-4">Nguồn yêu cầu</th>
+                        <th className="p-4 text-center">Trạng thái</th>
+                        <th className="p-4 text-right">Thao tác</th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800 text-sm text-slate-200">
-                    {tickets.map(ticket => {
-                        const modInfo = getModuleInfo(ticket.module_type);
+                <tbody className="divide-y divide-slate-800/50">
+                    {tickets.map((t) => {
+                        const config = getModuleConfig(t.module_type);
                         return (
-                            <tr key={ticket.id} className="hover:bg-slate-800/40 transition">
+                            <tr key={t.id} className="hover:bg-slate-800/30 transition group">
                                 <td className="p-4">
-                                    <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs font-bold ${modInfo.bg}`}>
-                                        {modInfo.icon} {modInfo.label}
+                                    <div className="flex items-center gap-2">
+                                        {config.icon}
+                                        <span className="text-xs font-bold text-slate-300">{config.label}</span>
+                                    </div>
+                                </td>
+                                <td className="p-4">
+                                    <div className="text-xs text-white font-medium">{renderContent(t)}</div>
+                                    <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">ID: {t.id} | {new Date(t.created_at).toLocaleString()}</div>
+                                </td>
+                                <td className="p-4">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+                                        <span className="text-xs text-slate-400 font-mono">{t.requested_by || config.requester}</span>
+                                    </div>
+                                </td>
+                                <td className="p-4 text-center">
+                                    <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${
+                                        t.status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-500' :
+                                        t.status === 'REJECTED' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'
+                                    }`}>
+                                        {t.status}
                                     </span>
                                 </td>
-                                <td className="p-4">
-                                    <p className="font-bold text-white">{ticket.target_name}</p>
-                                    <code className="text-[10px] text-slate-400 bg-slate-900 px-1 rounded mt-1 line-clamp-1">{ticket.snapshot_data}</code>
-                                </td>
-                                <td className="p-4 text-xs">{ticket.requested_by}</td>
-                                <td className="p-4 text-xs text-slate-400">{new Date(ticket.created_at).toLocaleString()}</td>
                                 <td className="p-4 text-right">
-                                    <div className="flex justify-end gap-2">
-                                        <button 
-                                            onClick={() => onReview(ticket.id, 'APPROVED')} 
-                                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-lg text-xs font-bold transition border border-emerald-500/30"
-                                        >
-                                            <Check size={14}/> Duyệt
-                                        </button>
-                                        <button 
-                                            onClick={() => onReview(ticket.id, 'REJECTED')} 
-                                            className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg text-xs font-bold transition border border-red-500/30"
-                                        >
-                                            <X size={14}/> Từ chối
-                                        </button>
-                                    </div>
+                                    {t.status === 'PENDING' ? (
+                                        <div className="flex justify-end gap-2">
+                                            <button onClick={() => onReview(t.id, 'APPROVED')} title="Chấp nhận" className="p-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-600 hover:text-white rounded-lg transition border border-emerald-500/20"><Check size={14}/></button>
+                                            <button onClick={() => onReview(t.id, 'REJECTED')} title="Từ chối" className="p-2 bg-red-500/10 text-red-500 hover:bg-red-600 hover:text-white rounded-lg transition border border-red-500/20"><X size={14}/></button>
+                                        </div>
+                                    ) : (
+                                        <span className="text-[10px] text-slate-500 italic">Xử lý bởi: {t.reviewed_by}</span>
+                                    )}
                                 </td>
                             </tr>
                         );

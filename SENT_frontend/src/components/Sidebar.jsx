@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { 
     LayoutDashboard, Monitor, MessageSquare, FileText, 
     ShieldCheck, ChevronLeft, ChevronRight, 
-    User,ClipboardCheck
+    User,ClipboardCheck,AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,15 +19,15 @@ const Sidebar = () => {
     const isActive = (path) => location.pathname.startsWith(path);
 
     const menuItems = [
-        { path: '/', icon: <LayoutDashboard size={20}/>, label: 'Tổng quan', show: true },
-        { path: '/agents', icon: <Monitor size={20}/>, label: 'Quản lý máy trạm', show: user.permissions?.view_agents },
-        { path: '/admin/policy-center', icon: <ShieldCheck size={20}/>, label: 'Quản lý Chính sách', show: user.permissions?.manage_policies },
-        { path: '/admin/docs',icon: <FileText size={20}/>,label: 'Quản lý tài liệu', show: user.permissions?.view_docs},
-        { path: '/admin/users', icon: <User size={20}/>, label: 'Quản lý người dùng', show: user.permissions?.manage_users },
-        { path: '/incidents', icon: <ShieldCheck size={20}/>, label: 'Quản lý sự cố', show: user.permissions?.manage_incidents },
-        { path: '/approvals', icon: <ClipboardCheck size={20}/>, label: 'Trung tâm phê duyệt', show: true }
-    ];
-
+    { path: '/', icon: <LayoutDashboard size={20}/>, label: 'Tổng quan', show: true },
+    { path: '/agents', icon: <Monitor size={20}/>, label: 'Máy trạm', show: user.permissions?.agent_view },
+    { path: '/policy-center', icon: <ShieldCheck size={20}/>, label: 'Chính sách', show: user.permissions?.policy_view },
+    { path: '/docs', icon: <FileText size={20}/>, label: 'Tài liệu', show: user.permissions?.doc_view },
+    { path: '/users', icon: <User size={20}/>, label: 'Nhân sự', show: user.permissions?.user_manage },
+    { path: '/incidents', icon: <AlertTriangle size={20}/>, label: 'Sự cố', show: user.permissions?.incident_view },
+    { path: '/approvals', icon: <ClipboardCheck size={20}/>, label: 'Phê duyệt', show: user.permissions?.approval_manage }
+];
+console.log("DỮ LIỆU USER ĐANG CÓ:", user);
     return (
         <div 
             className={`${isCollapsed ? 'w-25' : 'w-60'} bg-[#1e293b] h-screen flex flex-col border-r border-slate-800 shadow-2xl relative z-20 transition-all duration-300 ease-in-out`}
