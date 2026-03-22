@@ -100,8 +100,7 @@ func main() {
 				policiesGroup.GET("", policies.GetPoliciesByCategory)           // Lấy luật JSON
 				policiesGroup.POST("/bulk", policies.AddBulkPolicies)           // Thêm nhiều luật cùng lúc (Dành cho import Excel)
 				policiesGroup.POST("", policies.AddUniversalPolicy)             // Thêm luật JSON
-				policiesGroup.DELETE("/:id", policies.DeletePolicy)             // Xóa luật JSON
-				policiesGroup.PUT("/:id/review", policies.ReviewPolicy)         // Phê duyệt hoặc từ chối chính sách (Dành riêng cho SOC Manager)
+				policiesGroup.DELETE("/:id", policies.DeletePolicy)             // Xóa luật JSONager)
 				policiesGroup.POST("/bulk-delete", policies.DeleteBulkPolicies) // Xóa nhiều luật cùng lúc
 
 			}

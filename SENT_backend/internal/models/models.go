@@ -227,7 +227,7 @@ type UniversalPolicy struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
-	OrgID      uint   `json:"org_id" gorm:"index"`
+	OrgID      uint   `json:"org_id" gorm:"index:idx_policy_org_status"`
 	Title      string `json:"title"`
 	Category   string `json:"category"` // SOFTWARE, USB, NETWORK
 	Value      string `json:"value"`    // Tên exe, mã USB, Port...
@@ -240,9 +240,9 @@ type UniversalPolicy struct {
 	IncidentID *uint `json:"incident_id"`
 
 	// [MỚI THÊM] - LUỒNG PHÊ DUYỆT (APPROVAL WORKFLOW)
-	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"` // PENDING, APPROVED, REJECTED
-	CreatedBy      string `json:"created_by"`                               // Username người tạo đơn
-	ApprovedBy     string `json:"approved_by"`                              // Username người duyệt đơn
+	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING';index:idx_policy_org_status"` // PENDING, APPROVED, REJECTED
+	CreatedBy      string `json:"created_by"`                                                           // Username người tạo đơn
+	ApprovedBy     string `json:"approved_by"`                                                          // Username người duyệt đơn
 }
 
 type PolicyDocument struct {
@@ -299,7 +299,7 @@ type ApprovalTicket struct {
 	TargetID   uint   `json:"target_id"`   // ID của bản ghi tương ứng (VD: ID của Agent hoặc Policy)
 	TargetName string `json:"target_name"` // Tên để hiển thị cho dễ nhìn (VD: "PC-KETOAN-01" hoặc "Cấm USB")
 
-	Status string `json:"status" gorm:"default:'PENDING'"` // PENDING, APPROVED, REJECTED
+	Status string `json:"status" gorm:"default:'PENDING';index"` // PENDING, APPROVED, REJECTED
 
 	RequestedBy string `json:"requested_by"` // Tên người gửi đơn (hoặc "SYSTEM" nếu là Agent tự gửi)
 	ReviewedBy  string `json:"reviewed_by"`  // Tên Admin đã duyệt

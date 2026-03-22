@@ -2,10 +2,12 @@ package policies
 
 import (
 	"fmt"
+	"net/http"
 	"regexp"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,13 +16,13 @@ import (
 func GetPoliciesByCategory(c *gin.Context) {
 	category := c.Query("category")
 	status := c.Query("status") // Hỗ trợ lọc theo PENDING, APPROVED...
+	orgID := c.GetUint("org_id")
 	var list []models.UniversalPolicy
-
-	query := database.DB.Where("org_id = ?", 1)
+	query := database.DB.Where("org_id = ?", orgID)
 
 	if category != "" {
 		if category == "USB" {
-			query = query.Where("category IN ?", []string{"USB", "DEVICE", "STORAGE", "OTHER"})
+			query = query.Where("category IN ?", []string{"USB", "DEVICE", "STORAGE"})
 		} else {
 			query = query.Where("category = ?", category)
 		}
@@ -42,34 +44,33 @@ func AddUniversalPolicy(c *gin.Context) {
 		return
 	}
 
+	orgID := c.GetUint("org_id")
+	username, _ := c.Get("username")
+
+	req.OrgID = orgID
 	req.Category = normalizeCategory(req.Value, req.Category)
-	if req.OrgID == 0 {
-		req.OrgID = 1
-	}
-
 	req.ApprovalStatus = "PENDING"
-	req.CreatedBy = "System_Admin"
+	req.CreatedBy = username.(string)
 
-	// 1. Tạo Policy trước (để lấy ID)
 	if err := database.DB.Create(&req).Error; err != nil {
 		c.JSON(500, gin.H{"error": "Lỗi Database"})
 		return
 	}
 
-	// 2. [MỚI] TẠO TICKET VÀO TRUNG TÂM PHÊ DUYỆT
+	// Tạo vé phê duyệt tập trung[cite: 45]
 	ticket := models.ApprovalTicket{
-		OrgID:        req.OrgID,
+		OrgID:        orgID,
 		ModuleType:   "POLICY_CREATE",
 		ActionType:   "CREATE",
-		TargetID:     req.ID, // ID của Policy vừa tạo
+		TargetID:     req.ID,
 		TargetName:   fmt.Sprintf("[%s] %s", req.Category, req.Value),
 		Status:       "PENDING",
-		RequestedBy:  "Nhân viên SOC", // Tạm hardcode
+		RequestedBy:  username.(string),
 		SnapshotData: fmt.Sprintf(`{"title": "%s", "value": "%s"}`, req.Title, req.Value),
 	}
 	database.DB.Create(&ticket)
 
-	c.JSON(200, gin.H{"message": "Đã gửi yêu cầu. Chờ phê duyệt.", "data": req})
+	c.JSON(200, gin.H{"message": "Đã gửi yêu cầu phê duyệt chính sách."})
 }
 
 // --- 3. THÊM NHIỀU TỪ EXCEL/WORD (Sẽ bị đưa vào PENDING) ---
@@ -168,40 +169,6 @@ func AddBulkPolicies(c *gin.Context) {
 	})
 }
 
-// --- 4. [MỚI] API PHÊ DUYỆT HOẶC TỪ CHỐI (Dành riêng cho SOC Manager) ---
-func ReviewPolicy(c *gin.Context) {
-	id := c.Param("id")
-	var req struct {
-		Status string `json:"status"` // Truyền lên "APPROVED" hoặc "REJECTED"
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
-		return
-	}
-
-	// Xác thực: Chỗ này sau này bạn sẽ check xem JWT Role có phải là "MANAGER" hay không
-	// giả sử tạm thời ai cũng duyệt được để test:
-	reviewerName := "SOC_Manager" // Sẽ lấy từ JWT Token
-
-	var policy models.UniversalPolicy
-	if err := database.DB.First(&policy, id).Error; err != nil {
-		c.JSON(404, gin.H{"error": "Không tìm thấy chính sách"})
-		return
-	}
-
-	// Cập nhật trạng thái
-	policy.ApprovalStatus = req.Status
-	policy.ApprovedBy = reviewerName
-
-	if err := database.DB.Save(&policy).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Không thể cập nhật trạng thái"})
-		return
-	}
-
-	c.JSON(200, gin.H{"message": "Đã " + req.Status + " chính sách thành công"})
-}
-
 // DeletePolicy: (Giữ nguyên)
 func DeletePolicy(c *gin.Context) {
 	id := c.Param("id")
@@ -236,22 +203,29 @@ func DeleteBulkPolicies(c *gin.Context) {
 
 // SyncPoliciesForAgent: Agent gọi API này để lấy bộ luật "Effective"
 func SyncPoliciesForAgent(c *gin.Context) {
-	// Giả sử Agent gửi HWID qua Query hoặc Header (Thực tế nên lấy từ Token Claims)
+	orgIDFromToken := c.GetUint("org_id")
+
+	// 2. HWID mà máy trạm khai báo
 	hwid := c.Query("hwid")
 	if hwid == "" {
-		c.JSON(400, gin.H{"error": "Thiếu HWID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu thông tin HWID"})
 		return
 	}
 
-	orgID := uint(1) // Tạm hardcode, sau này lấy từ Auth Middleware của Agent
+	// 3. CHỐT CHẶN BẢO MẬT: Kiểm tra máy trạm có thuộc về tổ chức này không
+	var agent models.Agent
+	if err := database.DB.Where("hw_id = ? AND org_id = ?", hwid, orgIDFromToken).First(&agent).Error; err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Thiết bị không thuộc phạm vi quản lý của tổ chức hoặc chưa đăng ký!"})
+		return
+	}
 
-	// Gọi Engine tính toán
-	policies := CalculateEffectivePolicies(orgID, hwid)
+	// 4. Nếu hợp lệ, tính toán bộ luật hiệu dụng[cite: 48]
+	policies := CalculateEffectivePolicies(orgIDFromToken, hwid)
 
-	c.JSON(200, gin.H{
-		"sync_time": "now",
-		"count":     len(policies),
-		"policies":  policies,
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "synchronized",
+		"sync_at":  time.Now(),
+		"policies": policies,
 	})
 }
 
