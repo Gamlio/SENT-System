@@ -1,11 +1,11 @@
-package agent_data
+package data // SỬA: Đổi từ agent_data sang data
 
 import (
 	"encoding/json"
 	"fmt"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"sent_backend/internal/service/security"
+	"sent_backend/internal/service/incidents"
 	"strings"
 
 	"gorm.io/gorm/clause"
@@ -28,6 +28,7 @@ func ProcessSoftware(agent models.Agent, data interface{}) {
 		return
 	}
 
+	incSvc := &incidents.IncidentService{}
 	database.DB.Where("agent_hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
 
 	for _, rec := range records {
@@ -43,25 +44,25 @@ func ProcessSoftware(agent models.Agent, data interface{}) {
 		}
 		database.DB.Create(&dbItem)
 
-		// 1. Kiểm tra Mã độc
+		// 1. Kiểm tra Mã độc (Cập nhật gọi incSvc)
 		if rec.FileHash != "" && checkMaliciousHash(rec.FileHash) {
-			security.TriggerSecurityEvent(agent, "Malware Detected", "[P1] Cảnh báo Mã Độc", fmt.Sprintf("Tiến trình: %s", rec.SoftwareName), "P1")
+			incSvc.TriggerSecurityEvent(agent, "Malware Detected", "[P1] Cảnh báo Mã Độc", fmt.Sprintf("Tiến trình: %s", rec.SoftwareName), "P1")
 		}
 
 		// 2. Lẩn tránh (Ghost Registry)
 		if rec.Status == "GHOST_REGISTRY" {
-			security.TriggerSecurityEvent(agent, "Defense Evasion", "[P2] Xóa dấu vết phần mềm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P2")
+			incSvc.TriggerSecurityEvent(agent, "Defense Evasion", "[P2] Xóa dấu vết phần mềm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P2")
 		}
 
 		// 3. Phân mềm cấm
 		if checkBannedSoftware(rec.SoftwareName) {
-			security.TriggerSecurityEvent(agent, "Software Violation", "[P3] Cài đặt phần mềm cấm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P3")
+			incSvc.TriggerSecurityEvent(agent, "Software Violation", "[P3] Cài đặt phần mềm cấm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P3")
 		}
 
 		// 4. [ZERO TRUST] Kiểm tra danh sách Whitelist
 		if agent.IsZeroTrust {
 			if !VerifySoftware(rec, agent) {
-				security.TriggerSecurityEvent(agent, "Zero Trust Violation", "[P1] Tiến trình lạ xuất hiện", fmt.Sprintf("Chưa phê duyệt: %s", rec.SoftwareName), "P1")
+				incSvc.TriggerSecurityEvent(agent, "Zero Trust Violation", "[P1] Tiến trình lạ xuất hiện", fmt.Sprintf("Chưa phê duyệt: %s", rec.SoftwareName), "P1")
 			}
 		}
 	}

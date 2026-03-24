@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"sent_backend/internal/service"
+	agentService "sent_backend/internal/service/agents"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,7 +21,7 @@ type AgentPayload struct {
 // PushDataHandler: Cổng tiếp nhận duy nhất
 func PushDataHandler(c *gin.Context) {
 	// 1. Bind dữ liệu
-	var req AgentPayload
+	var req agentService.AgentPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
@@ -39,7 +39,7 @@ func PushDataHandler(c *gin.Context) {
 	// verifyHMAC(req.Data, agent.SecretKey, signature)
 
 	// 3. Quăng dữ liệu vào hàng đợi bất đồng bộ (Goroutine) cho Bộ não xử lý
-	go service.ProcessAgentData(service.AgentPayload{
+	go agentService.ProcessAgentData(agentService.AgentPayload{
 		Type:     "DATA",
 		LogType:  req.LogType,
 		HWID:     req.HWID,

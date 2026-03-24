@@ -1,11 +1,11 @@
-package agent_data
+package data
 
 import (
 	"encoding/json"
 	"fmt"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"sent_backend/internal/service/security"
+	"sent_backend/internal/service/incidents"
 
 	"gorm.io/gorm/clause"
 )
@@ -46,10 +46,10 @@ func ProcessUSB(agent models.Agent, data interface{}) {
 		}).Create(&usb)
 
 		if result.Error == nil {
-			// Chỉ báo động NẾU ĐÂY LÀ LẦN ĐẦU CẮM (Bản ghi vừa được tạo mới)
+			incSvc := &incidents.IncidentService{}
 			isNew := usb.CreatedAt.Unix() == usb.UpdatedAt.Unix()
 			if isNew {
-				security.TriggerSecurityEvent(agent,
+				incSvc.TriggerSecurityEvent(agent,
 					"USB Violation",
 					"[P3] Thiết bị ngoại vi mới",
 					fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s)", rec.DeviceName, rec.VID),

@@ -1,4 +1,4 @@
-package agent_data
+package data
 
 import (
 	"fmt"

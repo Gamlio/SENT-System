@@ -1,6 +1,7 @@
 package strategies
 
 import (
+	"encoding/json"
 	"errors"
 	"sent_backend/internal/models"
 
@@ -49,4 +50,33 @@ func (s *PolicyCreateStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTick
 			"approved_by":     ticket.ReviewedBy,
 			"is_active":       false, // Đảm bảo luật không hoạt động nếu bị từ chối
 		}).Error
+}
+
+type PolicyDeleteStrategy struct{}
+
+func (s *PolicyDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
+	// Thực hiện xóa thật bản ghi trong DB khi được duyệt
+	return tx.Delete(&models.UniversalPolicy{}, ticket.TargetID).Error
+}
+
+func (s *PolicyDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
+	return nil // Từ chối xóa thì không làm gì cả
+}
+
+// --- XÓA NHIỀU ---
+type PolicyBulkDeleteStrategy struct{}
+
+func (s *PolicyBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
+	var data struct {
+		IDs []uint `json:"ids"`
+	}
+	if err := json.Unmarshal([]byte(ticket.SnapshotData), &data); err != nil {
+		return err
+	}
+	// Xóa đồng loạt theo danh sách ID đã lưu trong vé
+	return tx.Where("id IN ? AND org_id = ?", data.IDs, ticket.OrgID).Delete(&models.UniversalPolicy{}).Error
+}
+
+func (s *PolicyBulkDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
+	return nil
 }

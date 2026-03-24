@@ -32,3 +32,16 @@ func (h *Hub) PushCommand(hwid string, message interface{}) {
 		conn.WriteJSON(message)
 	}
 }
+
+// Broadcast: Gửi tin nhắn cho TẤT CẢ các client đang kết nối (Dashboard/Admin)
+func (h *Hub) Broadcast(message interface{}) {
+	h.Mu.Lock()
+	defer h.Mu.Unlock()
+	for hwid, conn := range h.Clients {
+		err := conn.WriteJSON(message)
+		if err != nil {
+			conn.Close()
+			delete(h.Clients, hwid)
+		}
+	}
+}

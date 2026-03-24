@@ -18,11 +18,16 @@ var Registry = map[string]ApprovalStrategy{
 	"AGENT_ENROLL":      &AgentEnrollStrategy{},
 	"AGENT_DELETE":      &AgentDeleteStrategy{},
 	"AGENT_BULK_DELETE": &AgentBulkDeleteStrategy{},
-	"POLICY_CREATE":     &PolicyCreateStrategy{},
-	"DOCUMENT_UPLOAD":   &DocumentUploadStrategy{},
-	"USER_CREATE":       &UserCreateStrategy{},
-	"USER_UPDATE":       &UserUpdateStrategy{},
-	"USER_DELETE":       &UserDeleteStrategy{},
+
+	"POLICY_CREATE":      &PolicyCreateStrategy{},
+	"POLICY_DELETE":      &PolicyDeleteStrategy{},
+	"POLICY_BULK_DELETE": &PolicyBulkDeleteStrategy{},
+
+	"DOCUMENT_UPLOAD": &DocumentUploadStrategy{},
+
+	"USER_CREATE": &UserCreateStrategy{},
+	"USER_UPDATE": &UserUpdateStrategy{},
+	"USER_DELETE": &UserDeleteStrategy{},
 }
 
 // GetStrategy: Hàm lấy bộ xử lý tương ứng

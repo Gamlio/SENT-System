@@ -69,7 +69,24 @@ type User struct {
 	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"` // PENDING, APPROVED, REJECTED
 	ApprovedBy     string `json:"approved_by"`
 }
-
+type UserPayload struct {
+	Username           string `json:"username"`
+	Password           string `json:"password"`
+	FullName           string `json:"full_name"`
+	Phone              string `json:"phone"`
+	Email              string `json:"email"`
+	PermAgentView      bool   `json:"perm_agent_view"`
+	PermAgentAction    bool   `json:"perm_agent_action"`
+	PermAgentDelete    bool   `json:"perm_agent_delete"`
+	PermPolicyView     bool   `json:"perm_policy_view"`
+	PermPolicyAction   bool   `json:"perm_policy_action"`
+	PermIncidentView   bool   `json:"perm_incident_view"`
+	PermIncidentAction bool   `json:"perm_incident_action"`
+	PermDocView        bool   `json:"perm_doc_view"`
+	PermDocManage      bool   `json:"perm_doc_manage"`
+	PermUserManage     bool   `json:"perm_user_manage"`
+	PermApprovalManage bool   `json:"perm_approval_manage"`
+}
 type UserPermission struct {
 	gorm.Model
 	UserID     uint   `json:"user_id"`
@@ -123,6 +140,12 @@ type EnrollmentToken struct {
 	OrgID     uint      `json:"org_id"`
 	ExpiresAt time.Time `json:"expires_at"` // Hạn sử dụng (VD: 24h)
 	CreatedBy string    `json:"created_by"` // Username của Admin đã tạo mã
+}
+type EnrollRequest struct {
+	HWID      string `json:"hwid"`
+	Hostname  string `json:"hostname"`
+	IPAddress string `json:"ip_address"`
+	Token     string `json:"token"` // Mã cài đặt (Enrollment Token)
 }
 type AgentInventory struct {
 	gorm.Model

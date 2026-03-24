@@ -4,140 +4,64 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+	agentSvc "sent_backend/internal/service/agents" // Alias cho service
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// Hàm random tạo chuỗi ngẫu nhiên bảo mật cao
 func generateSecureToken(length int) string {
 	b := make([]byte, length)
 	rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
-// 1. LÀM CHO ADMIN SOC: Sinh mã cài đặt có hạn 24h
-// POST /api/v1/agents/generate-token (Yêu cầu JWT)
+// GenerateEnrollmentToken (GATE): Sinh mã cài đặt 24h
 func GenerateEnrollmentToken(c *gin.Context) {
-	// Lấy OrgID từ JWT Middleware
-	orgIDVal, _ := c.Get("org_id")
-	usernameVal, _ := c.Get("username")
+	orgID := c.GetUint("org_id")
+	username, _ := c.Get("username")
 
-	// Lấy OrgID ép về kiểu uint
-	orgID := orgIDVal.(uint)
+	randomPart := strings.ToUpper(generateSecureToken(4))
+	tokenString := fmt.Sprintf("SENT-%d-%s", orgID, randomPart)
 
-	// [MỚI] Format mã cài đặt: SENT - [ID CÔNG TY] - [CHUỖI NGẪU NHIÊN 8 KÝ TỰ]
-	// Ví dụ: SENT-01-A1B2C3D4
-	randomPart := strings.ToUpper(generateSecureToken(4)) // 4 byte = 8 ký tự Hex
-	tokenString := fmt.Sprintf("%02d-%s", orgID, randomPart)
-
-	token := models.EnrollmentToken{
-		Token: tokenString,
-		OrgID: orgID,
-		// [QUAN TRỌNG]: Giảm thời hạn xuống đúng 15 phút
-		ExpiresAt: time.Now().Add(15 * time.Minute),
-		CreatedBy: usernameVal.(string),
+	tokenRecord := models.EnrollmentToken{
+		Token:     tokenString,
+		OrgID:     orgID,
+		CreatedBy: username.(string),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 
-	database.DB.Create(&token)
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":      "Tạo mã cài đặt thành công",
-		"enroll_token": tokenString,
-		"expires_at":   token.ExpiresAt,
-	})
+	if err := database.DB.Create(&tokenRecord).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Không thể sinh mã"})
+		return
+	}
+	c.JSON(200, tokenRecord)
 }
 
-// 2. LÀM CHO PHẦN MỀM SENT: Đăng ký máy trạm mới
-// POST /api/v1/agents/enroll (Public - Không cần JWT)
+// EnrollAgent (GATE): Tiếp nhận đăng ký từ máy trạm
 func EnrollAgent(c *gin.Context) {
-	var req struct {
-		HWID        string `json:"hwid"`
-		Hostname    string `json:"hostname"`
-		IPAddress   string `json:"ip_address"`
-		EnrollToken string `json:"enroll_token"`
-	}
-
+	var req models.EnrollRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
-	// Kiểm tra Token có tồn tại và còn hạn không?
+	// 1. Xác thực Token (Bước bảo vệ cửa ngõ)
 	var tokenRecord models.EnrollmentToken
-	if err := database.DB.Where("token = ?", req.EnrollToken).First(&tokenRecord).Error; err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Mã cài đặt không hợp lệ hoặc không tồn tại!"})
+	if err := database.DB.Where("token = ? AND expires_at > ?", req.Token, time.Now()).First(&tokenRecord).Error; err != nil {
+		c.JSON(401, gin.H{"error": "Mã cài đặt không hợp lệ hoặc đã hết hạn"})
 		return
 	}
 
-	if time.Now().After(tokenRecord.ExpiresAt) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Mã cài đặt đã hết hạn!"})
+	// 2. Gọi Service Brain xử lý đăng ký và tạo Ticket
+	svc := &agentSvc.AgentLifecycleService{}
+	if err := svc.EnrollAgentRequest(req, tokenRecord.OrgID); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	secretKey := generateSecureToken(16)
-	var existingAgent models.Agent
-	result := database.DB.Where("hw_id = ?", req.HWID).First(&existingAgent)
-
-	if result.Error == nil {
-		// TRƯỜNG HỢP: ĐÃ TỒN TẠI
-		database.DB.Model(&existingAgent).Updates(map[string]interface{}{
-			"status":     "PENDING",
-			"secret_key": secretKey,
-			"hostname":   req.Hostname,
-			"ip_address": req.IPAddress,
-			"last_seen":  time.Now(),
-		})
-
-		alert := models.SecurityAlert{
-			OrgID:       existingAgent.OrgID,
-			HWID:        existingAgent.HWID,
-			Priority:    "P2",
-			AlertType:   "Re-Enrollment Detected",
-			Description: "Thiết bị vừa xin cấp lại khóa xác thực. Có thể do cài đặt lại HĐH hoặc bị giả mạo (Spoofing). Trạng thái đã bị đẩy về PENDING. Vui lòng xác minh trước khi phê duyệt.",
-		}
-		database.DB.Create(&alert)
-
-	} else {
-		// TRƯỜNG HỢP: MÁY MỚI HOÀN TOÀN
-		newAgent := models.Agent{
-			HWID:      req.HWID,
-			Hostname:  req.Hostname,
-			IPAddress: req.IPAddress,
-			OrgID:     tokenRecord.OrgID,
-			Status:    "PENDING",
-			SecretKey: secretKey,
-			LastSeen:  time.Now(),
-		}
-		database.DB.Create(&newAgent)
-	}
-
-	// --- [SỬA LỖI Ở ĐÂY]: Dùng target_name thay vì target_id ---
-	var existingTicket models.ApprovalTicket
-	ticketExists := database.DB.Where("module_type = ? AND target_name = ? AND status = ?", "AGENT_ENROLL", req.HWID, "PENDING").First(&existingTicket)
-
-	if ticketExists.Error != nil {
-		// Chưa có Ticket nào chờ duyệt, tạo mới
-		ticket := models.ApprovalTicket{
-			OrgID:        tokenRecord.OrgID,
-			ModuleType:   "AGENT_ENROLL",
-			ActionType:   "ENROLL",
-			TargetID:     0,        // Giữ nguyên là 0 vì TargetID là số
-			TargetName:   req.HWID, // Lưu chuỗi HWID vào TargetName
-			Status:       "PENDING",
-			RequestedBy:  "SYSTEM",
-			SnapshotData: fmt.Sprintf(`{"ip": "%s", "action": "Yêu cầu kết nối vào SOC"}`, req.IPAddress),
-		}
-		database.DB.Create(&ticket)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":    "Đăng ký thành công. Đang chờ SOC phê duyệt.",
-		"secret_key": secretKey,
-		"status":     "PENDING",
-	})
+	c.JSON(200, gin.H{"message": "Đăng ký thành công, vui lòng chờ Admin phê duyệt."})
 }

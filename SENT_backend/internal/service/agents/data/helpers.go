@@ -1,4 +1,4 @@
-package agent_data
+package data
 
 import (
 	"crypto/sha256"
@@ -17,4 +17,3 @@ func MapToStruct(input interface{}, output interface{}) error {
 	b, _ := json.Marshal(input)
 	return json.Unmarshal(b, output)
 }
-

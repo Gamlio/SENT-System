@@ -1,9 +1,9 @@
-package service
+package agents
 
 import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-	"sent_backend/internal/service/agent_data"
+	dataAgents "sent_backend/internal/service/agents/data"
 	"time"
 )
 
@@ -37,18 +37,18 @@ func ProcessAgentData(payload AgentPayload) {
 	// 2. PHÂN LUỒNG XUỐNG CÁC MODULE CHUYÊN TRÁCH
 	switch payload.LogType {
 	case "software_baseline":
-		agent_data.HandleSoftwareBaseline(agent, payload.Data)
+		dataAgents.HandleSoftwareBaseline(agent, payload.Data)
 	case "software":
-		agent_data.ProcessSoftware(agent, payload.Data)
+		dataAgents.ProcessSoftware(agent, payload.Data)
 	case "usb":
-		agent_data.ProcessUSB(agent, payload.Data)
+		dataAgents.ProcessUSB(agent, payload.Data)
 	case "port":
-		agent_data.ProcessPorts(agent, payload.Data)
+		dataAgents.ProcessPorts(agent, payload.Data)
 	case "inventory":
-		agent_data.ProcessInventory(agent, payload.Data)
+		dataAgents.ProcessInventory(agent, payload.Data)
 	case "firewall":
-		agent_data.ProcessFirewall(agent, payload.Data)
+		dataAgents.ProcessFirewall(agent, payload.Data)
 	case "antivirus":
-		agent_data.ProcessAntivirus(agent, payload.Data)
+		dataAgents.ProcessAntivirus(agent, payload.Data)
 	}
 }
