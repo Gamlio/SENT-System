@@ -6,6 +6,8 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/security"
+
+	"gorm.io/gorm/clause"
 )
 
 type AgentUSBRecord struct {
@@ -26,32 +28,34 @@ func ProcessUSB(agent models.Agent, data interface{}) {
 	}
 
 	for _, rec := range records {
-		var existing models.USBLog
-		// Kiểm tra xem USB Hash này đã từng cắm vào máy này chưa
-		err := database.DB.Where("agent_hw_id = ? AND device_hash = ?", agent.HWID, rec.DeviceHash).First(&existing).Error
+		usb := models.USBLog{
+			AgentHWID:    agent.HWID,
+			DeviceName:   rec.DeviceName,
+			DeviceID:     rec.DeviceID,
+			VID:          rec.VID,
+			PID:          rec.PID,
+			SerialNumber: rec.SerialNumber,
+			DeviceHash:   rec.DeviceHash,
+			EventType:    rec.EventType,
+		}
 
-		if err != nil {
-			// CHƯA TỪNG CẮM -> Ghi log và Báo động
-			newLog := models.USBLog{
-				AgentHWID:    agent.HWID,
-				DeviceName:   rec.DeviceName,
-				DeviceID:     rec.DeviceID,
-				VID:          rec.VID,
-				PID:          rec.PID,
-				SerialNumber: rec.SerialNumber,
-				DeviceHash:   rec.DeviceHash,
-				EventType:    "active",
+		// Upsert: Cập nhật EventType/Time nếu đã tồn tại, Tạo mới nếu chưa có
+		result := database.DB.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "agent_hw_id"}, {Name: "device_hash"}},
+			DoUpdates: clause.AssignmentColumns([]string{"event_type", "updated_at"}),
+		}).Create(&usb)
+
+		if result.Error == nil {
+			// Chỉ báo động NẾU ĐÂY LÀ LẦN ĐẦU CẮM (Bản ghi vừa được tạo mới)
+			isNew := usb.CreatedAt.Unix() == usb.UpdatedAt.Unix()
+			if isNew {
+				security.TriggerSecurityEvent(agent,
+					"USB Violation",
+					"[P3] Thiết bị ngoại vi mới",
+					fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s)", rec.DeviceName, rec.VID),
+					"P3",
+				)
 			}
-			database.DB.Create(&newLog)
-
-			security.TriggerSecurityEvent(agent,
-				"USB Violation",
-				"[P3] Cắm thiết bị USB chưa xác thực",
-				fmt.Sprintf("Phát hiện thiết bị ngoại vi lạ: %s (VID: %s, PID: %s).", rec.DeviceName, rec.VID, rec.PID),
-				"P3",
-			)
 		}
 	}
-
-	go security.CheckUSBCompliance(agent, data)
 }

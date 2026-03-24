@@ -1,7 +1,6 @@
 package service
 
 import (
-	"log"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/agent_data"
@@ -17,46 +16,39 @@ type AgentPayload struct {
 }
 
 func ProcessAgentData(payload AgentPayload) {
-	// 1. Tối ưu: Chỉ cập nhật LastSeen và Hostname.
-	// TUYỆT ĐỐI KHÔNG cập nhật "status": "online" để tránh ghi đè trạng thái Zero Trust (ACTIVE/PENDING)
-	database.DB.Model(&models.Agent{}).
-		Where("hw_id = ?", payload.HWID).
-		Updates(map[string]interface{}{
-			"last_seen": time.Now(),
-			"hostname":  payload.Hostname,
-		})
+	// 1. Cập nhật nhịp đập (Keep-alive)
+	database.DB.Model(&models.Agent{}).Where("hw_id = ?", payload.HWID).
+		Updates(map[string]interface{}{"last_seen": time.Now(), "hostname": payload.Hostname})
 
-	// Nếu chỉ là nhịp đập tim để báo online thì dừng ở đây
 	if payload.Type == "HEARTBEAT" {
 		return
 	}
 
-	// 2. Lấy thông tin Agent để truyền vào các hàm xử lý
 	var agent models.Agent
 	if err := database.DB.Where("hw_id = ?", payload.HWID).First(&agent).Error; err != nil {
-		log.Printf("❌ Lỗi: Không tìm thấy Agent %s", payload.HWID)
 		return
 	}
 
-	// [LỚP BẢO VỆ THỨ 2]: Khóa dữ liệu rác
-	// Nếu máy chưa được Duyệt (ACTIVE) thì không được phép nhét rác vào các bảng USB, Software...
+	// [CHỐT CHẶN BẢO MẬT]: Từ chối xử lý log nếu máy chưa được duyệt
 	if agent.Status != "ACTIVE" {
-		log.Printf("🛡️ Bỏ qua dữ liệu [%s] từ máy %s vì trạng thái đang là %s", payload.LogType, agent.HWID, agent.Status)
 		return
 	}
 
-	// 3. Phân phối dữ liệu vào các module chuyên trách
-	// Chú ý: Ta ném nguyên cục 'payload.Data' cho agent_data tự ép kiểu JSON, giúp file này cực kỳ gọn gàng.
+	// 2. PHÂN LUỒNG XUỐNG CÁC MODULE CHUYÊN TRÁCH
 	switch payload.LogType {
+	case "software_baseline":
+		agent_data.HandleSoftwareBaseline(agent, payload.Data)
 	case "software":
 		agent_data.ProcessSoftware(agent, payload.Data)
 	case "usb":
 		agent_data.ProcessUSB(agent, payload.Data)
-	case "telemetry":
-		agent_data.ProcessTelemetry(agent, payload.Data)
+	case "port":
+		agent_data.ProcessPorts(agent, payload.Data)
 	case "inventory":
 		agent_data.ProcessInventory(agent, payload.Data)
-	default:
-		log.Printf("⚠️ Cảnh báo: Loại log không hợp lệ [%s] từ máy %s", payload.LogType, agent.Hostname)
+	case "firewall":
+		agent_data.ProcessFirewall(agent, payload.Data)
+	case "antivirus":
+		agent_data.ProcessAntivirus(agent, payload.Data)
 	}
 }

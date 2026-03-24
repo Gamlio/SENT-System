@@ -1,6 +1,15 @@
 import React from 'react';
-import { ShieldCheck, CheckCircle2, Laptop, Trash2, Clock, User, AlertTriangle } from 'lucide-react';
+import {  CheckCircle2, Laptop, Trash2, Clock, User, AlertTriangle } from 'lucide-react';
 
+export const StatCard = ({ icon, label, value, color, bg }) => (
+    <div className={`p-5 rounded-3xl border border-slate-800 shadow-xl ${bg} flex flex-col gap-3 transition-transform hover:scale-[1.02]`}>
+        <div className={color}>{icon}</div>
+        <div>
+            <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{label}</p>
+            <h3 className="text-2xl font-black text-white mt-1">{value}</h3>
+        </div>
+    </div>
+);
 export const PolicyItem = ({ policy, onDelete, agents }) => {
     const getTargetNames = () => {
         if (!policy.target_hwids) return "Global";

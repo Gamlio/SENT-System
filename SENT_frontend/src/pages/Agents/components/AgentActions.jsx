@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, ShieldCheck, Terminal, Lock, Usb, Cpu, Server, Briefcase, UserX,Trash2, X } from 'lucide-react';
+import { MoreVertical, ShieldCheck, Terminal, Lock, Usb, Cpu, Server, Briefcase, UserX,Trash2, X,Fingerprint } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AppDialog from '../../../components/AppDialog';
 import axios from '../../../api/axios'; // Đảm bảo đường dẫn axios chuẩn
@@ -85,6 +85,32 @@ const handleDeleteAgent = () => {
             }
         });
     };
+                <button
+                onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setIsOpen(false);
+                    handleTriggerBaseline(); // Hàm mới để gọi API Push qua WebSocket hoặc REST
+                }}
+                className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-emerald-400 flex items-center gap-3 transition border-l-2 border-emerald-500/50 bg-emerald-500/5"
+            >
+                <Fingerprint size={16} /> Quét & Thiết lập Baseline
+            </button>
+            const handleTriggerBaseline = async () => {
+            setDialogConfig({
+                isOpen: true,
+                title: 'Thiết lập Zero Trust?',
+                message: 'Hệ thống sẽ ra lệnh cho Agent quét toàn bộ phần mềm và USB hiện tại để làm danh sách Whitelist mặc định.',
+                type: 'info',
+                onConfirm: async () => {
+                    try {
+                        await axios.post(`/agents/${agent.hwid}/trigger-baseline`);
+                        alert("Đã gửi lệnh quét tới máy trạm qua WebSocket!");
+                    } catch (err) {
+                        alert("Lỗi khi gửi lệnh.");
+                    }
+                }
+            });
+        };
     return (
         <div className="relative flex items-center" ref={menuRef}>
             <button 

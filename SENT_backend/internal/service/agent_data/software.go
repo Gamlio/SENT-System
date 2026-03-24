@@ -7,9 +7,10 @@ import (
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/security"
 	"strings"
+
+	"gorm.io/gorm/clause"
 )
 
-// Khớp 100% với Struct gửi từ Agent
 type AgentSoftwareRecord struct {
 	SoftwareName    string `json:"software_name"`
 	Version         string `json:"version"`
@@ -21,14 +22,12 @@ type AgentSoftwareRecord struct {
 }
 
 func ProcessSoftware(agent models.Agent, data interface{}) {
-	// Ép kiểu an toàn từ interface{} sang Struct
 	bytes, _ := json.Marshal(data)
 	var records []AgentSoftwareRecord
 	if err := json.Unmarshal(bytes, &records); err != nil {
 		return
 	}
 
-	// Xóa dữ liệu cũ để cập nhật mới
 	database.DB.Where("agent_hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
 
 	for _, rec := range records {
@@ -44,56 +43,70 @@ func ProcessSoftware(agent models.Agent, data interface{}) {
 		}
 		database.DB.Create(&dbItem)
 
-		// --- LUỒNG TRIAGE TỰ ĐỘNG BẮT BỆNH ---
-
-		// 1. MÃ ĐỘC (YARA/Threat Intel Match)
+		// 1. Kiểm tra Mã độc
 		if rec.FileHash != "" && checkMaliciousHash(rec.FileHash) {
-			security.TriggerSecurityEvent(agent,
-				"Malware Detected",
-				"[P1] Cảnh báo Mã Độc",
-				fmt.Sprintf("Tiến trình '%s' chứa mã băm độc hại: %s", rec.SoftwareName, rec.FileHash),
-				"P1",
-			)
+			security.TriggerSecurityEvent(agent, "Malware Detected", "[P1] Cảnh báo Mã Độc", fmt.Sprintf("Tiến trình: %s", rec.SoftwareName), "P1")
 		}
 
-		// 2. LẨN TRÁNH (Ghost Registry)
+		// 2. Lẩn tránh (Ghost Registry)
 		if rec.Status == "GHOST_REGISTRY" {
-			security.TriggerSecurityEvent(agent,
-				"Defense Evasion",
-				"[P2] Xóa dấu vết phần mềm",
-				fmt.Sprintf("Phần mềm '%s' bị xóa vật lý nhưng vẫn giữ Registry để lẩn tránh.", rec.SoftwareName),
-				"P2",
-			)
+			security.TriggerSecurityEvent(agent, "Defense Evasion", "[P2] Xóa dấu vết phần mềm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P2")
 		}
 
-		// 3. PHẦN MỀM CẤM
+		// 3. Phân mềm cấm
 		if checkBannedSoftware(rec.SoftwareName) {
-			security.TriggerSecurityEvent(agent,
-				"Software Violation",
-				"[P3] Cài đặt phần mềm bị cấm",
-				fmt.Sprintf("Phát hiện phần mềm vi phạm nội quy: %s", rec.SoftwareName),
-				"P3",
-			)
+			security.TriggerSecurityEvent(agent, "Software Violation", "[P3] Cài đặt phần mềm cấm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P3")
+		}
+
+		// 4. [ZERO TRUST] Kiểm tra danh sách Whitelist
+		if agent.IsZeroTrust {
+			if !VerifySoftware(rec, agent) {
+				security.TriggerSecurityEvent(agent, "Zero Trust Violation", "[P1] Tiến trình lạ xuất hiện", fmt.Sprintf("Chưa phê duyệt: %s", rec.SoftwareName), "P1")
+			}
+		}
+	}
+}
+
+// Xử lý nạp Baseline ban đầu
+func HandleSoftwareBaseline(agent models.Agent, data interface{}) {
+	bytes, _ := json.Marshal(data)
+	var records []AgentSoftwareRecord
+	if err := json.Unmarshal(bytes, &records); err != nil {
+		return
+	}
+
+	tx := database.DB.Begin()
+	tx.Where("agent_hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
+
+	for _, rec := range records {
+		tx.Create(&models.WhitelistItem{
+			OrgID: agent.OrgID, AgentHWID: agent.HWID, Type: "SOFTWARE_HASH", Value: rec.FileHash, Description: "Baseline: " + rec.SoftwareName,
+		})
+
+		if rec.Publisher != "Unsigned" && rec.Publisher != "" {
+			tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.WhitelistItem{
+				OrgID: agent.OrgID, Type: "PUBLISHER", Value: rec.Publisher, Description: "Trusted Publisher",
+			})
 		}
 	}
 
-	// Vẫn giữ lại hàm check Policy động (nếu có)
-	go security.CheckSoftwareCompliance(agent, data)
+	tx.Model(&agent).Updates(map[string]interface{}{"baseline_status": "COMPLETED", "is_zero_trust": true})
+	tx.Commit()
 }
 
-// Mock kiểm tra Hash và tên
+func VerifySoftware(rec AgentSoftwareRecord, agent models.Agent) bool {
+	var trusted models.WhitelistItem
+	err := database.DB.Where("org_id = ? AND type = ? AND value = ?", agent.OrgID, "PUBLISHER", rec.Publisher).First(&trusted).Error
+	if err == nil {
+		return true
+	}
+	err = database.DB.Where("org_id = ? AND type = ? AND value = ?", agent.OrgID, "SOFTWARE_HASH", rec.FileHash).First(&trusted).Error
+	return err == nil
+}
+
 func checkMaliciousHash(hash string) bool {
-	badHashes := map[string]bool{"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": true}
-	return badHashes[hash]
+	return map[string]bool{"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": true}[hash]
 }
-
 func checkBannedSoftware(name string) bool {
-	badNames := []string{"utorrent", "cheat engine"}
-	nameLower := strings.ToLower(name)
-	for _, b := range badNames {
-		if strings.Contains(nameLower, b) {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(strings.ToLower(name), "utorrent")
 }

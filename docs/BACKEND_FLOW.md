@@ -44,12 +44,20 @@ SENT_backend/
 │   │   ├── users/
 │   │   │   └── user_handlers.go     (Đổi tên từ admin_handlers.go, chứa CreateUser, GetUsers...)
 │   │   ├── approvals/
-│   │   │   └── approval_handlers.go.go  
+│   │   │   ├── strategies/
+│   │   │   │     ├── agent_strategy.go      
+│   │   │   │     ├── document_strategy.go   
+│   │   │   │     ├── policy_strategy.go 
+│   │   │   │     ├── strategy.go  
+│   │   │   │     └── user_strategy.go
+│   │   │   └── approval_handlers.go
 │   │   ├── agents/
-│   │   │   └── receiver_handler.go   
-│   │   │   └── dashboard_handler.go   
+│   │   │   ├── enrollment_handlers.go   
+│   │   │   ├── receiver_handler.go   
+│   │   │   ├── dashboard_handler.go   
 │   │   │   └── receiver_handler.go    
 │   │   ├── policies/
+│   │   │   ├── policy_engine.go   
 │   │   │   └── policy_handlers.go   (Quản lý file AI Docs và Luật kỹ thuật)
 │   │   ├── incidents/
 │   │   │   └── incident_handlers.go
@@ -65,73 +73,54 @@ SENT_backend/
 │   │   └── models.go             # Struct DB (Agent, UniversalPolicy, PolicyDocument...)
 │   ├── repository/               # REPOSITORY: Truy vấn DB 
 │   │   └── policy_repo.go        
+│   ├── utils/               # REPOSITORY: Truy vấn DB 
+│   │   └── email.go 
+│   ├── websocket/               # REPOSITORY: Truy vấn DB 
+│   │   └── hub.go 
 │   └── service/                  # SERVICE: Xử lý logic nghiệp vụ
 │       ├── ai/         
 │       │    └── chat_service.go 
 │       ├── scoring/           
 │       │    └── score_service.go 
-│       ├── agent_data/           
+│       ├── agent_data/     
 │       │    ├── inventory.go      # Xử lý thông tin phần cứng
 │       │    ├── software.go       # Xử lý danh sách phần mềm
+│       │    ├── network.go            # Xử lý log USB      
+│       │    ├── port.go      # Xử lý thông tin phần cứng
 │       │    ├── usb.go            # Xử lý log USB
-│       │    └── telemetry.go      # Xử lý Port và mạng
+│       │    └── helpers.go      
 │       ├── security/             # Chuyên logic nghiệp vụ an ninh
 │       │   ├── ai_analysis.go    # Phân tích hành vi bằng AI
 │       │   ├── alerts.go         # Logic tạo và quản lý cảnh báo
+│       │   ├── compliance.go         
 │       │   └── policies.go       # Kiểm tra chính sách (Whitelist/Blacklist)
 │       └── processor.go          # File "điều phối" chính (Entry point)
 ├── pkg/                          # Các package dùng chung
 ├── uploads/                      # Thư mục chứa file vật lý (PDF, DOCX)
 ├── .env                          # SECRET_KEY, DB_URL, PORT
+├── Dockerfile
 ├── go.mod
 └── go.sum
 ÁC LUỒNG VẬN HÀNH CHÍNH (WORKFLOWS)
 Luồng 1: Tiếp nhận và Lọc Dữ liệu (Ingestion Pipeline)
-Agent gửi Payload (type: "DATA") lên API /api/v1/agents/push.
+## 1. Kiến trúc Gate -> Brain (Separation of Concerns)
+Hệ thống được tách bạch rạch ròi giữa tầng Tiếp nhận và tầng Xử lý:
+- **API Gate (Handlers):** Chỉ làm nhiệm vụ xác thực HMAC, giải mã JSON thô và kiểm tra quyền cơ bản. Phản hồi Agent ngay lập tức (<10ms).
+- **Service Brain (Processor):** Trung tâm điều phối duy nhất. Mọi dữ liệu từ Gate được đẩy vào đây để AI hoặc các module chuyên trách phân tích.
 
-Hàm ProcessAgentData tại processor.go kiểm tra trạng thái Zero-Trust. Nếu máy tính đang bị khóa (PENDING/REJECTED), dữ liệu bị vứt bỏ.
+## 2. Luồng Zero-Trust & Whitelist-First
+Thay vì chặn cái xấu (Blacklist), SENT chuyển sang chỉ cho phép cái tốt (Whitelist):
+1. **Enrollment:** Máy mới mặc định ở trạng thái `PENDING`.
+2. **Baseline Discovery:** Admin ra lệnh quét máy. Agent gửi toàn bộ thông tin "sạch" hiện tại lên.
+3. **Lockdown:** Backend nạp Baseline vào bảng `whitelist_items`. Chuyển máy sang `is_zero_trust = true`.
+4. **Enforcement:** Bất kỳ USB lạ (Hash khác) hoặc Software lạ (Publisher/Hash khác) xuất hiện -> Bắn Alert P1 và tự động tạo đơn phê duyệt.
 
-Nếu hợp lệ, đẩy Payload.Data vào module tương ứng (VD: ProcessSoftware).
+## 3. Real-time Command Hub (WebSocket Push)
+Thay thế cơ chế Pull cũ để đạt độ trễ mili giây:
+- **Persistent Connection:** Agent duy trì kết nối WebSocket tới Server.
+- **Instant Push:** Khi Admin nhấn "Duyệt" hoặc "Update Policy", Server đẩy lệnh JSON trực tiếp xuống HWID tương ứng qua Hub.
+- **Workflow:** Admin Action -> DB Update -> WebSocket Dispatcher -> Agent Execution.
 
-Module giải mã JSON, lưu CSDL hiện trạng thiết bị.
-
-Luồng 2: Quy trình Xử lý Sự cố Thế hệ Mới (SOC Incident Lifecycle)
-Đây là vòng đời chuẩn từ khi phát sinh lỗi đến khi Đóng Case:
-
-Bước 1: Phát hiện (Detection)
-
-Các file trong agent_data (VD: thấy mã băm lạ trong phần mềm) sẽ gọi hàm security.TriggerSecurityEvent().
-
-Bước 2: Gom nhóm Tự động (Auto-Correlation)
-
-Hệ thống tìm xem Nạn nhân (HWID) có Case nào mang tên Malware Detected đang mở không.
-
-Nếu có: Nối cảnh báo (Alert) này vào Case đó. Làm mới khung thời gian 24h.
-
-Nếu không: Lập một Case mới toanh có mã ID riêng.
-
-Bước 3: Chấm điểm Rủi ro Động (Dynamic Risk Scoring)
-
-Hàm scoring.RecalculateRiskScore() được gọi tự động.
-
-Điểm rủi ro của máy trạm tăng lên dựa trên trọng số của Case nặng nhất đang Open. Giao diện đổi màu sang Vàng/Cam/Đỏ.
-
-Bước 4: Điều tra bằng AI (AI Advisor)
-
-Admin mở giao diện SOC, nhìn thấy Case. Thay vì phải đọc thủ công hàng chục cảnh báo, Admin bấm "Yêu cầu AI Phân tích".
-
-API /api/v1/incidents/:id/ai-analyze thu thập toàn bộ log gom thành Prompt trói buộc (Không cho AI quyền thực thi) và gửi cho Ollama.
-
-AI trả về báo cáo chuẩn format: [TÓM TẮT], [ĐÁNH GIÁ RỦI RO], [ĐỀ XUẤT XỬ LÝ].
-
-Bước 5: Báo cáo Hậu kiểm & Đóng Case (Post-Mortem Resolution)
-
-Quản trị viên xử lý xong sự cố, mở form nhập Báo cáo (Text) và đính kèm File/Ảnh Bằng chứng.
-
-React gửi FormData (Multipart) lên API /activity.
-
-Backend lưu Text và ghi File Ảnh vào ổ cứng (uploads/incidents/).
-
-Trạng thái Case chuyển thành Resolved (Đã xử lý).
-
-[QUAN TRỌNG] Backend tự động gọi lại hàm Risk Scoring. Lập tức điểm rủi ro của máy trạm tụt về 0 (Màu xanh an toàn).
+## 4. Multi-tenancy & Data Isolation
+- Dữ liệu hoàn toàn cách ly theo `org_id`.
+- Mọi truy vấn từ Handler/Service bắt buộc phải có điều kiện `WHERE org_id = ?` lấy từ Context của JWT.

@@ -43,6 +43,7 @@ func InitDB() {
 		&models.SoftwareItem{},
 		&models.OpenPort{},
 		&models.EnrollmentToken{},
+		&models.WhitelistItem{},
 		// 4. Nhóm Log & Alerts (Con của Agent)
 		&models.SecurityAlert{},
 		&models.USBLog{},

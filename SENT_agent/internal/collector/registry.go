@@ -18,7 +18,7 @@ func Register(s Sensor) {
 func InitCollectors() {
 	Register(&SoftwareSensor{})
 	Register(&USBSensor{})
-	Register(&TelemetrySensor{})
+	Register(&PortSensor{})
 	Register(&InventorySensor{})
 	Register(&FirewallSensor{})
 	Register(&AntivirusSensor{})

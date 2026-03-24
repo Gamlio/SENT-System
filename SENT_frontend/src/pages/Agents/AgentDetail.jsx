@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Cpu, ArrowLeft, User, Smartphone, Mail, ShieldAlert } from 'lucide-react';
+import { Cpu, ArrowLeft, User, Smartphone, Mail, ShieldAlert,ShieldCheck,Fingerprint } from 'lucide-react';
 import axios from '../../api/axios';
 
 import AgentUSB from './components/AgentUSB';
 import AgentSoftware from './components/AgentSoftware';
 import AgentLogs from './components/AgentLogs';
 import AgentPort from './components/AgentPort';
-// import AgentPort from './components/AgentPort';
+import { useWebSocket } from './hooks/useWebSocket';
+
 
 const AgentDetail = () => {
     const { hwid } = useParams();
@@ -15,17 +16,26 @@ const AgentDetail = () => {
     const [agent, setAgent] = useState(null);
     const [logs, setLogs] = useState([]);   
 
-    useEffect(() => {
-        const fetchDetail = async () => {
-            try {
-                const res = await axios.get(`/agents/${hwid}`);
-                setAgent(res.data);
-                const logRes = await axios.get(`/agents/${hwid}/logs`);
-                setLogs(logRes.data);
-            } catch (err) { console.error(err); }
-        };
-        fetchDetail();
+    const fetchDetail = useCallback(async () => {
+        try {
+            const res = await axios.get(`/agents/${hwid}`);
+            setAgent(res.data);
+            const logRes = await axios.get(`/agents/${hwid}/logs`);
+            setLogs(logRes.data);
+        } catch (err) { console.error(err); }
     }, [hwid]);
+
+    useEffect(() => {
+        fetchDetail();
+    }, [fetchDetail]);
+
+    // [QUAN TRỌNG]: LẮNG NGHE WEBSOCKET RIÊNG CHO MÁY NÀY
+    useWebSocket((msg) => {
+        // Khi có Alert mới, quét xong Baseline, hoặc có USB mới
+        if (msg.type === 'REFRESH_DATA' && msg.data?.hwid === hwid) {
+            fetchDetail(); // Gọi lại API để đổ dữ liệu mới nhất mà không cần F5
+        }
+    });
 
     if (!agent) return <div className="p-10 text-slate-400 font-bold text-center">Đang tải dữ liệu...</div>;
     
@@ -87,15 +97,28 @@ const AgentDetail = () => {
                         <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></div>
                         {isOnline ? 'Trực tuyến' : 'Ngoại tuyến'}
                     </div>
+                    {agent.is_zero_trust && (
+                        <div className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-indigo-500/10 text-indigo-400 border-indigo-500/20 flex items-center gap-1.5">
+                            <ShieldCheck size={12}/> ZERO TRUST ACTIVE
+                        </div>
+                    )}
+                    {/* 6. TRẠNG THÁI BASELINE */}
+                        <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${
+                            agent.baseline_status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                            agent.baseline_status === 'SCANNING' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse' :
+                            'bg-slate-800 text-slate-500 border-slate-700'
+                        }`}>
+                            <Fingerprint size={12}/> BASELINE: {agent.baseline_status || 'NONE'}
+                        </div>
+                    </div>
                 </div>
-            </div>
+           
 
             {/* --- GRID CHÍNH: 3 CỘT (Thông tin - Phần mềm - USB) --- */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch mb-8">
                 
-                {/* CỘT 1: CẤU HÌNH & QUẢN LÝ */}
+                {/* BÊN TRÁI: ĐIỂM RỦI RO & CẤU HÌNH */}
                 <div className="space-y-6">
-                    
                     {/* --- [MỚI] Card Điểm Rủi Ro Trực Quan --- */}
                     <div className="p-5 bg-slate-900/80 rounded-3xl border border-slate-700/50 shadow-xl relative overflow-hidden">
                         <div className="flex justify-between items-end mb-4 relative z-10">
@@ -145,9 +168,11 @@ const AgentDetail = () => {
                             <InfoRow label="OS System" value={inv.os_info} />
                         </div>
                     </div>
+                </div>
 
-                    {/* Card Người quản lý */}
-                    <div className="bg-[#1e293b] p-5 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
+                {/* BÊN PHẢI: NGƯỜI CHỊU TRÁCH NHIỆM */}
+                <div className="h-full">
+                    <div className="bg-[#1e293b] p-5 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden h-full">
                         <div className="absolute top-0 right-0 p-3 opacity-10 text-emerald-500"><User size={80}/></div>
                         <h3 className="text-xs font-black text-slate-500 uppercase flex items-center gap-2 mb-4 tracking-widest z-10 relative">
                             <User size={14}/> Người chịu trách nhiệm
@@ -166,25 +191,29 @@ const AgentDetail = () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="py-4 text-center border-2 border-dashed border-slate-700 rounded-xl bg-slate-900/30">
+                            <div className="py-4 text-center border-2 border-dashed border-slate-700 rounded-xl bg-slate-900/30 mt-4">
                                 <p className="text-xs text-slate-500 font-bold">Chưa bàn giao</p>
                             </div>
                         )}
                     </div>
                 </div>
+            </div>
 
-                {/* CỘT 2: DANH SÁCH PHẦN MỀM */}
-                <div>
+            {/* --- PHẦN 2: DANH SÁCH CHI TIẾT (XẾP DỌC, MỞ RỘNG NGANG FULL) --- */}
+            <div className="space-y-6 mb-8 w-full">
+                
+                {/* 1. DANH SÁCH PHẦN MỀM */}
+                <div className="w-full">
                     <AgentSoftware software={agent.software || []} />
                 </div>
 
-                {/* CỘT 3: DANH SÁCH USB */}
-                <div>
+                {/* 2. DANH SÁCH USB */}
+                <div className="w-full">
                     <AgentUSB usbLogs={agent.usb_logs || []} />
                 </div>
-                {/* CỘT 4: Danh sách Cổng  */}
-               <div>
-                    {/* Chú ý: Backend trả về field open_ports, bạn check kỹ API nhé. Nếu là port_logs thì đổi lại */}
+                
+                {/* 3. DANH SÁCH CỔNG */}
+               <div className="w-full">
                     <AgentPort portLogs={agent.open_ports || []} />
                 </div>
             </div>

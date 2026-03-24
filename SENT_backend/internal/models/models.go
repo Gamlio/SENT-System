@@ -95,15 +95,25 @@ type Agent struct {
 	OpenPorts []OpenPort      `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"open_ports"`
 	USBLogs   []USBLog        `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"usb_logs"`
 
-	RiskScore  int    `json:"risk_score" gorm:"default:0"`
-	Status     string `json:"status" gorm:"default:'PENDING'"`
-	DeviceType string `json:"device_type" gorm:"default:'OFFICE'"`
+	RiskScore      int    `json:"risk_score" gorm:"default:0"`
+	Status         string `json:"status" gorm:"default:'PENDING'"`
+	DeviceType     string `json:"device_type" gorm:"default:'OFFICE'"`
+	IsZeroTrust    bool   `gorm:"default:false" json:"is_zero_trust"`
+	BaselineStatus string `gorm:"default:'NONE'" json:"baseline_status"`
 
 	SecretKey string `json:"-"`
 	// [MỚI] ĐỒNG BỘ: Lưu người đã cấp phép máy trạm này
 	ApprovedBy string `json:"approved_by"`
 
 	Incidents []Incident `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"incidents"`
+}
+type WhitelistItem struct {
+	gorm.Model
+	OrgID       uint   `gorm:"index"`
+	AgentHWID   string `gorm:"index"` // Nếu để trống thì là Global Whitelist
+	Type        string `json:"type"`  // "USB", "SOFTWARE_HASH", "PUBLISHER"
+	Value       string `json:"value"` // Mã Hash hoặc Tên nhà phát hành (Microsoft...)
+	Description string `json:"description"`
 }
 type EnrollmentToken struct {
 	ID        uint      `gorm:"primarykey" json:"id"`
@@ -143,14 +153,14 @@ type OpenPort struct {
 
 type USBLog struct {
 	gorm.Model
-	AgentHWID  string `gorm:"column:agent_hw_id;index:idx_agent_usb_hash" json:"agent_hwid"`
+	AgentHWID  string `gorm:"column:agent_hw_id;index:idx_agent_usb_hash,unique" json:"agent_hwid"`
 	DeviceName string `json:"device_name"`
 	DeviceID   string `json:"device_id"`
 
-	VID          string `json:"vid"`                                         // Vendor ID (Nhà sản xuất)
-	PID          string `json:"pid"`                                         // Product ID (Mã sản phẩm)
-	SerialNumber string `json:"serial_number"`                               // Số series độc nhất
-	DeviceHash   string `json:"device_hash" gorm:"index:idx_agent_usb_hash"` // Vân tay độc nhất của USB = Hash(VID+PID+Serial)
+	VID          string `json:"vid"`                                                // Vendor ID (Nhà sản xuất)
+	PID          string `json:"pid"`                                                // Product ID (Mã sản phẩm)
+	SerialNumber string `json:"serial_number"`                                      // Số series độc nhất
+	DeviceHash   string `json:"device_hash" gorm:"index:idx_agent_usb_hash,unique"` // Vân tay độc nhất của USB = Hash(VID+PID+Serial)
 
 	IsWhitelisted bool   `json:"is_whitelisted"`
 	EventType     string `json:"event_type"`

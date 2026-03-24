@@ -3,6 +3,7 @@ package collector
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -77,10 +78,15 @@ func (s *SoftwareSensor) Collect() interface{} {
 
 					// BĂM FILE (HASHING) - Tìm file .exe chính từ DisplayIcon
 					if displayIcon != "" {
-						exePath := strings.Split(displayIcon, ",")[0] // Xóa phần index icon (VD: app.exe,0)
+						exePath := strings.Split(displayIcon, ",")[0]
 						exePath = strings.Trim(exePath, "\"")
 						if strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 							fileHash = calculateSHA256(exePath)
+							// THAY THẾ: Lấy publisher từ file thay vì Registry
+							realPublisher := getDigitalSignature(exePath)
+							if realPublisher != "Unsigned" {
+								publisher = realPublisher
+							}
 						}
 					}
 
@@ -206,4 +212,25 @@ func calculateSHA256(filePath string) string {
 	}
 
 	return hex.EncodeToString(hash.Sum(nil))
+}
+func getDigitalSignature(exePath string) string {
+	if exePath == "" {
+		return "Unsigned"
+	}
+	cleanPath := strings.Trim(exePath, "\"")
+
+	// Dùng PowerShell để trích xuất thông tin người ký (SignerCertificate)
+	psCmd := fmt.Sprintf(`(Get-AuthenticodeSignature "%s").SignerCertificate.Subject`, cleanPath)
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
+	out, err := cmd.Output()
+
+	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
+		return "Unsigned"
+	}
+	// Kết quả thường có dạng: CN=Microsoft Corporation... -> Cần bóc lấy tên
+	parts := strings.Split(string(out), "CN=")
+	if len(parts) > 1 {
+		return strings.Split(parts[1], ",")[0]
+	}
+	return strings.TrimSpace(string(out))
 }

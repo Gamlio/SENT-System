@@ -7,21 +7,21 @@ import (
 )
 
 // 1. Khai báo Struct cho Sensor
-type TelemetrySensor struct{}
+type PortSensor struct{}
 
 // 2. Cấu trúc JSON chuẩn gửi về Backend
-type TelemetryRecord struct {
+type PortRecord struct {
 	OpenPorts []map[string]interface{} `json:"open_ports"`
 	IPAddress string                   `json:"ip_address"`
 }
 
 // 3. Khai báo tên định danh của Log
-func (s *TelemetrySensor) Name() string {
-	return "telemetry"
+func (s *PortSensor) Name() string {
+	return "port"
 }
 
 // 4. Đưa logic cũ vào hàm Collect()
-func (s *TelemetrySensor) Collect() interface{} {
+func (s *PortSensor) Collect() interface{} {
 	connections, _ := psnet.Connections("tcp")
 	var openPorts []map[string]interface{}
 	for _, conn := range connections {

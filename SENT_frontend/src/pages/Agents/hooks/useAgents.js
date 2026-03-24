@@ -1,31 +1,39 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from '../../../api/axios';
+import { useWebSocket } from './useWebSocket'; // Import hook WebSocket
 
 export const useAgents = () => {
     const [agents, setAgents] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
-    
-    // 1. THÊM STATE SẮP XẾP
-    // Mặc định: Mới nhất (last_seen giảm dần)
     const [sortConfig, setSortConfig] = useState({ key: 'last_seen', direction: 'desc' });
     
     const itemsPerPage = 8; 
 
-    const fetchAgents = async () => {
+    // Bọc fetchAgents vào useCallback để tránh re-render vô hạn
+    const fetchAgents = useCallback(async () => {
         try {
             const res = await axios.get('/agents');
             setAgents(res.data || []);
         } catch (err) {
             console.error("Lỗi lấy danh sách máy trạm:", err);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchAgents();
-        const interval = setInterval(fetchAgents, 30000); 
+        // Giữ lại fallback 60s phòng trường hợp WebSocket rớt mạng
+        const interval = setInterval(fetchAgents, 60000); 
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchAgents]);
+
+    // [QUAN TRỌNG]: LẮNG NGHE WEBSOCKET TỪ BACKEND
+    useWebSocket((msg) => {
+        // Lắng nghe các lệnh làm mới danh sách (Máy mới đăng ký, Máy đổi trạng thái, Máy sập nguồn)
+        if (msg.type === 'REFRESH_AGENT_LIST' || msg.type === 'AGENT_STATUS_CHANGED') {
+            fetchAgents();
+        }
+    });
     
     // --- PIPELINE XỬ LÝ DỮ LIỆU ---
     const processedAgents = useMemo(() => {
