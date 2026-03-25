@@ -88,4 +88,5 @@ func (s *AgentLifecycleService) AssignManager(hwid string, orgID uint, userID ui
 	return database.DB.Model(&models.Agent{}).
 		Where("hw_id = ? AND org_id = ?", hwid, orgID).
 		Update("user_id", userID).Error
+
 }

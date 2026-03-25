@@ -1,6 +1,7 @@
 import React, { useState } from 'react'; // Bắt buộc thêm useState ở đây
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
+import { WebSocketProvider } from './context/WebSocketContext';
 import Sidebar from './components/Sidebar.jsx';
 import Navbar from './components/Navbar.jsx';
 
@@ -64,33 +65,35 @@ const ProtectedRoute = ({ children, requiredPermission }) => {
 function App() {
     return (
         <Router>
-            <Routes>
-                {/* Public Routes */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/login/:companyCode" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+            <WebSocketProvider>
+                <Routes>
+                    {/* Public Routes */}
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/login/:companyCode" element={<Login />} />
+                    <Route path="/register" element={<Register />} />
 
-                {/* Core Routes */}
-                <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/chat-ai" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
-                
-                <Route path="/agents" element={<ProtectedRoute requiredPermission="agent_view"><AgentList /></ProtectedRoute>} />
-                <Route path="/agents/:hwid" element={<ProtectedRoute requiredPermission="agent_view"><AgentDetail /></ProtectedRoute>} />
-                
-                <Route path="/incidents" element={<ProtectedRoute requiredPermission="incident_view"><IncidentList /></ProtectedRoute>} />
-                <Route path="/incidents/:id" element={<IncidentDetail />} />
-                
-                <Route path="/approvals" element={<ProtectedRoute requiredPermission="approval_manage"><ApprovalCenter /></ProtectedRoute>} />
+                    {/* Core Routes */}
+                    <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                    <Route path="/chat-ai" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
+                    
+                    <Route path="/agents" element={<ProtectedRoute requiredPermission="agent_view"><AgentList /></ProtectedRoute>} />
+                    <Route path="/agents/:hwid" element={<ProtectedRoute requiredPermission="agent_view"><AgentDetail /></ProtectedRoute>} />
+                    
+                    <Route path="/incidents" element={<ProtectedRoute requiredPermission="incident_view"><IncidentList /></ProtectedRoute>} />
+                    <Route path="/incidents/:id" element={<IncidentDetail />} />
+                    
+                    <Route path="/approvals" element={<ProtectedRoute requiredPermission="approval_manage"><ApprovalCenter /></ProtectedRoute>} />
 
-                {/* Compliance & Knowledge Base Routes */}
-                <Route path="/policy-center" element={<ProtectedRoute requiredPermission="policy_view"><PolicyCenter /></ProtectedRoute>} />
-                
-                {/* Lưu ý: Tạm thời bỏ requiredPermission cho Docs vì DB chưa có quyền này */}
-                <Route path="/docs" element={<ProtectedRoute><Documents requiredPermission="doc_view" /></ProtectedRoute>} />
-                
-                {/* System Admin Routes */}
-                <Route path="/users" element={<ProtectedRoute requiredPermission="user_manage"><UserManagement /></ProtectedRoute>} />
-            </Routes>
+                    {/* Compliance & Knowledge Base Routes */}
+                    <Route path="/policy-center" element={<ProtectedRoute requiredPermission="policy_view"><PolicyCenter /></ProtectedRoute>} />
+                    
+                    {/* Lưu ý: Tạm thời bỏ requiredPermission cho Docs vì DB chưa có quyền này */}
+                    <Route path="/docs" element={<ProtectedRoute><Documents requiredPermission="doc_view" /></ProtectedRoute>} />
+                    
+                    {/* System Admin Routes */}
+                    <Route path="/users" element={<ProtectedRoute requiredPermission="user_manage"><UserManagement /></ProtectedRoute>} />
+                </Routes>
+            </WebSocketProvider>
         </Router>
     );
 }

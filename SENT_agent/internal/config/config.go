@@ -52,10 +52,10 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 
 func enrollToServer(token, hwid, hostname, ipAddress string) bool {
 	payload := map[string]string{
-		"hwid":         hwid,
-		"hostname":     hostname,
-		"ip_address":   ipAddress,
-		"enroll_token": token,
+		"hwid":       hwid,
+		"hostname":   hostname,
+		"ip_address": ipAddress,
+		"token":      token,
 	}
 
 	jsonData, _ := json.Marshal(payload)

@@ -7,7 +7,7 @@ import AgentUSB from './components/AgentUSB';
 import AgentSoftware from './components/AgentSoftware';
 import AgentLogs from './components/AgentLogs';
 import AgentPort from './components/AgentPort';
-import { useWebSocket } from './hooks/useWebSocket';
+import { useSocketSubscription } from '../../context/useSocketSubscription';
 
 
 const AgentDetail = () => {
@@ -29,13 +29,15 @@ const AgentDetail = () => {
         fetchDetail();
     }, [fetchDetail]);
 
-    // [QUAN TRỌNG]: LẮNG NGHE WEBSOCKET RIÊNG CHO MÁY NÀY
-    useWebSocket((msg) => {
-        // Khi có Alert mới, quét xong Baseline, hoặc có USB mới
-        if (msg.type === 'REFRESH_DATA' && msg.data?.hwid === hwid) {
-            fetchDetail(); // Gọi lại API để đổ dữ liệu mới nhất mà không cần F5
+    // Lắng nghe sự kiện và chỉ làm mới khi đúng HWID của máy đang xem
+    const handleDataRefresh = useCallback((data) => {
+        if (data?.hwid === hwid) {
+            console.log(`[WS] Nhận lệnh làm mới cho agent ${hwid}, đang tải lại...`);
+            fetchDetail();
         }
-    });
+    }, [hwid, fetchDetail]);
+
+    useSocketSubscription('REFRESH_DATA', handleDataRefresh);
 
     if (!agent) return <div className="p-10 text-slate-400 font-bold text-center">Đang tải dữ liệu...</div>;
     

@@ -327,10 +327,10 @@ type ApprovalTicket struct {
 	UpdatedAt time.Time `json:"updated_at"`
 
 	OrgID      uint   `json:"org_id" gorm:"index"`
-	ModuleType string `json:"module_type"` // Loại đơn: "AGENT", "POLICY", "DOCUMENT", "USER"
-	ActionType string `json:"action_type"` // Hành động: "ENROLL" (đăng ký mới), "CREATE", "DELETE"
-	TargetID   uint   `json:"target_id"`   // ID của bản ghi tương ứng (VD: ID của Agent hoặc Policy)
-	TargetName string `json:"target_name"` // Tên để hiển thị cho dễ nhìn (VD: "PC-KETOAN-01" hoặc "Cấm USB")
+	ModuleType string `json:"module_type" gorm:"index"` // Loại đơn: "AGENT", "POLICY", "DOCUMENT", "USER"
+	ActionType string `json:"action_type"`              // Hành động: "ENROLL" (đăng ký mới), "CREATE", "DELETE"
+	TargetID   uint   `json:"target_id"`                // ID của bản ghi tương ứng (VD: ID của Agent hoặc Policy)
+	TargetName string `json:"target_name"`              // Tên để hiển thị cho dễ nhìn (VD: "PC-KETOAN-01" hoặc "Cấm USB")
 
 	Status string `json:"status" gorm:"default:'PENDING';index"` // PENDING, APPROVED, REJECTED
 

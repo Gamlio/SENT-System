@@ -1,9 +1,86 @@
-SENT Frontend Flow (React-Tailwind Edition)
-Tài liệu này mô tả cấu trúc và luồng vận hành của giao diện người dùng hệ thống SENT, tối ưu cho việc quản lý đa công ty và giám sát an ninh đầu cuối.
+# Luồng Hoạt Động Chi Tiết - SENT Frontend
 
-📂 Cấu trúc Thư mục (Project Structure)
-Cấu trúc này được mở rộng từ bộ khung hiện tại để hỗ trợ các tính năng quản lý tuân thủ (Compliance) và phân quyền vùng (Region).
+Tài liệu này mô tả chi tiết kiến trúc và luồng hoạt động của ứng dụng frontend được xây dựng bằng React.
 
+---
+
+## 1. Luồng Khởi Động và Cấu Trúc (Application Bootstrap)
+
+1.  **Entry Point (`src/index.js`):**
+    *   Đây là file đầu tiên được thực thi.
+    *   Nó import các file CSS toàn cục (`src/styles/index.css`).
+    *   Sử dụng `ReactDOM.createRoot()` để render component chính là `App` vào thẻ `<div id="root">` trong `public/index.html`.
+
+2.  **Component Gốc (`src/App.js`):**
+    *   Đây là component cha của toàn bộ ứng dụng.
+    *   **Bao bọc các Context Provider:** Toàn bộ ứng dụng được bao bọc bởi các Context Provider quan trọng từ `src/context/`, giúp chia sẻ state và logic trên toàn ứng dụng.
+        *   `AuthProvider`: Cung cấp thông tin người dùng đang đăng nhập, token, và các hàm `login`, `logout`.
+        *   `WebSocketProvider`: Khởi tạo và duy trì kết nối WebSocket với backend.
+    *   **Thiết Lập Routing:** Sử dụng thư viện `react-router-dom` để định nghĩa các routes của ứng dụng. Các routes được bảo vệ (protected routes) sẽ kiểm tra trạng thái đăng nhập từ `AuthContext` trước khi cho phép truy cập.
+
+---
+
+## 2. Luồng Đăng Nhập (Authentication Flow)
+
+1.  **Giao Diện (`src/pages/Auth/Login.jsx`):**
+    *   Hiển thị form đăng nhập với username và password.
+    *   Khi người dùng nhấn "Login", component này gọi hàm `login` được cung cấp bởi `AuthContext`.
+
+2.  **Context (`src/context/AuthContext.js`):**
+    *   Hàm `login(username, password)` được gọi.
+    *   Bên trong hàm này, nó sử dụng `axios` (từ `src/api/axios.js`) để gửi một request `POST` đến API endpoint `/api/v1/auth/login` của backend với `username` và `password`.
+
+3.  **API Layer (`src/api/axios.js`):**
+    *   Đây là một file cấu hình một instance của `axios`.
+    *   Nó có một `interceptor` tự động thêm header `Authorization: Bearer <token>` vào tất cả các request gửi đi nếu token đã tồn tại (sau khi đăng nhập thành công).
+    *   Nó cũng có thể có `interceptor` để xử lý các lỗi chung, ví dụ khi nhận lỗi `401 Unauthorized` (token hết hạn), nó sẽ tự động gọi hàm `logout` và điều hướng người dùng về trang đăng nhập.
+
+4.  **Xử Lý Kết Quả:**
+    *   Nếu request thành công, backend trả về thông tin user và `accessToken`.
+    *   `AuthContext` lưu các thông tin này vào state của nó và vào `localStorage` (để giữ trạng thái đăng nhập khi người dùng refresh trang).
+    *   Component `Login` (hoặc `App.js`) sẽ điều hướng người dùng đến trang `Dashboard`.
+
+---
+
+## 3. Luồng Hiển Thị Dữ Liệu (Data Fetching & Display)
+
+Ví dụ: Hiển thị danh sách Agents tại trang `src/pages/Agents/Agents.jsx`.
+
+1.  **Component Tải Dữ Liệu:**
+    *   Khi component `Agents.jsx` được mount (hiển thị lần đầu), nó sẽ gọi một custom hook, ví dụ `useAgents()` (định nghĩa trong `src/pages/Agents/hooks/`).
+
+2.  **Custom Hook (`src/pages/Agents/hooks/useAgents.js`):**
+    *   Hook này chịu trách nhiệm cho toàn bộ logic liên quan đến agents: state (loading, error, data), và các hàm để fetch/thêm/xóa.
+    *   Nó sử dụng `useEffect` để gọi hàm `fetchAgents` khi component được mount.
+    *   Hàm `fetchAgents` sẽ dùng `axios` để gửi request `GET` đến `/api/v1/agents`.
+    *   Trong khi chờ dữ liệu, hook sẽ trả về `isLoading: true`. Khi có dữ liệu, `isLoading: false` và `data: [...]`. Nếu lỗi, `error: ...`.
+
+3.  **Hiển Thị Giao Diện:**
+    *   Component `Agents.jsx` nhận về state (`isLoading`, `data`, `error`) từ hook `useAgents`.
+    *   Nó hiển thị một spinner nếu `isLoading` là `true`.
+    *   Hiển thị thông báo lỗi nếu `error` tồn tại.
+    *   Nếu có `data`, nó sẽ truyền dữ liệu này xuống các component con như `SearchableList.jsx` hoặc một table để render ra danh sách.
+
+---
+
+## 4. Luồng Cập Nhật Real-time (WebSocket Flow)
+
+Ví dụ: Một agent chuyển từ `online` sang `offline`.
+
+1.  **Backend Phát Sự Kiện:** Backend phát hiện agent `offline` và gửi một thông điệp qua WebSocket đến tất cả các client đang kết nối. Ví dụ: `{ event: 'AGENT_STATUS_CHANGED', payload: { agentId: 'xyz', status: 'offline' } }`.
+
+2.  **Frontend Nhận Sự Kiện (`src/context/WebSocketContext.jsx`):**
+    *   Provider này lắng nghe tất cả các message từ WebSocket server.
+    *   Khi nhận được một message, nó sẽ phát một `CustomEvent` trên đối tượng `window` hoặc gọi một callback function đã được đăng ký.
+
+3.  **Component Lắng Nghe (`src/pages/Agents/Agents.jsx`):**
+    *   Trong component `Agents.jsx`, một hook `useSocketSubscription('AGENT_STATUS_CHANGED', callback)` được sử dụng.
+    *   Hook này đăng ký `callback` function với `WebSocketContext`.
+    *   Khi `WebSocketContext` nhận được sự kiện `AGENT_STATUS_CHANGED`, `callback` function này sẽ được gọi với `payload` của sự kiện.
+
+4.  **Cập Nhật UI:**
+    *   `callback` function sẽ tìm agent có `agentId: 'xyz'` trong state dữ liệu hiện tại và cập nhật trạng thái của nó thành `offline`.
+    *   Vì state thay đổi, React sẽ tự động render lại component `Agents.jsx`, và người dùng sẽ thấy trạng thái của agent thay đổi ngay lập tức mà không cần làm gì cả.
 SENT_frontend/
 ├── public/
 ├── src/
@@ -19,6 +96,8 @@ SENT_frontend/
 │   │   └── Sidebar.jsx             
 │   ├── context/
 │   │   └── AuthContext.js          # Quản lý trạng thái Login, phân quyền (Level 1, Level 2)
+│   ├── hooks/
+│   │   └── useWebSocket.js         # Hook quản lý kết nối WebSocket Real-time tập trung
 │   ├── pages/
 │   │   ├── Agents/                 # Quản lý Thiết bị
 │   │   │   ├── AgentDetail.jsx     # Xem chi tiết thông số
@@ -103,22 +182,3 @@ SENT_frontend/
 ├── tailwind.config.js     
 ├── postcss.config.js    
 └── .env
-# SENT Frontend Flow (v4.5 - Real-time SOC Interface)
-
-## 1. Cơ chế Đồng bộ Dữ liệu (State Management)
-- **Hybrid Sync:** * Sử dụng Polling (30-60s) làm phương án dự phòng (Fallback).
-    * Sử dụng **WebSocket (useWebSocket hook)** làm phương thức chính để cập nhật UI tức thì.
-- **Event Listeners:** UI lắng nghe các sự kiện `REFRESH_DATA`, `AGENT_STATUS_CHANGED` để tự động gọi hàm `fetch()` mà người dùng không cần F5.
-
-## 2. Luồng nghiệp vụ Zero-Trust (User Flow)
-- **Bước 1:** Truy cập Agent Detail -> Nhấn "Thiết lập Baseline".
-- **Bước 2:** UI hiển thị trạng thái `SCANNING` (Amber Badge - Pulse animation).
-- **Bước 3:** Khi nhận được tín hiệu WebSocket `BASELINE_COMPLETED`, UI tự động hiển thị danh sách phần mềm đã vào Whitelist và bật Badge `ZERO TRUST ACTIVE`.
-
-## 3. Kiểm soát Trạng thái Chờ (Maker-Checker UX)
-- **Visual Feedback:** Các bản ghi (Agent/User/Policy) đang trong trạng thái `PENDING_DELETE` hoặc `PENDING_APPROVAL` sẽ bị làm mờ (Opacity-50), áp dụng bộ lọc Grayscale và khóa mọi tương tác Write.
-- **Bulk Actions:** Thanh công cụ nổi (Floating Toolbar) xuất hiện khi có >= 1 item được chọn, cho phép gửi lệnh hàng loạt qua tầng Service Brain.
-
-## 4. Cấu trúc Thư mục Nâng cao
-- `src/hooks/useWebSocket.js`: Quản lý kết nối tập trung, tự động reconnect và đính kèm token vào URL.
-- `src/pages/Agents/hooks/useAgentBulkActions.js`: Tách rời logic chọn/xóa hàng loạt khỏi UI Component.

@@ -85,32 +85,25 @@ const handleDeleteAgent = () => {
             }
         });
     };
-                <button
-                onClick={(e) => { 
-                    e.stopPropagation(); 
-                    setIsOpen(false);
-                    handleTriggerBaseline(); // Hàm mới để gọi API Push qua WebSocket hoặc REST
-                }}
-                className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-emerald-400 flex items-center gap-3 transition border-l-2 border-emerald-500/50 bg-emerald-500/5"
-            >
-                <Fingerprint size={16} /> Quét & Thiết lập Baseline
-            </button>
-            const handleTriggerBaseline = async () => {
-            setDialogConfig({
-                isOpen: true,
-                title: 'Thiết lập Zero Trust?',
-                message: 'Hệ thống sẽ ra lệnh cho Agent quét toàn bộ phần mềm và USB hiện tại để làm danh sách Whitelist mặc định.',
-                type: 'info',
-                onConfirm: async () => {
-                    try {
-                        await axios.post(`/agents/${agent.hwid}/trigger-baseline`);
-                        alert("Đã gửi lệnh quét tới máy trạm qua WebSocket!");
-                    } catch (err) {
-                        alert("Lỗi khi gửi lệnh.");
-                    }
+
+    const handleTriggerBaseline = async () => {
+        setDialogConfig({
+            isOpen: true,
+            title: 'Thiết lập Zero Trust?',
+            message: 'Hệ thống sẽ ra lệnh cho Agent quét toàn bộ phần mềm và USB hiện tại để làm danh sách Whitelist mặc định.',
+            type: 'info',
+            onConfirm: async () => {
+                closeDialog();
+                try {
+                    await axios.post(`/agents/${agent.hwid}/trigger-baseline`);
+                    alert("Đã gửi lệnh quét tới máy trạm qua WebSocket!");
+                } catch (err) {
+                    alert("Lỗi khi gửi lệnh.");
                 }
-            });
-        };
+            }
+        });
+    };
+
     return (
         <div className="relative flex items-center" ref={menuRef}>
             <button 
@@ -130,6 +123,17 @@ const handleDeleteAgent = () => {
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tiện ích mở rộng</p>
                     </div>
                     
+                    <button
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            setIsOpen(false);
+                            handleTriggerBaseline();
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-emerald-400 flex items-center gap-3 transition border-l-2 border-emerald-500/50 bg-emerald-500/5"
+                    >
+                        <Fingerprint size={16} /> Quét & Thiết lập Baseline
+                    </button>
+
                     <button
                         onClick={(e) => { 
                             e.stopPropagation(); 

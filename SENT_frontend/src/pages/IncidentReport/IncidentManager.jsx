@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert, AlertTriangle, Clock, Monitor, UserCheck, Search, Flame } from 'lucide-react';
 import axiosInstance from '../../api/axios';
+import { useSocketSubscription } from '../../context/useSocketSubscription';
 
 const IncidentManager = () => {
     const navigate = useNavigate();
@@ -9,23 +10,26 @@ const IncidentManager = () => {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const fetchIncidents = async () => {
+    const fetchIncidents = useCallback(async () => {
         try {
             const response = await axiosInstance.get('/incidents');
             const data = Array.isArray(response.data) ? response.data : (response.data.data || []);
             setIncidents(data);
         } catch (error) {
             console.error("Lỗi tải danh sách sự cố:", error);
-        } finally {
-            setLoading(false);
         }
-    };
+        setLoading(false); // Luôn tắt loading dù thành công hay thất bại
+    }, []);
+
+    // Lắng nghe sự kiện từ WebSocket và tải lại dữ liệu
+    useSocketSubscription(['NEW_INCIDENT', 'INCIDENT_SEVERITY_ESCALATED'], () => {
+        console.log('[WS] CẢNH BÁO: Phát hiện sự cố an ninh mới! Đang tải lại...');
+        fetchIncidents();
+    });
 
     useEffect(() => {
         fetchIncidents();
-        const interval = setInterval(fetchIncidents, 10000); // Polling mỗi 10s cho giống Real-time
-        return () => clearInterval(interval);
-    }, []);
+    }, [fetchIncidents]);
 
     // Nhóm dữ liệu vào 3 cột
     const filteredIncidents = incidents.filter(inc => 

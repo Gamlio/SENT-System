@@ -1,38 +1,102 @@
-# SENT Backend Logic Flow (v4.0 - Centralized SOC & Auto-Triage)
+# Luồng Hoạt Động Chi Tiết - SENT Backend
 
-Tài liệu mô tả luồng vận hành của Backend SENT. Kiến trúc được thiết kế theo tiêu chuẩn RESTful API, đóng vai trò là "Bộ não trung tâm" xử lý hàng triệu log từ các Ninja Agent, tự động phân luồng sự cố và cung cấp AI Cố vấn cho đội ngũ SOC.
+Tài liệu này mô tả chi tiết luồng xử lý của backend hệ thống SENT, được xây dựng bằng Go. Kiến trúc được thiết kế theo mô hình nhiều lớp (multi-layer) để đảm bảo sự rõ ràng, dễ bảo trì và mở rộng.
 
-## 1. Kiến trúc Xác thực & Phân quyền (RBAC)
-Hệ thống sử dụng mô hình RBAC tinh gọn với 2 cấp độ:
-- **Level 1 (Nhân viên/User):** Chỉ có quyền Read-only đối với thiết bị, được phép dùng AI Copilot để tra cứu thông tin nội bộ.
-- **Level 2 (Quản trị viên/SOC Admin):** Full quyền Read/Write/Delete. Nhận cảnh báo, đóng/mở Case, thiết lập Policy và upload tài liệu tri thức (RAG).
-- Mọi Request từ React đều phải kèm theo `JWT Token`.
+---
 
-## 2. Trạm điều phối Dữ liệu (Data Mediator)
-- Nhận luồng dữ liệu JSON Viễn trắc (Telemetry, Software, USB) từ các Agent.
-- Dùng cơ chế **Goroutine** (Xử lý bất đồng bộ) để parse JSON từ Router vào thẳng các module chuyên trách (`agent_data`).
-- Check đối soát với Bảng `UniversalPolicy` (Luật bảo mật) và Cơ sở dữ liệu YARA/Threat Intel để phát hiện dị thường.
+## 1. Luồng Khởi Động (Application Bootstrap)
 
-## 3. Kiến trúc Tri thức AI (Knowledge Base - /docs)
-- Backend Go nhận file (PDF/Word) từ Admin, lưu trữ vật lý tại `uploads/policies/`.
-- AI sử dụng dữ liệu này để làm RAG (Retrieval-Augmented Generation) trả lời nội quy cho nhân viên.
+Luồng xử lý bắt đầu từ file entry-point của ứng dụng.
 
-## 4. Động cơ Phân luồng Sự cố (Auto-Triage Engine)
-Hệ thống áp dụng thuật toán **Exact Matching Correlation**:
-- Không ném Alert (Cảnh báo) rời rạc cho Admin đọc.
-- Gom nhóm các Alert có **Cùng Máy Trạm + Khớp 100% Loại Lỗi + Xảy ra trong 24h** vào thành 1 **Hồ sơ Sự cố (Incident/Case) duy nhất**.
-- Tự động nâng cấp độ nghiêm trọng (Severity) của Case nếu xuất hiện log nguy hiểm hơn.
+- **File:** `cmd/server/main.go`
+- **Nhiệm vụ:**
+    1.  **Tải Cấu Hình:** Đọc các biến môi trường (ví dụ: chuỗi kết nối database, secret key cho JWT) từ file `.env`.
+    2.  **Kết Nối Database:** Gọi hàm từ `internal/database/db.go` để khởi tạo kết nối đến cơ sở dữ liệu (PostgreSQL) và chạy `AutoMigrate` để tự động tạo/cập nhật các bảng dựa trên các `models`.
+    3.  **Khởi Tạo WebSocket Hub:** Chạy `hub` từ `internal/websocket/hub.go` trong một goroutine riêng để quản lý các kết nối real-time.
+    4.  **Khởi Tạo Router (Gin):** Thiết lập một Gin router mới.
+    5.  **Định Nghĩa Middleware:** Gắn các middleware toàn cục vào router, ví dụ: middleware cho CORS, logging.
+    6.  **Định Nghĩa Routes:** Khai báo tất cả các API endpoint. Các route được nhóm theo chức năng và trỏ đến các hàm xử lý (handler) tương ứng trong `internal/api/v1/`.
+    7.  **Khởi Chạy Server:** Lắng nghe và phục vụ các request HTTP trên một port đã định.
 
-## 6. Kiến trúc Phê duyệt Tập trung (Approval Center / Maker-Checker)
-Để đảm bảo an toàn tuyệt đối (Zero Trust), mọi thay đổi quan trọng trong hệ thống đều phải đi qua luồng phê duyệt 2 lớp:
-- **Nguyên lý:** Khi có tác vụ nhạy cảm (Cài mới Agent, Thêm luật cấm USB, Xóa tài liệu), hệ thống KHÔNG áp dụng ngay mà sinh ra một `ApprovalTicket` (Vé chờ duyệt) với trạng thái `PENDING`.
-- **Bảo vệ Agent:** Agent mới kết nối sẽ có trạng thái `PENDING` và bị giam trong vùng cách ly. Chỉ khi Admin bấm `APPROVED`, Agent mới chuyển sang `ACTIVE` và được phép nhận Policy hoặc gửi Log.
-- **Workflow:** 1. `Maker` (Nhân viên SOC / Hoặc tự động từ Agent) -> Gọi API thêm mới -> Backend tạo Record (Status: PENDING) + Tạo `ApprovalTicket`.
-  2. `Checker` (Trưởng ca SOC / Admin) -> Gọi API `/approvals/:id/review` -> Đổi Status của Ticket thành `APPROVED` -> Trigger update Status của Record gốc thành `ACTIVE/APPROVED`.
-## 📂 Cấu Trúc Mã Nguồn Thực Tế (Project Structure)
-Hệ thống tuân thủ tiêu chuẩn **Standard Go Project Layout**.
+---
 
-```text
+## 2. Luồng Xử Lý Một HTTP Request (Ví dụ: User Request)
+
+Khi một người dùng đã đăng nhập yêu cầu lấy danh sách các sự cố (`GET /api/v1/incidents`).
+
+1.  **Middleware (`internal/middleware/auth.go`):**
+    *   Request đầu tiên đi qua middleware xác thực.
+    *   Middleware trích xuất `JWT Token` từ header `Authorization`.
+    *   Giải mã và xác thực token. Nếu token không hợp lệ hoặc hết hạn, request bị từ chối với lỗi `401 Unauthorized`.
+    *   Nếu hợp lệ, thông tin người dùng (ví dụ: `user_id`, `role`) được lấy từ token và lưu vào `context` của request để các handler sau có thể sử dụng.
+
+2.  **Handler (`internal/api/v1/incidents/incident_handlers.go`):**
+    *   Hàm xử lý (ví dụ: `GetAllIncidents`) được gọi.
+    *   Nó không chứa logic nghiệp vụ phức tạp. Nhiệm vụ chính là:
+        *   Parse các tham số query (ví dụ: `?page=1&limit=10`).
+        *   Gọi hàm tương ứng trong `Service Layer` (ví dụ: `incidentService.GetAll(...)`).
+
+3.  **Service (`internal/service/incidents/incident_service.go`):**
+    *   Đây là nơi chứa logic nghiệp vụ.
+    *   Hàm `GetAll(...)` thực hiện các công việc như xây dựng câu truy vấn dựa trên các tham số, kiểm tra quyền hạn (nếu cần).
+    *   Nó gọi đến `Repository Layer` (hoặc trực tiếp sử dụng ORM) để truy vấn cơ sở dữ liệu.
+
+4.  **Database Interaction (`internal/models/models.go` & DB connection):**
+    *   Service sử dụng các struct trong `models.go` (ví dụ: `Incident`) để tương tác với DB.
+    *   Thực hiện câu lệnh `SELECT * FROM incidents...` để lấy dữ liệu.
+
+5.  **Hồi Đáp (Response):**
+    *   Dữ liệu từ DB được trả về cho `Service`.
+    *   `Service` trả dữ liệu về cho `Handler`.
+    *   `Handler` đóng gói dữ liệu thành cấu trúc JSON và trả về cho client với status `200 OK`.
+
+---
+
+## 3. Luồng Dữ Liệu từ Agent (Agent Data Ingestion)
+
+Đây là luồng quan trọng nhất, xử lý dữ liệu từ các agent được cài đặt trên máy người dùng.
+
+1.  **Agent Gửi Dữ Liệu:**
+    *   `SENT_agent` trên máy client thu thập dữ liệu (USB, phần mềm, firewall...).
+    *   Nó gửi một request `POST` đến endpoint, ví dụ: `/api/v1/agents/data`. Request này chứa một token xác thực riêng của agent.
+
+2.  **Middleware (`internal/middleware/agent_auth.go`):**
+    *   Middleware này được áp dụng riêng cho các route của agent.
+    *   Nó xác thực token của agent, đảm bảo chỉ các agent hợp lệ mới được gửi dữ liệu.
+
+3.  **Handler (`internal/api/v1/agents/receiver_handler.go`):**
+    *   Nhận dữ liệu JSON thô từ agent.
+    *   Gọi `data_service` để xử lý. Phản hồi cho agent ngay lập tức để giảm độ trễ. Việc xử lý sâu hơn được thực hiện bất đồng bộ.
+
+4.  **Service (`internal/service/agents/data_service.go`):**
+    *   Nhận dữ liệu và sử dụng các hàm helper trong `internal/service/agents/data/` (ví dụ: `antivirus.go`, `software.go`) để parse và chuẩn hóa dữ liệu theo từng loại.
+    *   Lưu dữ liệu đã được xử lý vào database.
+
+5.  **Event Engine (`internal/service/incidents/event_engine.go`):**
+    *   Sau khi `data_service` lưu dữ liệu, nó có thể tạo ra một "sự kiện" và đẩy vào `Event Engine`.
+    *   `Event Engine` so sánh sự kiện này với các `Policy` đã được định nghĩa trong hệ thống (lấy từ `policy_service`).
+    *   Ví dụ: Sự kiện là "phát hiện USB mới cắm vào", Policy là "cấm tất cả USB lạ". `Event Engine` sẽ thấy sự trùng khớp.
+
+6.  **Incident Creation (`internal/service/incidents/incident_service.go`):**
+    *   Khi `Event Engine` phát hiện vi phạm, nó sẽ gọi `incident_service` để tạo một bản ghi `Incident` mới trong DB.
+
+7.  **Real-time Notification (`internal/websocket/hub.go`):**
+    *   `incident_service` sau khi tạo sự cố thành công sẽ gửi một thông điệp đến `WebSocket Hub`.
+    *   `Hub` sẽ phát thông điệp này đến tất cả các client (trình duyệt của admin) đang kết nối.
+
+---
+
+## 4. Luồng Phê Duyệt (Approval Workflow)
+
+Hệ thống áp dụng mô hình "Maker-Checker" để tăng cường bảo mật.
+
+- **File chính:** `internal/service/approvals/approval_service.go` và các `strategies` trong cùng thư mục.
+- **Luồng hoạt động:**
+    1.  **Tạo yêu cầu:** Một "Maker" (ví dụ: user, hoặc agent tự động) thực hiện một hành động cần phê duyệt (ví dụ: đăng ký agent mới). Một request được gửi đến handler tương ứng.
+    2.  **Tạo Ticket:** Thay vì thực hiện ngay, service sẽ tạo một bản ghi trong DB với trạng thái `PENDING` và tạo một `ApprovalTicket` liên kết với nó.
+    3.  **Thông báo:** Admin ("Checker") nhận được thông báo (có thể qua UI real-time).
+    4.  **Phê duyệt/Từ chối:** Admin vào `Approval Center`, xem ticket và nhấn "Approve" hoặc "Reject". Request được gửi đến `approval_handlers.go`.
+    5.  **Thực thi:** `approval_service` nhận yêu cầu. Nó sử dụng `Strategy Pattern` (`agent_strategy.go`, `user_strategy.go`...) để biết hành động cụ thể cần làm khi ticket được duyệt. Ví dụ, với `agent_strategy`, nó sẽ cập nhật trạng thái của agent từ `PENDING` thành `ACTIVE`.
 SENT_backend/
 ├── cmd/
 │   └── server/
@@ -101,26 +165,3 @@ SENT_backend/
 ├── Dockerfile
 ├── go.mod
 └── go.sum
-ÁC LUỒNG VẬN HÀNH CHÍNH (WORKFLOWS)
-Luồng 1: Tiếp nhận và Lọc Dữ liệu (Ingestion Pipeline)
-## 1. Kiến trúc Gate -> Brain (Separation of Concerns)
-Hệ thống được tách bạch rạch ròi giữa tầng Tiếp nhận và tầng Xử lý:
-- **API Gate (Handlers):** Chỉ làm nhiệm vụ xác thực HMAC, giải mã JSON thô và kiểm tra quyền cơ bản. Phản hồi Agent ngay lập tức (<10ms).
-- **Service Brain (Processor):** Trung tâm điều phối duy nhất. Mọi dữ liệu từ Gate được đẩy vào đây để AI hoặc các module chuyên trách phân tích.
-
-## 2. Luồng Zero-Trust & Whitelist-First
-Thay vì chặn cái xấu (Blacklist), SENT chuyển sang chỉ cho phép cái tốt (Whitelist):
-1. **Enrollment:** Máy mới mặc định ở trạng thái `PENDING`.
-2. **Baseline Discovery:** Admin ra lệnh quét máy. Agent gửi toàn bộ thông tin "sạch" hiện tại lên.
-3. **Lockdown:** Backend nạp Baseline vào bảng `whitelist_items`. Chuyển máy sang `is_zero_trust = true`.
-4. **Enforcement:** Bất kỳ USB lạ (Hash khác) hoặc Software lạ (Publisher/Hash khác) xuất hiện -> Bắn Alert P1 và tự động tạo đơn phê duyệt.
-
-## 3. Real-time Command Hub (WebSocket Push)
-Thay thế cơ chế Pull cũ để đạt độ trễ mili giây:
-- **Persistent Connection:** Agent duy trì kết nối WebSocket tới Server.
-- **Instant Push:** Khi Admin nhấn "Duyệt" hoặc "Update Policy", Server đẩy lệnh JSON trực tiếp xuống HWID tương ứng qua Hub.
-- **Workflow:** Admin Action -> DB Update -> WebSocket Dispatcher -> Agent Execution.
-
-## 4. Multi-tenancy & Data Isolation
-- Dữ liệu hoàn toàn cách ly theo `org_id`.
-- Mọi truy vấn từ Handler/Service bắt buộc phải có điều kiện `WHERE org_id = ?` lấy từ Context của JWT.

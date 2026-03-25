@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, List, Usb, Wifi } from 'lucide-react';
 import { usePolicies } from './hooks/usePolicies';
+import { useSocketSubscription } from '../../context/useSocketSubscription';
 
 // Import Components
 import PolicyOverview from './components/PolicyOverview';
@@ -18,6 +19,12 @@ const PolicyCenter = () => {
         policies, loading, 
         fetchPolicies, addPolicy, deletePolicy, deleteBulkPolicies 
     } = usePolicies();
+
+    // Lắng nghe sự kiện từ WebSocket và tải lại dữ liệu
+    useSocketSubscription('POLICY_UPDATED', () => {
+        console.log('[WS] Bộ luật chính sách đã thay đổi, đang tải lại...');
+        fetchPolicies();
+    });
 
     const [agents] = useState([]); 
 

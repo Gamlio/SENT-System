@@ -78,7 +78,7 @@ func main() {
 				agentsGroup.GET("", agents.GetAgents)
 				agentsGroup.GET("/:hwid", agents.GetAgentDetail)
 				agentsGroup.GET("/:hwid/logs", agents.GetAgentLogs)
-				agentsGroup.POST("/generate-token", agents.GenerateEnrollmentToken)
+				agentsGroup.GET("/active-token", agents.GetActiveEnrollmentToken)
 				agentsGroup.PUT("/:hwid/assign", agents.AssignManager)
 				agentsGroup.PUT("/:hwid/device-type", agents.UpdateDeviceType)
 				agentPublicGroup.GET("/sync-policies", policies.SyncPoliciesForAgent)

@@ -19,10 +19,36 @@ func generateSecureToken(length int) string {
 	return hex.EncodeToString(b)
 }
 
+// GetActiveEnrollmentToken (GATE): Lấy mã token hiện tại (nếu còn hạn)
+func GetActiveEnrollmentToken(c *gin.Context) {
+	orgID := c.GetUint("org_id")
+
+	var tokenRecord models.EnrollmentToken
+	// Lấy token gần nhất còn hạn
+	if err := database.DB.Where("org_id = ? AND expires_at > ?", orgID, time.Now()).Order("expires_at desc").First(&tokenRecord).Error; err != nil {
+		c.JSON(200, gin.H{"token": nil})
+		return
+	}
+
+	// Trả về thêm expires_in (số giây còn lại) để tránh lỗi lệch múi giờ ở Frontend
+	c.JSON(200, gin.H{
+		"token":      tokenRecord.Token,
+		"expires_at": tokenRecord.ExpiresAt,
+		"expires_in": int(time.Until(tokenRecord.ExpiresAt).Seconds()),
+	})
+}
+
 // GenerateEnrollmentToken (GATE): Sinh mã cài đặt 24h
 func GenerateEnrollmentToken(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 	username, _ := c.Get("username")
+
+	// 1. Kiểm tra xem đã có mã nào còn hạn không
+	var existingToken models.EnrollmentToken
+	if err := database.DB.Where("org_id = ? AND expires_at > ?", orgID, time.Now()).First(&existingToken).Error; err == nil {
+		c.JSON(400, gin.H{"error": "Mã cũ vẫn còn hiệu lực. Vui lòng đợi mã cũ hết hạn!"})
+		return
+	}
 
 	randomPart := strings.ToUpper(generateSecureToken(4))
 	tokenString := fmt.Sprintf("SENT-%d-%s", orgID, randomPart)
@@ -31,14 +57,20 @@ func GenerateEnrollmentToken(c *gin.Context) {
 		Token:     tokenString,
 		OrgID:     orgID,
 		CreatedBy: username.(string),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		ExpiresAt: time.Now().Add(15 * time.Minute), // Cập nhật thành 15 phút
 	}
 
 	if err := database.DB.Create(&tokenRecord).Error; err != nil {
 		c.JSON(500, gin.H{"error": "Không thể sinh mã"})
 		return
 	}
-	c.JSON(200, tokenRecord)
+
+	// Trả về thêm expires_in tương tự
+	c.JSON(200, gin.H{
+		"token":      tokenRecord.Token,
+		"expires_at": tokenRecord.ExpiresAt,
+		"expires_in": int(time.Until(tokenRecord.ExpiresAt).Seconds()),
+	})
 }
 
 // EnrollAgent (GATE): Tiếp nhận đăng ký từ máy trạm

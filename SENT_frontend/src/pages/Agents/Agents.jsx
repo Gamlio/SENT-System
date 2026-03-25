@@ -1,27 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
     Search, Monitor, ArrowUpRight, Smartphone, User, 
     ChevronRight, X, UserCheck, LayoutList, ArrowUpDown, Trash2 
 } from 'lucide-react'; 
 import { useAgents, getTimeAgo } from './hooks/useAgents'; 
-import { useAgentBulkActions } from './hooks/useAgentBulkActions'; // [MỚI] Import Hook
+import { useAgentBulkActions } from './hooks/useAgentBulkActions';
 import { useUsers } from '../User/hooks/useUsers'; 
 import AgentActions from './components/AgentActions'; 
 import GenerateTokenButton from './components/GenerateTokenButton';
 import AppDialog from '../../components/AppDialog';
+import { useSocketSubscription } from '../../context/useSocketSubscription';
 import axios from '../../api/axios';
 
 const Agents = () => {
     const navigate = useNavigate();
-    
+
     const {
         currentAgents, searchQuery, setSearchQuery,
         currentPage, setCurrentPage, totalPages, fetchAgents,
         sortConfig, setSortConfig 
     } = useAgents();
 
-    // [MỚI] Khởi tạo Hook Bulk Actions
+    // Lắng nghe các sự kiện liên quan đến Agent và tải lại danh sách
+    const handleAgentUpdate = useCallback(() => {
+        console.log('[WS] Có cập nhật danh sách Agent, đang tải lại...');
+        fetchAgents();
+    }, [fetchAgents]);
+    useSocketSubscription(['AGENT_STATUS_CHANGED', 'REFRESH_AGENT_LIST', 'BASELINE_COMPLETED'], handleAgentUpdate);
+
     const {
         selectedAgents, handleSelectAll, handleSelectOne, clearSelection,
         dialogConfig, closeDialog,
@@ -31,7 +38,6 @@ const Agents = () => {
 
     const { users } = useUsers(); 
 
-    const [showBulkModal, setShowBulkModal] = useState(false);
     const [assignModalOpen, setAssignModalOpen] = useState(false);
     const [targetAgent, setTargetAgent] = useState(null);
 

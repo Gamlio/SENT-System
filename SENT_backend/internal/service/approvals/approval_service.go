@@ -5,6 +5,7 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/approvals/strategies"
+	"sent_backend/internal/websocket"
 
 	"gorm.io/gorm"
 )
@@ -50,7 +51,9 @@ func (s *ApprovalService) ProcessReview(ticketID uint, status string, note strin
 		if processErr != nil {
 			return fmt.Errorf("lỗi thực thi nghiệp vụ: %v", processErr)
 		}
-
+		websocket.GlobalHub.Broadcast(map[string]interface{}{
+			"type": "REFRESH_APPROVALS",
+		})
 		return nil
 	})
 }

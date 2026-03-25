@@ -1,12 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ClipboardCheck, Shield, Laptop, FileText, Layers, UserPlus, Trash2, Clock, CheckCircle2, XCircle,Edit } from 'lucide-react';
 import { useApprovals } from './hooks/useApprovals';
 import ApprovalList from './components/ApprovalList';
+import { useSocketSubscription } from '../../context/useSocketSubscription';
 
 const ApprovalCenter = () => {
     const { tickets, loading, fetchTickets, reviewTicket } = useApprovals();
     const [activeTab, setActiveTab] = useState(''); 
     const [activeStatus, setActiveStatus] = useState('PENDING');
+
+    // Lắng nghe sự kiện từ WebSocket và tải lại dữ liệu
+    const handleTicketUpdate = useCallback(() => {
+        console.log('[WS] Nhận vé chờ duyệt mới hoặc thay đổi trạng thái! Đang tải lại...');
+        fetchTickets(activeTab, activeStatus);
+    }, [fetchTickets, activeTab, activeStatus]);
+    useSocketSubscription(['NEW_APPROVAL_TICKET', 'TICKET_STATUS_UPDATED'], handleTicketUpdate);
 
     useEffect(() => {
         fetchTickets(activeTab, activeStatus);
