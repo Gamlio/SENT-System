@@ -14,22 +14,22 @@ import (
 
 type AgentLifecycleService struct{}
 
-// EnrollAgentRequest: Xử lý đăng ký máy và tạo vé duyệt
-func (s *AgentLifecycleService) EnrollAgentRequest(req models.EnrollRequest, orgID uint) error {
+// EnrollWithKey: Xử lý đăng ký máy, tạo vé duyệt và lưu Secret Key
+func (s *AgentLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID uint, secretKey string) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var agent models.Agent
 		err := tx.Where("hw_id = ?", req.HWID).First(&agent).Error
 
 		if err == nil {
-			// Máy cũ: Chuyển về PENDING để kiểm tra lại
+			// Máy cũ: Chuyển về PENDING, cập nhật thông tin và Secret Key mới
 			tx.Model(&agent).Updates(map[string]interface{}{
-				"status": "PENDING", "hostname": req.Hostname, "ip_address": req.IPAddress,
+				"status": "PENDING", "hostname": req.Hostname, "ip_address": req.IPAddress, "secret_key": secretKey,
 			})
 		} else {
-			// Máy mới: Tạo mới hoàn toàn
+			// Máy mới: Tạo mới hoàn toàn với Secret Key
 			agent = models.Agent{
 				HWID: req.HWID, Hostname: req.Hostname, IPAddress: req.IPAddress,
-				OrgID: orgID, Status: "PENDING", LastSeen: time.Now(),
+				OrgID: orgID, Status: "PENDING", LastSeen: time.Now(), SecretKey: secretKey,
 			}
 			tx.Create(&agent)
 		}

@@ -12,10 +12,15 @@ export const StatCard = ({ icon, label, value, color, bg }) => (
 );
 export const PolicyItem = ({ policy, onDelete, agents }) => {
     const getTargetNames = () => {
-        if (!policy.target_hwids) return "Global";
-        const ids = typeof policy.target_hwids === 'string' ? JSON.parse(policy.target_hwids) : policy.target_hwids;
-        if (!ids || ids.length === 0) return "Global";
-        return ids.map(id => agents.find(a => a.hwid === id)?.hostname || id.substring(0, 6)).join(', ');
+        if (!policy.target_hwids || policy.target_hwids === '[]') return "Global";
+        try {
+            const ids = typeof policy.target_hwids === 'string' ? JSON.parse(policy.target_hwids) : policy.target_hwids;
+            if (!Array.isArray(ids) || ids.length === 0) return "Global";
+            return ids.map(id => agents.find(a => a.hwid === id)?.hostname || id.substring(0, 6)).join(', ');
+        } catch (e) {
+            console.error("Failed to parse target_hwids:", policy.target_hwids, e);
+            return "Invalid Target";
+        }
     };
 
     // Xác định màu sắc dựa trên trạng thái phê duyệt[cite: 45, 60]

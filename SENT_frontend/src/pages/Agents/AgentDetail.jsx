@@ -1,4 +1,4 @@
-import React, { useState, useEffect,useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Cpu, ArrowLeft, User, Smartphone, Mail, ShieldAlert,ShieldCheck,Fingerprint } from 'lucide-react';
 import axios from '../../api/axios';
@@ -14,30 +14,40 @@ const AgentDetail = () => {
     const { hwid } = useParams();
     const navigate = useNavigate();
     const [agent, setAgent] = useState(null);
-    const [logs, setLogs] = useState([]);   
+    const [logs, setLogs] = useState([]);
+    const lastFetchTime = useRef(0);
 
-    const fetchDetail = useCallback(async () => {
+    // Hàm fetch chi tiết 1 máy trạm, có cơ chế Time-check
+    const fetchDetail = useCallback(async (force = false) => {
+        const now = Date.now();
+        // Chốt chặn 2 giây
+        if (!force && now - lastFetchTime.current < 2000) return;
+
         try {
             const res = await axios.get(`/agents/${hwid}`);
             setAgent(res.data);
             const logRes = await axios.get(`/agents/${hwid}/logs`);
             setLogs(logRes.data);
+            lastFetchTime.current = Date.now();
         } catch (err) { console.error(err); }
     }, [hwid]);
 
     useEffect(() => {
-        fetchDetail();
+        fetchDetail(true); // Ép buộc load lần đầu
     }, [fetchDetail]);
 
-    // Lắng nghe sự kiện và chỉ làm mới khi đúng HWID của máy đang xem
+    // [TỐI ƯU REAL-TIME]: Chỉ cập nhật khi ĐÚNG MÁY đang xem thay đổi
     const handleDataRefresh = useCallback((data) => {
+        // KIỂM TRA ĐỊA CHỈ:
         if (data?.hwid === hwid) {
-            console.log(`[WS] Nhận lệnh làm mới cho agent ${hwid}, đang tải lại...`);
+            console.log(`🎯 WebSocket: Máy ${hwid} đang xem có thay đổi. Đang cập nhật...`);
             fetchDetail();
+        } else {
+            // Tin nhắn của máy khác, bỏ qua để tiết kiệm tài nguyên
         }
     }, [hwid, fetchDetail]);
 
-    useSocketSubscription('REFRESH_DATA', handleDataRefresh);
+    useSocketSubscription(['REFRESH_DATA', 'AGENT_UPDATE'], handleDataRefresh);
 
     if (!agent) return <div className="p-10 text-slate-400 font-bold text-center">Đang tải dữ liệu...</div>;
     

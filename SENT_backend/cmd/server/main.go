@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"sent_backend/internal/database"
+	"sent_backend/internal/websocket"
+
 	// IMPORT CÁC PACKAGE ĐÃ CHIA NHỎ
 	"sent_backend/internal/api/v1/agents"
 	"sent_backend/internal/api/v1/ai"
@@ -32,6 +34,8 @@ func main() {
 	}
 
 	r := gin.Default()
+	limiter := middleware.RateLimitMiddleware(10, 20)
+	r.Use(limiter)
 
 	originsEnv := os.Getenv("ALLOWED_ORIGINS")
 	var allowOrigins []string
@@ -79,6 +83,8 @@ func main() {
 				agentsGroup.GET("/:hwid", agents.GetAgentDetail)
 				agentsGroup.GET("/:hwid/logs", agents.GetAgentLogs)
 				agentsGroup.GET("/active-token", agents.GetActiveEnrollmentToken)
+				agentsGroup.POST("/generate-token", agents.GenerateEnrollmentToken)
+				agentsGroup.POST("/:hwid/trigger-baseline", agents.TriggerBaseline)
 				agentsGroup.PUT("/:hwid/assign", agents.AssignManager)
 				agentsGroup.PUT("/:hwid/device-type", agents.UpdateDeviceType)
 				agentPublicGroup.GET("/sync-policies", policies.SyncPoliciesForAgent)
@@ -149,8 +155,9 @@ func main() {
 				filesGroup.GET("/incidents/:filename", incidents.GetIncidentImage)
 			}
 		}
+		r.Run(":8000")
 	}
-
+	r.GET("/ws", websocket.WsHandler)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8000"

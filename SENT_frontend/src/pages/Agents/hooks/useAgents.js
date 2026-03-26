@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from '../../../api/axios';
-import { useWebSocket } from './useWebSocket'; // Import hook WebSocket
+import { useSocketSubscription } from '../../../context/useSocketSubscription'; 
+
 
 export const useAgents = () => {
     const [agents, setAgents] = useState([]);
@@ -28,7 +29,7 @@ export const useAgents = () => {
     }, [fetchAgents]);
 
     // [QUAN TRỌNG]: LẮNG NGHE WEBSOCKET TỪ BACKEND
-    useWebSocket((msg) => {
+    useSocketSubscription((msg) => {
         // Lắng nghe các lệnh làm mới danh sách (Máy mới đăng ký, Máy đổi trạng thái, Máy sập nguồn)
         if (msg.type === 'REFRESH_AGENT_LIST' || msg.type === 'AGENT_STATUS_CHANGED') {
             fetchAgents();

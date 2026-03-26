@@ -2,7 +2,10 @@ package agents
 
 import (
 	"net/http"
+	"sent_backend/internal/database"
+	"sent_backend/internal/models"
 	agentSvc "sent_backend/internal/service/agents" // Brain
+	"sent_backend/internal/websocket"
 
 	// Để tính điểm
 	"github.com/gin-gonic/gin"
@@ -111,4 +114,30 @@ func UpdateDeviceType(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật loại thiết bị thành công"})
+}
+
+// TriggerBaseline: Ra lệnh cho Agent quét sạch hệ thống (Zero Trust)
+func TriggerBaseline(c *gin.Context) {
+	hwid := c.Param("hwid")
+
+	// 1. Kiểm tra máy có Online không qua Hub
+	websocket.GlobalHub.Mu.Lock()
+	_, isOnline := websocket.GlobalHub.Clients[hwid]
+	websocket.GlobalHub.Mu.Unlock()
+
+	if !isOnline {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Máy trạm hiện đang Offline, không thể nhận lệnh."})
+		return
+	}
+
+	// 2. Đẩy lệnh xuống Agent qua WebSocket
+	websocket.GlobalHub.PushCommand(hwid, gin.H{
+		"type": "TRIGGER_BASELINE",
+		"data": gin.H{"requester": "Admin"},
+	})
+
+	// 3. Cập nhật trạng thái Baseline trong DB
+	database.DB.Model(&models.Agent{}).Where("hw_id = ?", hwid).Update("baseline_status", "SCANNING")
+
+	c.JSON(http.StatusOK, gin.H{"message": "Đã gửi lệnh quét Baseline tới máy trạm"})
 }

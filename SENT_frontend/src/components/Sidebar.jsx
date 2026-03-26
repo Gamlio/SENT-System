@@ -27,7 +27,6 @@ const Sidebar = () => {
     { path: '/incidents', icon: <AlertTriangle size={20}/>, label: 'Sự cố', show: user.permissions?.incident_view },
     { path: '/approvals', icon: <ClipboardCheck size={20}/>, label: 'Phê duyệt', show: user.permissions?.approval_manage }
 ];
-console.log("DỮ LIỆU USER ĐANG CÓ:", user);
     return (
         <div 
             className={`${isCollapsed ? 'w-25' : 'w-60'} bg-[#1e293b] h-screen flex flex-col border-r border-slate-800 shadow-2xl relative z-20 transition-all duration-300 ease-in-out`}

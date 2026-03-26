@@ -4,6 +4,7 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	dataAgents "sent_backend/internal/service/agents/data"
+	"sent_backend/internal/websocket"
 	"time"
 )
 
@@ -50,5 +51,19 @@ func ProcessAgentData(payload AgentPayload) {
 		dataAgents.ProcessFirewall(agent, payload.Data)
 	case "antivirus":
 		dataAgents.ProcessAntivirus(agent, payload.Data)
+	}
+
+	// Frontend AgentDetail.jsx sẽ nhận tin này và tự fetchDetail() lại
+	websocket.GlobalHub.Broadcast(map[string]interface{}{
+		"type": "AGENT_UPDATE",
+		"hwid": payload.HWID,
+	})
+
+	// Nếu là Baseline xong, báo tin riêng
+	if payload.LogType == "software_baseline" {
+		websocket.GlobalHub.Broadcast(map[string]interface{}{
+			"type": "BASELINE_COMPLETED",
+			"hwid": payload.HWID,
+		})
 	}
 }

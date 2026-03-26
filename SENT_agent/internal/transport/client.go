@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
 
 	"sent_agent/internal/config"
 	"sent_agent/internal/utils"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -33,11 +36,14 @@ type Payload struct {
 
 type Client struct {
 	LastHashes map[string]string
+	LastStatus string
 	Mutex      sync.Mutex
+	WSConn     *websocket.Conn // Kết nối WebSocket duy nhất
 }
 
 var AgentClient = &Client{
 	LastHashes: make(map[string]string),
+	LastStatus: "PENDING",
 }
 
 // Hàm tạo chữ ký cho Agent
@@ -93,12 +99,28 @@ func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, f
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		status = fmt.Sprintf("HTTP %d", resp.StatusCode)
 
-		// Nếu Backend trả về 401 hoặc 403, cập nhật state để Agent biết
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		if resp.StatusCode == http.StatusOK {
+			var respBody map[string]interface{}
+			if err := json.Unmarshal(bodyBytes, &respBody); err == nil {
+				if state, ok := respBody["status"].(string); ok {
+					serverState = state
+
+					// Xóa sạch Hashes để gửi lại toàn bộ dữ liệu khi được duyệt
+					if serverState == "ACTIVE" && c.LastStatus == "PENDING" {
+						c.Mutex.Lock()
+						c.LastHashes = make(map[string]string)
+						c.Mutex.Unlock()
+						fmt.Println("🚀 Máy đã được duyệt! Đang đồng bộ lại toàn bộ dữ liệu...")
+					}
+					c.LastStatus = serverState
+				}
+			}
+		} else if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 			var errResp map[string]interface{}
 			json.Unmarshal(bodyBytes, &errResp)
 			if state, ok := errResp["status"].(string); ok {
 				serverState = state
+				c.LastStatus = serverState
 			}
 		}
 	}
@@ -149,4 +171,50 @@ func (c *Client) SendAlert(hwid, hostname, alertType, message, severity string) 
 		fmt.Printf("🚨 Đã gửi cảnh báo khẩn cấp [%s] về SOC Server!\n", alertType)
 		resp.Body.Close()
 	}
+}
+
+// [MỚI] SendBaseline: Xóa bộ nhớ đệm và gửi dữ liệu chuẩn Zero Trust
+func (c *Client) SendBaseline(hwid, hostname, logType string, data interface{}) {
+	c.Mutex.Lock()
+	// Xóa dấu vết cũ của loại log này để ép Agent gửi lại bản full
+	delete(c.LastHashes, logType)
+	c.Mutex.Unlock()
+
+	// Gửi kèm flag baseline để Backend xử lý vào bảng Baseline riêng
+	c.SendPayload(hwid, hostname, logType+"_baseline", data, false)
+}
+
+// [MỚI] ListenForCommands: Lắng nghe lệnh từ Dashboard qua WebSocket
+func (c *Client) StartHybridCommunication(hwid string, onCommand func(string, interface{})) {
+	go func() {
+		for {
+			u := url.URL{Scheme: "ws", Host: "localhost:8000", Path: "/ws"} // Cấu hình từ config.BackendURL
+			q := u.Query()
+			q.Set("token", config.Current.SecretKey) // Dùng SecretKey làm phương thức xác thực
+			q.Set("hwid", hwid)
+			u.RawQuery = q.Encode()
+
+			conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+			if err != nil {
+				time.Sleep(10 * time.Second) // Thử lại sau 10s nếu rớt mạng
+				continue
+			}
+
+			c.WSConn = conn
+			fmt.Println("✅ [WebSocket] Đã thiết lập kênh lệnh hai chiều với Server")
+
+			for {
+				var msg struct {
+					Type string      `json:"type"`
+					Data interface{} `json:"data"`
+				}
+				if err := conn.ReadJSON(&msg); err != nil {
+					break // Ngắt kết nối để reconnect
+				}
+				// Xử lý lệnh (VD: TRIGGER_BASELINE, ISOLATE, RESTART)
+				onCommand(msg.Type, msg.Data)
+			}
+			c.WSConn = nil
+		}
+	}()
 }

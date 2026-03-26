@@ -1,0 +1,28 @@
+[Unit]
+Description=SENT Agent Service
+Documentation=https://your-docs-url.com
+After=network.target
+
+[Service]
+# Đường dẫn tới file thực thi của Agent sau khi build
+ExecStart=/usr/local/bin/sent_agent
+
+# Thư mục làm việc của Agent (nơi chứa file config và log)
+WorkingDirectory=/opt/sent_agent/
+
+# Tự động khởi động lại nếu Agent bị tắt hoặc crash
+Restart=always
+RestartSec=5s
+
+# Chạy Agent dưới một user riêng (tạo user này trước) để bảo mật
+User=sentagent
+Group=sentagent
+
+# Giảm quyền root, chỉ cấp các quyền cần thiết thay vì chạy với full root
+# CAP_NET_ADMIN: Cần cho một số thao tác mạng sâu
+# CAP_SYS_RAWIO: Cần để đọc một số thông tin phần cứng cấp thấp
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_RAWIO
+AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_RAWIO
+
+[Install]
+WantedBy=multi-user.target

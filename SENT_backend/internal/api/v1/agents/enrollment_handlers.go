@@ -88,12 +88,20 @@ func EnrollAgent(c *gin.Context) {
 		return
 	}
 
-	// 2. Gọi Service Brain xử lý đăng ký và tạo Ticket
+	// 2. Sinh Secret Key ngẫu nhiên cho máy này (Ví dụ dùng hàm có sẵn)
+	newSecretKey := generateSecureToken(16)
+
+	// 3. Gọi Service để lưu Agent kèm SecretKey vào DB
 	svc := &agentSvc.AgentLifecycleService{}
-	if err := svc.EnrollAgentRequest(req, tokenRecord.OrgID); err != nil {
+	// Bạn cần sửa hàm này trong lifecycle_service.go để nhận thêm tham số secretKey
+	if err := svc.EnrollWithKey(req, tokenRecord.OrgID, newSecretKey); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(200, gin.H{"message": "Đăng ký thành công, vui lòng chờ Admin phê duyệt."})
+	// [QUAN TRỌNG]: Trả về Key cho Agent
+	c.JSON(200, gin.H{
+		"message":    "Đăng ký thành công",
+		"secret_key": newSecretKey,
+	})
 }

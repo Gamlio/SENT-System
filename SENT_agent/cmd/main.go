@@ -16,6 +16,15 @@ import (
 )
 
 func main() {
+	// Bắt lỗi crash (panic) và dừng màn hình để người dùng kịp đọc lỗi
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("\n🚨 [LỖI NGHIÊM TRỌNG]: %v\n", r)
+		}
+		fmt.Println("\nNhấn Enter để thoát...")
+		fmt.Scanln()
+	}()
+
 	hInfo, _ := host.Info()
 
 	// 1. Mẹo Random HWID cho môi trường Test (để giả lập nhiều máy)
@@ -36,6 +45,25 @@ func main() {
 
 	// Từ đoạn này trở xuống giữ nguyên...
 	client := transport.AgentClient
+
+	// [QUAN TRỌNG]: Bật kênh nhận lệnh WebSocket
+	client.StartHybridCommunication(hwid, func(cmdType string, data interface{}) {
+		fmt.Printf("🎯 [LỆNH] Nhận yêu cầu: %s\n", cmdType)
+
+		switch cmdType {
+		case "TRIGGER_BASELINE":
+			fmt.Println("🚀 Đang thiết lập Baseline chuẩn...")
+			// Thu thập lại Software và gửi Baseline
+			sw := (&collector.SoftwareSensor{}).Collect()
+			client.SendBaseline(hwid, hostname, "software", sw)
+
+			usb := (&collector.USBSensor{}).Collect()
+			client.SendBaseline(hwid, hostname, "usb", usb)
+		case "ISOLATE":
+			// Logic cô lập máy bằng cách tắt toàn bộ kết nối mạng
+			fmt.Println("🛑 Đã nhận lệnh cô lập máy!")
+		}
+	})
 
 	// 2. Khởi tạo danh sách các module thu thập (Plugins)
 	collector.InitCollectors()
