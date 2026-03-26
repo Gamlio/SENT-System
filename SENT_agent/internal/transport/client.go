@@ -188,7 +188,14 @@ func (c *Client) SendBaseline(hwid, hostname, logType string, data interface{}) 
 func (c *Client) StartHybridCommunication(hwid string, onCommand func(string, interface{})) {
 	go func() {
 		for {
-			u := url.URL{Scheme: "ws", Host: "localhost:8000", Path: "/ws"} // Cấu hình từ config.BackendURL
+			// Tự động suy luận Host từ SERVER_URL thay vì hardcode localhost
+			parsedURL, _ := url.Parse(SERVER_URL)
+			wsScheme := "ws"
+			if parsedURL.Scheme == "https" {
+				wsScheme = "wss"
+			}
+
+			u := url.URL{Scheme: wsScheme, Host: parsedURL.Host, Path: "/ws"}
 			q := u.Query()
 			q.Set("token", config.Current.SecretKey) // Dùng SecretKey làm phương thức xác thực
 			q.Set("hwid", hwid)

@@ -22,7 +22,10 @@ func (s *IncidentService) AddActivity(incidentID uint, userID uint, orgID uint, 
 		return fmt.Errorf("không tìm thấy sự cố")
 	}
 
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	// Biến để quyết định có tính lại điểm hay không
+	shouldRecalculateScore := false
+
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		oldStatus := incident.Status
 		newStatus := oldStatus
 
@@ -34,10 +37,16 @@ func (s *IncidentService) AddActivity(incidentID uint, userID uint, orgID uint, 
 			newStatus = "Resolved"
 			tx.Model(&incident).Update("status", newStatus)
 			tx.Model(&models.SecurityAlert{}).Where("incident_id = ?", incident.ID).Update("is_resolved", true)
-			defer scoring.RecalculateRiskScore(incident.AgentHWID) // Tính lại điểm sau khi commit
+			shouldRecalculateScore = true // Đánh dấu để tính lại điểm sau khi transaction thành công
 		}
 
 		// 2. Lưu trữ tệp tin vật lý (Phân tách theo Org)
+		// !!! CẢNH BÁO ĐIỂM YẾU: Lưu file trên local filesystem không phù hợp cho môi trường production.
+		// ĐỀ XUẤT: Chuyển sang sử dụng dịch vụ Object Storage (như AWS S3, Google Cloud Storage, MinIO).
+		// Đoạn code dưới đây chỉ nên dùng cho môi trường development.
+		// Ví dụ với S3:
+		// s3Client := s3.New(session)
+		// _, err := s3Client.PutObject(&s3.PutObjectInput{...})
 		var imageNames []string
 		uploadDir := fmt.Sprintf("uploads/org_%d/incidents", orgID)
 		_ = os.MkdirAll(uploadDir, os.ModePerm)
@@ -62,6 +71,12 @@ func (s *IncidentService) AddActivity(incidentID uint, userID uint, orgID uint, 
 		}
 		return tx.Create(&activity).Error
 	})
+
+	// Tính lại điểm sau khi transaction đã commit thành công
+	if err == nil && shouldRecalculateScore {
+		scoring.RecalculateRiskScore(incident.AgentHWID)
+	}
+	return err
 }
 
 // UpdatePlaybook: Lưu tiến trình xử lý sự cố

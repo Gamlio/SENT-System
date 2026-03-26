@@ -1,6 +1,7 @@
 package incidents
 
 import (
+	"errors"
 	"fmt"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
@@ -8,6 +9,10 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+)
+
+const (
+	DefaultCorrelationWindow = 24 * time.Hour // Cửa sổ thời gian gom nhóm sự cố
 )
 
 // TriggerSecurityEvent: Nhận tín hiệu từ Sensor và đưa vào quy trình Triage (Phân loại)
@@ -24,42 +29,54 @@ func (s *IncidentService) TriggerSecurityEvent(agent models.Agent, alertType, ti
 	}
 	database.DB.Create(&alert)
 
-	// 2. THUẬT TOÁN CORRELATION: Kiểm tra xem có Case nào tương tự đang mở không?
-	var activeIncident models.Incident
-	timeWindow := time.Now().Add(-24 * time.Hour)
+	// 2. THUẬT TOÁN CORRELATION: Tìm hoặc Tạo Incident trong một transaction để tránh race condition
+	var correlatedIncident models.Incident
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		timeWindow := time.Now().Add(-DefaultCorrelationWindow)
 
-	// Tìm Case: Cùng Máy + Cùng Loại Lỗi + Trạng thái chưa đóng + Trong 24h
-	err := database.DB.Where(
-		"agent_hw_id = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
-		agent.HWID, alertType, timeWindow,
-	).First(&activeIncident).Error
+		// Tìm Case: Cùng Máy + Cùng Loại Lỗi + Trạng thái chưa đóng + Trong cửa sổ thời gian
+		err := tx.Where(
+			"agent_hw_id = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
+			agent.HWID, alertType, timeWindow,
+		).First(&correlatedIncident).Error
 
-	if err != nil {
-		// TRƯỜNG HỢP A: Chưa có Case phù hợp -> Khởi tạo Case mới tinh
-		activeIncident = models.Incident{
-			OrgID:       agent.OrgID,
-			AgentHWID:   agent.HWID,
-			Type:        alertType,
-			Priority:    priority,
-			Severity:    s.getSeverityByPriority(priority),
-			Status:      "Open",
-			Description: fmt.Sprintf("Hệ thống tự động phát hiện chuỗi sự kiện: %s", title),
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// TRƯỜNG HỢP A: Chưa có Case phù hợp -> Khởi tạo Case mới tinh
+			correlatedIncident = models.Incident{
+				OrgID:       agent.OrgID,
+				AgentHWID:   agent.HWID,
+				Type:        alertType,
+				Priority:    priority,
+				Severity:    s.getSeverityByPriority(priority),
+				Status:      "Open",
+				Description: fmt.Sprintf("Hệ thống tự động phát hiện chuỗi sự kiện: %s", title),
+			}
+			if err := tx.Create(&correlatedIncident).Error; err != nil {
+				return err
+			}
+		} else if err == nil {
+			// TRƯỜNG HỢP B: Đã có Case -> Nâng cấp độ nghiêm trọng nếu cần
+			updates := map[string]interface{}{"updated_at": time.Now()}
+
+			if s.shouldUpgradePriority(correlatedIncident.Priority, priority) {
+				updates["priority"] = priority
+				updates["severity"] = s.getSeverityByPriority(priority)
+			}
+			if err := tx.Model(&correlatedIncident).Updates(updates).Error; err != nil {
+				return err
+			}
+		} else {
+			return err // Lỗi khác
 		}
-		database.DB.Create(&activeIncident)
-	} else {
-		// TRƯỜNG HỢP B: Đã có Case -> Nối Alert vào và nâng cấp độ nghiêm trọng nếu cần
-		updates := map[string]interface{}{"updated_at": time.Now()}
 
-		if s.shouldUpgradePriority(activeIncident.Priority, priority) {
-			updates["priority"] = priority
-			updates["severity"] = s.getSeverityByPriority(priority)
-		}
-		database.DB.Model(&activeIncident).Updates(updates)
+		// 3. Liên kết Alert vào Case
+		return tx.Model(&alert).Update("incident_id", correlatedIncident.ID).Error
+	})
+
+	// 4. Tính lại điểm rủi ro sau khi transaction thành công
+	if err == nil {
+		scoring.RecalculateRiskScore(agent.HWID)
 	}
-
-	// 3. Liên kết Alert vào Case và tính lại điểm rủi ro
-	database.DB.Model(&alert).Update("incident_id", activeIncident.ID)
-	scoring.RecalculateRiskScore(agent.HWID)
 }
 
 // AutoResolveIncident: Tự động đóng Case nếu Agent báo cáo trạng thái đã an toàn

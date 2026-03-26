@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"strings"
 )
 
-const OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-
-// const AI_MODEL = "qwen2.5:3b"
-const AI_MODEL = "qwen3.5:4b"
-
-// const AI_MODEL = "phi3"
+var (
+	// Lấy cấu hình từ biến môi trường, với giá trị mặc định
+	OLLAMA_URL = getEnv("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
+	AI_MODEL   = getEnv("AI_MODEL", "qwen3.5:4b")
+)
 
 type OllamaRequest struct {
 	Model  string `json:"model"`
@@ -26,6 +26,13 @@ type OllamaRequest struct {
 
 type OllamaResponse struct {
 	Response string `json:"response"`
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
 }
 
 // Hàm tách Suy nghĩ và Câu trả lời
@@ -42,6 +49,8 @@ func parseAIResponse(raw string) (thought string, answer string) {
 // Logic chính gọi sang Ollama
 func ChatWithPolicy(userQuestion string) (string, string, error) {
 	// 1. LẤY POLICY (Giữ nguyên)
+	// CẢNH BÁO HIỆU NĂNG: Lấy tất cả policy có thể gây chậm hệ thống.
+	// ĐỀ XUẤT: Sử dụng Vector Search (RAG) để tìm các policy liên quan nhất đến câu hỏi.
 	var policies []models.UniversalPolicy
 	database.DB.Where("is_active = ?", true).Find(&policies)
 	policyContext := "CHÍNH SÁCH CÔNG TY:\n"
@@ -69,22 +78,28 @@ func ChatWithPolicy(userQuestion string) (string, string, error) {
     4. Unauthorized (P3): Gỡ phần mềm / Rút USB -> Cảnh báo.
     `
 
-	// TẠO PROMPT MỚI: ÉP BUỘC RÕ RÀNG HƠN
-	finalPrompt := fmt.Sprintf(`Bạn là SENT Copilot - Trợ lý AI An ninh mạng cấp cao.
+	// TẠO PROMPT MỚI: Sử dụng thẻ XML để cấu trúc hóa, giúp AI hoạt động ổn định hơn.
+	finalPrompt := fmt.Sprintf(`<system_instructions>
+Bạn là SENT Copilot - Trợ lý AI An ninh mạng cấp cao.
 
-			QUY TẮC ỨNG XỬ (TUÂN THỦ TUYỆT ĐỐI):
-			1. GIAO TIẾP THÔNG THƯỜNG: Nếu người dùng gửi lời chào (VD: "Hello", "Hi", "Chào"),
-		 	bạn BẮT BUỘC chỉ trả lời lại bằng 1 câu chào ngắn gọn đúng ngôn ngữ đó.
-			KHÔNG ĐƯỢC báo cáo sự cố. KHÔNG ĐƯỢC dùng thẻ <tool_call>.
-			2. TRẢ LỜI NGHIỆP VỤ: Chỉ khi người dùng hỏi về lỗi, sự cố hoặc chính sách,
-			bạn mới dùng thẻ <tool_call> suy luận <tool_call> và đọc dữ liệu bên dưới để tư vấn.
+QUY TẮC ỨNG XỬ (TUÂN THỦ TUYỆT ĐỐI):
+1. GIAO TIẾP THÔNG THƯỜNG: Nếu người dùng gửi lời chào (VD: "Hello", "Hi", "Chào"), bạn BẮT BUỘC chỉ trả lời lại bằng 1 câu chào ngắn gọn đúng ngôn ngữ đó. KHÔNG ĐƯỢC báo cáo sự cố hoặc dùng thẻ <tool_call>.
+2. TRẢ LỜI NGHIỆP VỤ: Chỉ khi người dùng hỏi về lỗi, sự cố hoặc chính sách, bạn mới dùng thẻ <tool_call> để suy luận và đọc dữ liệu bên dưới để tư vấn.
+</system_instructions>
 
-			DỮ LIỆU HỆ THỐNG:
-			%s
-			%s
-			%s
+<system_data>
+<policies>
+%s
+</policies>
+<recent_incidents>
+%s
+</recent_incidents>
+<playbooks>
+%s
+</playbooks>
+</system_data>
 
-			Câu hỏi của người dùng: "%s"`, policyContext, incidentContext, playbookKnowledge, userQuestion)
+<user_question>%s</user_question>`, policyContext, incidentContext, playbookKnowledge, userQuestion)
 
 	// 3. GỬI REQUEST
 	reqBody := OllamaRequest{

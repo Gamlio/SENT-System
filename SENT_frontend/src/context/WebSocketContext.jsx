@@ -25,21 +25,26 @@ export const WebSocketProvider = ({ children }) => {
 
     useEffect(() => {
         const connect = () => {
-            // 1. Lấy token (Hỗ trợ nhiều tên key lưu trữ khác nhau)
-            const token = localStorage.getItem('token') || 
-                          localStorage.getItem('access_token') || 
-                          localStorage.getItem('jwt');
+            // 1. Lấy token từ một nguồn đáng tin cậy (thường là 'accessToken' theo AuthContext)
+            const token = localStorage.getItem('accessToken');
                           
             if (!token) {
                 console.warn('⚠️ [WebSocket] Không tìm thấy Token, tạm hoãn kết nối...');
                 setTimeout(connect, 5000); // Thử lại sau 5s nếu user chưa đăng nhập
                 return;
             }
-
-            // 2. Nối token vào query string
+            
+            // 2. Khởi tạo kết nối WebSocket
+            // CẢNH BÁO BẢO MẬT: Gửi token qua query string (URL) là không an toàn vì nó có thể bị ghi lại trong logs.
+            // ĐỀ XUẤT: Backend nên được cấu hình để đọc token từ cookie hoặc một header đặc biệt.
+            // Cách dưới đây là một giải pháp tạm thời, cần được cải thiện ở backend.
             const wsUrlWithAuth = new URL(socketUrl);
             wsUrlWithAuth.searchParams.append('token', token);
 
+            // Cách tiếp cận an toàn hơn (yêu cầu backend hỗ trợ):
+            // socket.current = new WebSocket(socketUrl, ['Authorization', token]);
+            // Backend sẽ cần đọc token từ header `Sec-WebSocket-Protocol`.
+            
             socket.current = new WebSocket(wsUrlWithAuth.toString());
 
             socket.current.onopen = () => {

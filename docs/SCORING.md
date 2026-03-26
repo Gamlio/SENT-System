@@ -1,70 +1,63 @@
-# SENT SOC - MÔ HÌNH CHẤM ĐIỂM RỦI RO ĐỘNG (Dynamic Risk Scoring v4.0)
+# SENTINEX SOC - MÔ HÌNH ĐÁNH GIÁ UY TÍN & RỦI RO NGỮ CẢNH (Contextual Trust & Risk Scoring v6.0)
 
-Tài liệu này mô tả thuật toán chấm điểm rủi ro (Risk Score) của hệ thống SENT SOC. 
-Phiên bản 4.0 đánh dấu sự chuyển đổi từ việc "Chấm điểm từng Cảnh báo (Alert)" sang "Chấm điểm theo Hồ sơ Sự cố (Incident)", giúp phản ánh chính xác tình trạng sức khỏe của máy trạm theo thời gian thực và chống lạm phát điểm.
+Tài liệu này mô tả thuật toán Sentinex v6.0, được thiết kế để loại bỏ sự "mong manh" của các hệ thống chấm điểm truyền thống. Hệ thống không chỉ nhìn vào những gì đang xảy ra, mà còn đánh giá dựa trên bối cảnh bộ phận (Ngữ cảnh) và lịch sử hành vi của máy trạm trong 365 ngày (Uy tín).
 
----
+## PHẦN 1: TRIẾT LÝ "LÝ LỊCH AN NINH" (THE REPUTATION PHILOSOPHY)
 
-## PHẦN 1: TRIẾT LÝ THIẾT KẾ (THE PHILOSOPHY)
+- **Contextual Risk (Rủi ro theo bối cảnh):** Một hành vi không có "điểm chết" cố định. Cùng một sự kiện nhưng mức độ nghiêm trọng (P1-P4) sẽ thay đổi dựa trên Department Tag (Bộ phận) của máy đó.
+- **Exponential Escalation (Thang rủi ro lũy thừa):** Rủi ro không tăng tiến tuyến tính. Khi một máy trạm dính nhiều lỗi cùng lúc, khả năng máy đã bị chiếm quyền hoàn toàn tăng theo cấp số nhân ($E^n$), khiến điểm số "dựng đứng" để cảnh báo SOC.
+- **Long-term Trust (Uy tín tích lũy):** Máy trạm có một "điểm uy tín" gốc. Những vi phạm trong quá khứ (1 tháng/1 năm) để lại "vết sẹo" điểm số. Một máy có tiền sử xấu sẽ bị hệ thống "lì lợm" hơn khi tính điểm an toàn.
 
-1. **Incident-Based (Dựa trên Sự cố):** Một máy trạm bị nhiễm virus có thể sinh ra 100 cảnh báo (Alerts) giống nhau. Hệ thống SENT sẽ gom chúng thành 1 Sự cố (Incident) duy nhất. Điểm rủi ro được tính trên Sự cố này, do đó điểm không bị cộng dồn vô lý lên hàng nghìn điểm.
-2. **Real-time Cooling (Tự động hạ nhiệt):** Khi Trưởng ca SOC tiến hành điều tra và bấm "Đóng Case" (Resolved), điểm rủi ro của máy trạm sẽ ngay lập tức được tính toán lại và tụt giảm về mức an toàn.
-3. **Asset-Aware (Nhận thức Tài sản):** Cùng một lỗi "Cắm USB lạ", nếu xảy ra trên máy Lễ tân thì rủi ro thấp, nhưng nếu xảy ra trên máy Domain Controller (Server) thì rủi ro cực kỳ nghiêm trọng.
+## PHẦN 2: MA TRẬN RỦI RO THEO BỘ PHẬN (DEPARTMENT MATRIX)
 
----
+Mức độ khẩn cấp (Priority) được xác định bằng phép giao giữa Loại Sensor và Tag Bộ phận của Agent.
 
-## PHẦN 2: MÔ HÌNH TOÁN HỌC & CÁC TRỌNG SỐ
+| Loại Sự kiện (Sensor) | Nhóm DEV (Lập trình) | Nhóm FINANCE (Tài chính) | Nhóm PROD (Sản xuất) |
+| :--- | :--- | :--- | :--- |
+| **USB_PLUG** (Cắm USB lạ) | P4 (Chỉ ghi log) | P1 (Cấm tuyệt đối) | P2 (Nguy hiểm) |
+| **PROC_START** (Chạy app lạ) | P3 (Bình thường) | P1 (Vi phạm chính sách) | P1 (Nguy cơ dừng máy) |
+| **PORT_OPEN** (Mở cổng RDP/SSH)| P2 (Cần kiểm tra) | P1 (Nghiêm trọng) | P1 (Cấm tuyệt đối) |
 
-### 1. Phân loại Mức độ Sự cố ($S_{base}$)
-Mỗi Sự cố (Incident) khi được tạo ra sẽ mang một mức độ nghiêm trọng (Severity/Priority) gốc:
-- **Critical (P1):** 80 điểm *(VD: Mã độc, Tắt Tường lửa, Tắt Antivirus)*
-- **High (P2):** 60 điểm *(VD: Ghost Registry, Mở Port 3389 trái phép)*
-- **Medium (P3):** 30 điểm *(VD: Cắm USB chưa duyệt, Cài phần mềm Crack/Torrent)*
-- **Low (P4):** 10 điểm *(VD: Lỗi cấu hình nhẹ)*
+## PHẦN 3: CÔNG THỨC TOÁN HỌC TIỆM CẬN (ASYMPTOTIC MODEL)
 
-### 2. Trọng số Tài sản ($W_{asset}$)
-Dựa trên chức vụ (Device Type) của thiết bị trong mạng Doanh nghiệp:
-- **Máy chủ (SERVER - Tier 1):** $W_{asset} = 2.0$ (Nhân đôi rủi ro).
-- **Máy Quản trị IT (IT_ADMIN - Tier 2):** $W_{asset} = 1.5$.
-- **Máy Văn phòng chuẩn (STANDARD - Tier 3):** $W_{asset} = 1.0$.
-- **Máy Khách/Lễ tân (GUEST - Tier 4):** $W_{asset} = 0.8$ (Giảm nhẹ rủi ro).
+Để đảm bảo điểm số không bị kịch trần (100đ) quá sớm và có độ dốc thực tế, Sentinex v6 sử dụng hàm Tiệm cận Logarit.
 
----
+### 1. Thành phần 1: Điểm rủi ro tức thời ($R_{current}$)
+Tính dựa trên các sự cố đang MỞ (Open Incidents), áp dụng hệ số lũy thừa cho số lượng lỗi ($n$):
 
-## PHẦN 3: CÔNG THỨC TÍNH TỔNG ĐIỂM (WEIGHTED MAX-SCORE)
+$$R_{current} = 100 \times \left( 1 - e^{-\frac{\sum (S_{i} \times E^{n})}{k}} \right)$$
 
-Để chống lại việc cộng dồn điểm quá mức khi một máy dính nhiều Sự cố khác nhau cùng lúc, SENT SOC áp dụng công thức **Weighted Max-Score**.
+- **$S_{i}$**: Điểm gốc của sự cố (P1=50, P2=25, P3=10, P4=5).
+- **$E^{n}$**: Hệ số lũy thừa (Số lượng lỗi càng nhiều, độ dốc càng cao).
+- **$k$**: Hệ số điều chỉnh độ nhạy (Enterprise chuẩn thường chọn $k=40$ đến $60$).
 
-**Công thức:**
-$$R_{total} = \left( S_{max} + \alpha \sum S_{secondary} \right) \times W_{asset}$$
+### 2. Thành phần 2: Nợ rủi ro dài hạn ($D_{debt}$)
+Dựa trên chỉ số Trust Score (Lịch sử 1 năm) lưu trong `models.Agent`.
 
-**Giải thích:**
-- Lấy điểm của **Sự cố nặng nhất ($S_{max}$)** đang MỞ làm điểm mốc cơ sở.
-- Các Sự cố phụ ($S_{secondary}$) đang MỞ khác chỉ đóng góp một hệ số rất nhỏ $\alpha$ (Mặc định SENT sử dụng $\alpha = 0.15$ tức $15\%$) vào tổng điểm.
-- Cuối cùng nhân với Trọng số thiết bị ($W_{asset}$).
-- **Giới hạn (Cap):** Điểm $R_{total}$ luôn được chặn tối đa là **100 điểm**.
+- **Trust Score:** Mặc định 100 điểm.
+- **Trừ điểm:** Mỗi lỗi P1 trong 30 ngày qua trừ 15đ, lỗi P2 trừ 5đ.
+- **Hồi phục:** Sau mỗi 7 ngày "sạch" (không có lỗi mới), máy được cộng lại 2đ uy tín.
 
----
+## PHẦN 4: VÍ DỤ THỰC TẾ TRONG MÔI TRƯỜNG DOANH NGHIỆP
 
-## PHẦN 4: VÍ DỤ VẬN HÀNH THỰC TẾ (USE CASE)
+- **Kịch bản:** Máy trạm `PC-ACCOUNTING` (Tag: FINANCE).
+- **Trạng thái ban đầu:** Máy có lịch sử sạch 1 năm (TrustScore = 100), đang hoạt động (0 điểm).
+- **Sự cố 1:** Nhân viên cắm USB lạ.
+  - Theo ma trận FINANCE: USB = P1 (Critical).
+  - Điểm vọt lên: ~65 điểm (Cảnh báo đỏ ngay lập tức vì bối cảnh tài chính cực kỳ nhạy cảm với USB).
+- **Sự cố 2 (Xảy ra đồng thời):** Tường lửa bị tắt.
+  - Hệ thống nhận diện 2 lỗi P1 cùng lúc. Độ dốc lũy thừa kích hoạt.
+  - Điểm vọt lên: 92 điểm (Gần kịch trần, báo động khẩn cấp cho toàn hệ thống SOC).
+- **Xử lý xong (Resolved):** Admin đóng các Case.
+  - $R_{current}$ về 0.
+  - Tuy nhiên, TrustScore lúc này chỉ còn 70 điểm (Vết sẹo lịch sử).
+- **Trên Dashboard:** Máy hiện màu Vàng (Warning) trong 30 ngày tới để SOC giám sát đặc biệt, thay vì hiện màu Xanh an toàn giả tạo.
 
-**Bối cảnh:** Máy tính `PC-KETOAN` (Tier 3 -> $W_{asset} = 1.0$) đang hoạt động bình thường (0 điểm).
+## PHẦN 5: KHẢ NĂNG MỞ RỘNG (EXPANDABILITY)
 
-1. **08:00 AM:** Kế toán cắm USB lạ.
-   - Hệ thống lập Incident `[USB Violation]` (P3 -> 30đ).
-   - Điểm máy trạm: $30 \times 1.0 = 30$ điểm. (Màu Vàng - Cảnh báo).
+Thuật toán được thiết kế dưới dạng Framework mở. Khi thêm các Sensor mới như:
 
-2. **09:00 AM:** Virus từ USB lây vào máy, tự động tắt Tường lửa.
-   - Hệ thống lập Incident `[Firewall Disabled]` (P1 -> 80đ).
-   - Tính lại điểm: Lỗi nặng nhất là P1 (80). Lỗi phụ là P3 (30).
-   - Công thức: $(80 + 15\% \times 30) \times 1.0 = 80 + 4.5 = 84.5$ điểm.
-   - Điểm máy trạm: **85 điểm**. (Màu Đỏ - Nguy hiểm).
+- **Registry Monitoring:** Chỉ cần định nghĩa `REG_CHANGE` vào Ma trận rủi ro.
+- **Network Traffic:** Định nghĩa `DDOS_PATTERN` và gán trọng số theo từng bộ phận.
 
-3. **10:00 AM:** Nhân viên SOC vào hệ thống, điều tra và đóng Case `[Firewall Disabled]`.
-   - Case P1 chuyển sang Resolved (Bị loại khỏi công thức tính).
-   - Máy chỉ còn Case P3 đang Open.
-   - Điểm máy trạm tự động tụt về: **30 điểm**.
-
-4. **10:30 AM:** SOC đóng nốt Case `[USB Violation]`.
-   - Máy sạch bóng sự cố.
-   - Điểm máy trạm: **0 điểm** (Màu Xanh - An toàn).
+Hệ thống chấm điểm sẽ tự động nạp các EventID này và tính toán mà không cần can thiệp vào mã nguồn lõi của bộ xử lý rủi ro.

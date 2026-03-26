@@ -34,6 +34,7 @@ func main() {
 	}
 
 	r := gin.Default()
+	r.GET("/ws", websocket.WsHandler)
 	limiter := middleware.RateLimitMiddleware(10, 20)
 	r.Use(limiter)
 
@@ -157,7 +158,7 @@ func main() {
 		}
 		r.Run(":8000")
 	}
-	r.GET("/ws", websocket.WsHandler)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8000"

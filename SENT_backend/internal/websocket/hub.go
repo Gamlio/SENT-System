@@ -3,6 +3,8 @@ package websocket
 
 import (
 	"net/http"
+	"sent_backend/internal/database"
+	"sent_backend/internal/models"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -65,18 +67,44 @@ func WsHandler(c *gin.Context) {
 	// Đưa kết nối vào Hub để quản lý
 	GlobalHub.Register(hwid, conn)
 
+	// CẬP NHẬT: Nếu là Agent kết nối, đánh dấu Online trong Database và báo cho Frontend
+	if hwid != "ADMIN_DASHBOARD" {
+		// Lưu vào Database
+		database.DB.Model(&models.Agent{}).Where("hw_id = ?", hwid).Update("status", "Online")
+
+		// Phát sự kiện Real-time để giao diện web đổi màu xanh lập tức
+		GlobalHub.Broadcast(map[string]interface{}{
+			"type": "AGENT_STATUS_CHANGED",
+			"data": map[string]string{
+				"agentId": hwid,
+				"status":  "Online",
+			},
+		})
+	}
+
 	// Giữ kết nối mở cho đến khi client tắt hoặc lỗi
-	go func() {
-		defer func() {
-			GlobalHub.Mu.Lock()
-			delete(GlobalHub.Clients, hwid)
-			GlobalHub.Mu.Unlock()
-			conn.Close()
-		}()
-		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
-				break
-			}
+	defer func() {
+		GlobalHub.Mu.Lock()
+		delete(GlobalHub.Clients, hwid)
+		GlobalHub.Mu.Unlock()
+		conn.Close()
+
+		// CẬP NHẬT: Khi Agent ngắt mạng, đánh dấu Offline và báo cho Frontend
+		if hwid != "ADMIN_DASHBOARD" {
+			database.DB.Model(&models.Agent{}).Where("hw_id = ?", hwid).Update("status", "Offline")
+			GlobalHub.Broadcast(map[string]interface{}{
+				"type": "AGENT_STATUS_CHANGED",
+				"data": map[string]string{
+					"agentId": hwid,
+					"status":  "Offline",
+				},
+			})
 		}
 	}()
+
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			break
+		}
+	}
 }
