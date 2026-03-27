@@ -1,112 +1,295 @@
 package scoring
 
 import (
+	"fmt"
 	"log"
 	"math"
+	"time"
 
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
+
+	"gorm.io/gorm"
 )
 
-// RecalculateRiskScore: Tính lại điểm rủi ro cho Máy trạm dựa trên các CASE đang mở
+// Priority scores mapping
+var priorityScores = map[string]float64{
+	"P1": 50.0,
+	"P2": 25.0,
+	"P3": 10.0,
+	"P4": 5.0,
+}
+
+// Department Matrix mapping SensorType and DepartmentTag to Priority
+// This can be loaded from a config or database for more flexibility
+var departmentMatrix = map[string]map[string]string{
+	"USB_PLUG": {
+		"DEV":     "P4",
+		"FINANCE": "P1",
+		"PROD":    "P2",
+	},
+	"PROC_START": {
+		"DEV":     "P3",
+		"FINANCE": "P1",
+		"PROD":    "P1",
+	},
+	"PORT_OPEN": {
+		"DEV":     "P2",
+		"FINANCE": "P1",
+		"PROD":    "P1",
+	},
+	// Add more sensor types and departments as needed
+}
+
+const (
+	kFactor                  float64 = 50.0 // Default sensitivity factor, can be configurable (40-60)
+	exponentialBase          float64 = 2.0  // Base for exponential escalation (E in E^n)
+	trustScoreP1Deduction    float64 = 15.0
+	trustScoreP2Deduction    float64 = 5.0
+	trustScoreRecoveryAmount float64 = 2.0
+	trustScoreRecoveryDays   int     = 7
+	trustScoreMax            float64 = 100.0
+	trustScoreMin            float64 = 0.0
+	incidentLookbackDays     int     = 30 // For TrustScore deduction (30 days for P1/P2)
+)
+
+// ScoreService handles the calculation of risk and trust scores
+type ScoreService struct {
+	db *gorm.DB
+}
+
 func RecalculateRiskScore(agentHWID string) {
 	var agent models.Agent
 	if err := database.DB.Where("hw_id = ?", agentHWID).First(&agent).Error; err != nil {
-		log.Println("❌ Lỗi tính điểm: Không tìm thấy Agent", agentHWID)
 		return
 	}
 
-	// 1. Lấy danh sách HỒ SƠ SỰ CỐ (Incidents) CHƯA ĐÓNG của máy này
 	var openIncidents []models.Incident
 	database.DB.Where("agent_hw_id = ? AND status IN ('Open', 'Investigating')", agentHWID).Find(&openIncidents)
 
-	// NẾU MÁY SẠCH BÓNG SỰ CỐ -> VỀ 0 ĐIỂM NGAY LẬP TỨC
-	if len(openIncidents) == 0 {
-		database.DB.Model(&agent).Update("risk_score", 0)
-		updateUserScore(agent.UserID) // Đồng bộ điểm cho Dashboard
+	n := len(openIncidents)
+
+	// Nếu máy sạch sự cố -> R_current = 0, nhưng TrustScore (Uy tín) vẫn giữ nguyên vết sẹo
+	if n == 0 {
+		database.DB.Model(&agent).Updates(map[string]interface{}{"risk_score": 0.0})
 		return
 	}
 
-	// 2. XÁC ĐỊNH TRỌNG SỐ TÀI SẢN (W_asset)
-	wAsset := 1.0
-	switch agent.DeviceType {
-	case "SERVER":
-		wAsset = 2.0 // Server: Nhân đôi rủi ro
-	case "IT_ADMIN":
-		wAsset = 1.5 // Máy IT: Nhân 1.5 rủi ro
-	case "GUEST":
-		wAsset = 0.8 // Lễ tân: Rủi ro thấp
+	// 1. Tính tổng điểm gốc (Si)
+	var sumSi float64 = 0
+	hasP1 := false
+	for _, inc := range openIncidents {
+		switch inc.Priority {
+		case "P1":
+			sumSi += 50.0
+			hasP1 = true
+		case "P2":
+			sumSi += 25.0
+		case "P3":
+			sumSi += 10.0
+		case "P4":
+			sumSi += 5.0
+		}
 	}
 
-	// 3. TÍNH ĐIỂM CÁC SỰ CỐ (Weighted Max-Score)
-	var maxScore float64 = 0.0
-	var secondaryScores []float64
+	// 2. Công thức Tiệm Cận & Lũy Thừa
+	En := math.Pow(1.2, float64(n)) // Độ dốc E^n (Số sự cố càng nhiều, điểm dựng càng nhanh)
+	k := 50.0                       // Hằng số điều chỉnh độ nhạy
 
-	for _, incident := range openIncidents {
-		baseScore := getBaseScoreBySeverity(incident.Severity)
+	rawScore := (sumSi * En) / k
+	currentRisk := 100.0 * (1.0 - math.Exp(-rawScore))
 
-		// Phân loại Lỗi nặng nhất làm gốc
-		if baseScore > maxScore {
-			if maxScore > 0 {
-				secondaryScores = append(secondaryScores, maxScore)
-			}
-			maxScore = baseScore
+	// 3. Phạt điểm Uy tín (Trust Score) nếu có sự cố P1
+	now := time.Now()
+	updates := map[string]interface{}{
+		"risk_score":       currentRisk,
+		"last_incident_at": &now,
+	}
+
+	// Nếu có P1, trừ 15 điểm uy tín dài hạn
+	if hasP1 {
+		newTrust := agent.TrustScore - 15.0
+		if newTrust < 0 {
+			newTrust = 0
+		}
+		updates["trust_score"] = newTrust
+	}
+
+	database.DB.Model(&agent).Updates(updates)
+	log.Printf("📊 [Scoring v6] Agent %s: Đang mở=%d sự cố | Rủi ro=%.1f | Uy tín=%.1f", agent.Hostname, n, currentRisk, agent.TrustScore)
+}
+
+// NewScoreService creates a new ScoreService instance
+func NewScoreService(db *gorm.DB) *ScoreService {
+	return &ScoreService{db: db}
+}
+
+// GetPriorityFromMatrix determines the priority based on sensor type and department tag
+// This function is typically used by the Event Engine to assign priority to incidents/alerts.
+func (s *ScoreService) GetPriorityFromMatrix(sensorType, departmentTag string) (string, error) {
+	if deptMap, ok := departmentMatrix[sensorType]; ok {
+		if priority, ok := deptMap[departmentTag]; ok {
+			return priority, nil
+		}
+		// If department tag not found for a known sensor type, return a default or error
+		return "P4", fmt.Errorf("department tag '%s' not found for sensor type '%s' in matrix, defaulting to P4", departmentTag, sensorType)
+	}
+	// If sensor type not found, return a default or error
+	return "P4", fmt.Errorf("sensor type '%s' not found in department matrix, defaulting to P4", sensorType)
+}
+
+// CalculateCurrentRiskScore calculates the instantaneous risk score (R_current) for an agent.
+// This score reflects the current active threats.
+func (s *ScoreService) CalculateCurrentRiskScore(agentID uint) (float64, error) {
+	var incidents []models.Incident
+	// Fetch all OPEN incidents for the agent
+	if err := s.db.Where("agent_id = ? AND status = ?", agentID, "Open").Find(&incidents).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch open incidents for agent %d: %w", agentID, err)
+	}
+
+	if len(incidents) == 0 {
+		// No open incidents, current risk score is 0
+		// Ensure agent's risk_score is updated to 0 if it was previously higher
+		if err := s.db.Model(&models.Agent{}).Where("id = ?", agentID).Update("risk_score", 0.0).Error; err != nil {
+			return 0, fmt.Errorf("failed to reset risk score for agent %d: %w", agentID, err)
+		}
+		return 0, nil
+	}
+
+	sumSi := 0.0
+	numOpenIncidents := float64(len(incidents))
+
+	// Calculate the exponential escalation factor E^n, where n is the total number of open incidents.
+	// The formula is R_current = 100 * (1 - e^(-(sum(Si * E^n) / k)))
+	// This is interpreted as (sum(Si)) * E^n
+	escalationFactor := math.Pow(exponentialBase, numOpenIncidents)
+
+	for _, inc := range incidents {
+		if score, ok := priorityScores[inc.Priority]; ok {
+			sumSi += score
 		} else {
-			secondaryScores = append(secondaryScores, baseScore)
+			// Log or handle unknown priority, perhaps default to a low score
+			fmt.Printf("Warning: Unknown priority '%s' for incident %d, defaulting to P4 score\n", inc.Priority, inc.ID)
+			sumSi += priorityScores["P4"] // Default to P4 score for unknown priorities
 		}
 	}
 
-	// 4. TÍNH TỔNG ĐIỂM (R_total)
-	sumSecondary := 0.0
-	for _, s := range secondaryScores {
-		sumSecondary += s
+	// Apply the escalation factor to the sum of Si
+	sumSiEscalated := sumSi * escalationFactor
+
+	// Calculate R_current using the asymptotic model
+	rCurrent := 100.0 * (1 - math.Exp(-(sumSiEscalated / kFactor)))
+
+	// Ensure R_current does not exceed 100
+	if rCurrent > 100.0 {
+		rCurrent = 100.0
 	}
 
-	// Công thức: (Lỗi nặng nhất + 15% tổng các lỗi phụ) * Hệ số máy
-	rawTotal := (maxScore + 0.15*sumSecondary) * wAsset
+	// Update the agent's RiskScore in the database
+	if err := s.db.Model(&models.Agent{}).Where("id = ?", agentID).Update("risk_score", rCurrent).Error; err != nil {
+		return rCurrent, fmt.Errorf("failed to update risk score for agent %d: %w", agentID, err)
+	}
 
-	// Giới hạn (Cap) điểm tối đa là 100
-	finalScore := int(math.Min(100, math.Round(rawTotal)))
-
-	// 5. LƯU VÀO DATABASE
-	database.DB.Model(&agent).Update("risk_score", finalScore)
-	log.Printf("📊 Cập nhật điểm Agent [%s] -> %d điểm (W_asset: %.1f, Lỗi chính: %.1f, Lỗi phụ: %d)",
-		agent.Hostname, finalScore, wAsset, maxScore, len(secondaryScores))
-
-	updateUserScore(agent.UserID)
+	return rCurrent, nil
 }
 
-// Hàm phụ trợ map mức độ sang điểm gốc
-func getBaseScoreBySeverity(severity string) float64 {
-	switch severity {
-	case "Critical":
-		return 80.0
-	case "High":
-		return 60.0
-	case "Medium":
-		return 30.0
-	case "Low":
-		return 10.0
-	default:
-		return 0.0
+// UpdateTrustScore updates the long-term trust score (D_debt) for an agent.
+// This function should be called periodically (e.g., daily via a cron job)
+// and also when an incident is created or resolved to ensure immediate reflection of changes.
+func (s *ScoreService) UpdateTrustScore(agentID uint) (float64, error) {
+	var agent models.Agent
+	if err := s.db.First(&agent, agentID).Error; err != nil {
+		return 0, fmt.Errorf("agent not found: %w", err)
 	}
-}
 
-// Hàm phụ: Tính tổng điểm rủi ro cho User dựa trên các máy họ quản lý
-func updateUserScore(userID *uint) {
-	if userID == nil {
-		return
+	currentTrustScore := agent.TrustScore
+	if currentTrustScore < trustScoreMin {
+		currentTrustScore = trustScoreMin // Cap at min before deductions
 	}
-	var user models.User
-	if err := database.DB.First(&user, *userID).Error; err == nil {
-		var allUserAgents []models.Agent
-		database.DB.Where("user_id = ?", user.ID).Find(&allUserAgents)
 
-		userTotalScore := 0
-		for _, a := range allUserAgents {
-			userTotalScore += a.RiskScore
+	// --- Deduct points for P1 and P2 incidents in the last 30 days ---
+	var recentIncidents []models.Incident
+	thirtyDaysAgo := time.Now().AddDate(0, 0, -incidentLookbackDays)
+
+	// Fetch incidents that occurred within the last 30 days and are P1 or P2.
+	// The document implies "lỗi P1 trong 30 ngày qua" (P1 errors in the past 30 days)
+	// should cause deduction, regardless of their current status (Open/Resolved).
+	if err := s.db.Where("agent_id = ? AND occurred_at >= ? AND (priority = ? OR priority = ?)",
+		agentID, thirtyDaysAgo, "P1", "P2").Find(&recentIncidents).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch recent incidents for trust score deduction for agent %d: %w", agentID, err)
+	}
+
+	// Calculate total deduction from recent incidents
+	totalDeduction := 0.0
+	for _, inc := range recentIncidents {
+		if inc.Priority == "P1" {
+			totalDeduction += trustScoreP1Deduction
+		} else if inc.Priority == "P2" {
+			totalDeduction += trustScoreP2Deduction
 		}
-
-		database.DB.Model(&user).Update("risk_score", userTotalScore)
 	}
+	currentTrustScore -= totalDeduction
+
+	// --- Trust Score Recovery: "Sau mỗi 7 ngày "sạch" (không có lỗi mới), máy được cộng lại 2đ uy tín." ---
+	isCleanForRecoveryPeriod := false
+	if agent.LastIncidentAt == nil {
+		isCleanForRecoveryPeriod = true // Agent has never had an incident
+	} else if time.Since(*agent.LastIncidentAt).Hours() >= float64(trustScoreRecoveryDays*24) {
+		isCleanForRecoveryPeriod = true // Last incident was more than 'trustScoreRecoveryDays' ago
+	}
+
+	shouldApplyRecovery := false
+	if isCleanForRecoveryPeriod {
+		if agent.LastTrustRecoveryAppliedAt == nil {
+			shouldApplyRecovery = true // Never applied recovery, so apply it
+		} else if time.Since(*agent.LastTrustRecoveryAppliedAt).Hours() >= float64(trustScoreRecoveryDays*24) {
+			shouldApplyRecovery = true // Last recovery was applied more than 'trustScoreRecoveryDays' ago, apply again
+		}
+	}
+
+	if shouldApplyRecovery {
+		currentTrustScore += trustScoreRecoveryAmount
+		now := time.Now()
+		agent.LastTrustRecoveryAppliedAt = &now // Update the timestamp of last recovery
+	}
+
+	// Ensure TrustScore stays within bounds [0, 100]
+	if currentTrustScore > trustScoreMax {
+		currentTrustScore = trustScoreMax
+	}
+	if currentTrustScore < trustScoreMin {
+		currentTrustScore = trustScoreMin
+	}
+
+	// Update the agent's TrustScore and LastTrustRecoveryAppliedAt in the database
+	updates := map[string]interface{}{
+		"trust_score": currentTrustScore,
+	}
+	if agent.LastTrustRecoveryAppliedAt != nil {
+		updates["last_trust_recovery_applied_at"] = agent.LastTrustRecoveryAppliedAt
+	}
+
+	if err := s.db.Model(&models.Agent{}).Where("id = ?", agentID).Updates(updates).Error; err != nil {
+		return currentTrustScore, fmt.Errorf("failed to update trust score for agent %d: %w", agentID, err)
+	}
+
+	return currentTrustScore, nil
+}
+
+// UpdateAgentLastIncidentTime updates the LastIncidentAt field for an agent.
+// This should be called whenever a new incident is created for an agent.
+func (s *ScoreService) UpdateAgentLastIncidentTime(agentID uint, incidentTime time.Time) error {
+	var agent models.Agent
+	if err := s.db.First(&agent, agentID).Error; err != nil {
+		return fmt.Errorf("agent not found: %w", err)
+	}
+
+	// Only update if the new incident time is more recent than the current LastIncidentAt
+	// or if LastIncidentAt is nil.
+	if agent.LastIncidentAt == nil || incidentTime.After(*agent.LastIncidentAt) {
+		if err := s.db.Model(&models.Agent{}).Where("id = ?", agentID).Update("last_incident_at", incidentTime).Error; err != nil {
+			return fmt.Errorf("failed to update last incident time for agent %d: %w", agentID, err)
+		}
+	}
+	return nil
 }

@@ -1,15 +1,15 @@
-/* Container chính chia đôi màn hình */
+
 
 .auth-container {
     display: flex;
     height: 100vh;
-    background-color: #0f172a; /* Màu nền Deep Navy của SENT */
+    background-color: #0f172a; 
     overflow: hidden;
 }
 
-/* Phần ảnh nền bên trái */
+
 .auth-side-bg {
-    display: none; /* Ẩn trên điện thoại */
+    display: none;
     position: relative;
     width: 60%;
 }
@@ -28,18 +28,17 @@
     object-fit: cover;
 }
 
-/* Lớp phủ gradient cho ảnh để làm nổi bật chữ */
+
 .auth-overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom right, rgba(6, 78, 59, 0.8), rgba(15, 23, 42, 0.9));
+    background: linear-gradient(135deg, rgba(6, 78, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     padding: 5rem;
 }
 
-/* Card Đăng nhập bên phải */
 .auth-card-container {
     width: 100%;
     display: flex;
@@ -57,7 +56,7 @@
 .auth-card {
     width: 100%;
     max-width: 420px;
-    background: rgba(255, 255, 255, 0.05); /* Hiệu ứng kính mờ */
+    background: rgba(255, 255, 255, 0.05); 
     backdrop-filter: blur(16px);
     padding: 2.5rem;
     border-radius: 2rem;
@@ -65,10 +64,10 @@
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
 
-/* Nút bấm Gradient đẹp */
+
 .btn-primary-sent {
     width: 100%;
-    background: linear-gradient(to r, #10b981, #0d9488);
+    background: linear-gradient(90deg, #059669 0%, #10b981 100%);
     color: white;
     padding: 1rem;
     border-radius: 1rem;
@@ -85,7 +84,7 @@
     filter: brightness(1.1);
 }
 
-/* Tùy chỉnh các ô nhập liệu */
+
 .auth-input {
     width: 100%;
     padding: 1rem 1rem 1rem 3rem;

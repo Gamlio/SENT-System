@@ -6,6 +6,7 @@ import (
 	"sent_backend/internal/models"
 	agentSvc "sent_backend/internal/service/agents" // Brain
 	"sent_backend/internal/websocket"
+	"time"
 
 	// Để tính điểm
 	"github.com/gin-gonic/gin"
@@ -138,6 +139,12 @@ func TriggerBaseline(c *gin.Context) {
 
 	// 3. Cập nhật trạng thái Baseline trong DB
 	database.DB.Model(&models.Agent{}).Where("hw_id = ?", hwid).Update("baseline_status", "SCANNING")
+
+	// 4. Đặt tiến trình ngầm để tự động reset trạng thái sau khi Agent gửi dữ liệu xong
+	go func(targetHWID string) {
+		time.Sleep(5 * time.Second) // Chờ 5 giây để Agent thu thập và gửi dữ liệu về Server
+		database.DB.Model(&models.Agent{}).Where("hw_id = ?", targetHWID).Update("baseline_status", "ESTABLISHED")
+	}(hwid)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã gửi lệnh quét Baseline tới máy trạm"})
 }

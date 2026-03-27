@@ -112,8 +112,13 @@ type Agent struct {
 	OpenPorts []OpenPort      `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"open_ports"`
 	USBLogs   []USBLog        `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"usb_logs"`
 
-	RiskScore      int    `json:"risk_score" gorm:"default:0"`
-	Status         string `json:"status" gorm:"default:'PENDING'"`
+	RiskScore                  int        `json:"risk_score" gorm:"default:0"`
+	Status                     string     `json:"status" gorm:"default:'PENDING'"`
+	TrustScore                 float64    `gorm:"default:100"` // Long-term trust
+	DepartmentTag              string     // Explicit Department Tag (e.g., FINANCE, DEV, PROD)
+	LastIncidentAt             *time.Time // Timestamp of the last incident for this agent
+	LastTrustRecoveryAppliedAt *time.Time // Timestamp when trust score recovery was last applied
+
 	DeviceType     string `json:"device_type" gorm:"default:'OFFICE'"`
 	IsZeroTrust    bool   `gorm:"default:false" json:"is_zero_trust"`
 	BaselineStatus string `gorm:"default:'NONE'" json:"baseline_status"`

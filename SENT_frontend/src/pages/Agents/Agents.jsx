@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
     Search, Monitor, ShieldAlert, Smartphone, User, 
     ChevronRight, X, UserCheck, LayoutList, ArrowUpDown, Trash2,
-    ShieldCheck, Laptop, Activity,Tag
+    ShieldCheck, Laptop, Activity, Tag, Server, Briefcase, UserX
 } from 'lucide-react'; 
 import { useAgents, getTimeAgo } from './hooks/useAgents'; 
 import { useUsers } from '../User/hooks/useUsers'; 
@@ -94,7 +94,7 @@ const Agents = () => {
     const handleAssignManager = async (userId) => {
         try {
             if (targetAgentHwid) {
-                await axios.post(`/agents/${targetAgentHwid}/assign`, { user_id: userId });
+                await axios.put(`/agents/${targetAgentHwid}/assign`, { user_id: userId });
             } else {
                 await axios.post('/agents/bulk-assign', { hwids: selectedAgents, user_id: userId });
             }
@@ -106,68 +106,105 @@ const Agents = () => {
         }
     };
 
-    // --- Table UI Structure (TỐI ƯU KÍCH THƯỚC VỊ TRÍ) ---
-   const tableColumns = useMemo(() => [
-            {
-                key: 'hostname',
-                label: 'Thiết bị & Trạng thái',
-                sortable: true,
-                className: 'w-[35%]', // Cố định tỷ lệ
-                render: (a) => (
-                    <div className="flex items-center gap-3 max-w-full overflow-hidden">
-                        <div className={`p-2.5 rounded-xl shrink-0 transition-colors ${a.status === 'online' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
-                            <Monitor size={18} />
+    // --- CẤU TRÚC BẢNG MỚI ---
+    const tableColumns = useMemo(() => [
+        {
+            key: 'hostname',
+            label: 'Thiết bị & Trạng thái',
+            sortable: true,
+            className: 'w-[30%]', 
+            render: (a) => {
+                // Động Icon theo Device Type
+                const isOnline = a.status === 'online';
+                let IconComponent = Monitor;
+                let iconColor = isOnline ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 bg-slate-800';
+                
+                if (a.device_type === 'SERVER') { IconComponent = Server; iconColor = isOnline ? 'text-purple-400 bg-purple-500/10' : 'text-purple-900 bg-slate-800'; }
+                if (a.device_type === 'IT_ADMIN') { IconComponent = Briefcase; iconColor = isOnline ? 'text-blue-400 bg-blue-500/10' : 'text-blue-900 bg-slate-800'; }
+                if (a.device_type === 'GUEST') { IconComponent = UserX; iconColor = 'text-stone-400 bg-stone-500/10'; }
+
+                return (
+                    <div className="flex items-center gap-3 overflow-hidden">
+                        <div className={`p-2.5 rounded-xl shrink-0 transition-colors ${iconColor}`}>
+                            <IconComponent size={18} />
                         </div>
-                        <div className="min-w-0 flex-1"> {/* min-w-0 là then chốt để truncate hoạt động trong flex */}
+                        <div className="min-w-0 flex-1">
                             <h4 className="font-bold text-white text-sm truncate group-hover:text-emerald-400 transition-colors" title={a.hostname}>
                                 {a.hostname}
                             </h4>
                             <div className="flex items-center gap-2 mt-0.5">
                                 <span className="text-[10px] font-mono text-slate-500 shrink-0">{a.ip_address}</span>
-                                <span className="text-slate-700">•</span>
-                                <AgentStatusTag status={a.status} />
+                                {a.baseline_status === 'COMPLETED' && (
+                                    <span className="text-[8px] font-black uppercase tracking-widest bg-indigo-500/20 text-indigo-400 px-1 rounded border border-indigo-500/30">
+                                        BASELINE OK
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
-                )
-            },
-            {
-                key: 'manager',
-                label: 'Người phụ trách',
-                className: 'w-[25%]',
-                render: (a) => (
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 flex items-center justify-center text-slate-500 border border-slate-700">
-                            <User size={14} />
-                        </div>
-                        <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-300 truncate">{a.manager?.full_name || 'Chưa bàn giao'}</p>
-                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter truncate">
-                                {a.device_type || 'OFFICE'}
-                            </p>
-                        </div>
-                    </div>
-                )
-            },
-            {
-                key: 'risk',
-                label: 'Rủi ro',
-                sortable: true,
-                className: 'w-[20%]',
-                render: (a) => <div className="flex justify-start"><RiskScoreDisplay score={a.risk_score} /></div>
-            },
-            {
-                key: 'last_seen',
-                label: 'Cập nhật',
-                sortable: true,
-                className: 'w-[20%]',
-                render: (a) => (
-                    <div className="text-slate-400 text-[11px] font-medium whitespace-nowrap overflow-hidden text-ellipsis">
-                        {getTimeAgo(a.last_seen, a.status)}
-                    </div>
-                )
+                );
             }
-        ], []);
+        },
+        {
+            key: 'manager',
+            label: 'Người phụ trách',
+            className: 'w-[20%]',
+            render: (a) => (
+                <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 flex items-center justify-center text-slate-500 border border-slate-700">
+                        <User size={14} />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-300 truncate">{a.manager?.full_name || 'Chưa bàn giao'}</p>
+                        <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter truncate">
+                            {a.department_tag || 'OFFICE'} {/* Hiển thị Department Tag */}
+                        </p>
+                    </div>
+                </div>
+            )
+        },
+        {
+            key: 'trust',
+            label: 'Uy Tín (1 Năm)',
+            sortable: true,
+            className: 'w-[15%]',
+            render: (a) => {
+                const trust = a.trust_score ?? 100;
+                const color = trust >= 80 ? 'bg-emerald-500' : trust >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+                return (
+                    <div className="flex flex-col gap-1 w-24">
+                        <div className="flex justify-between items-center text-[10px] font-bold">
+                            <span className={trust >= 80 ? 'text-emerald-400' : trust >= 50 ? 'text-yellow-400' : 'text-red-400'}>{trust}/100</span>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${trust}%` }}></div>
+                        </div>
+                    </div>
+                );
+            }
+        },
+        {
+            key: 'risk',
+            label: 'Rủi ro',
+            sortable: true,
+            className: 'w-[15%]',
+            render: (a) => <div className="flex justify-start"><RiskScoreDisplay score={a.risk_score} /></div>
+        },
+        {
+            key: 'last_seen',
+            label: 'Cập nhật',
+            sortable: true,
+            className: 'w-[15%]',
+            render: (a) => (
+                <div className="flex flex-col">
+                    <AgentStatusTag status={a.status} />
+                    <span className="text-slate-500 text-[10px] font-medium mt-1 truncate">
+                        {getTimeAgo(a.last_seen, a.status)}
+                    </span>
+                </div>
+            )
+        }
+    ], []);
     // --- Render ---
     return (
         //pb-40 để nhường chỗ cho thanh Bulk Actions ở đáy
@@ -215,8 +252,8 @@ const Agents = () => {
                 </div>
 
                 {/* Bảng dữ liệu co giãn thông minh */}
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse table-fixed min-w-[1000px] ">
+                <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
                         <thead>
                             <tr className="border-b border-slate-800/50 bg-slate-900/30">
                                 <th className="p-4 w-12 text-center">
@@ -237,7 +274,7 @@ const Agents = () => {
                                         </div>
                                     </th>
                                 ))}
-                                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500 w-24 text-right">Thao tác</th>
+                                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500 w-20 text-right">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/40">
@@ -259,7 +296,12 @@ const Agents = () => {
                                         </td>
                                     ))}
                                     <td className="p-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                        <AgentActions agent={agent} onRefresh={fetchAgents} />
+                                        {/* TRUYỀN HÀM MỞ MODAL ASSIGN VÀO ĐÂY */}
+                                        <AgentActions 
+                                            agent={agent} 
+                                            onRefresh={fetchAgents} 
+                                            onOpenAssignModal={() => { setTargetAgentHwid(agent.hwid); setShowAssignModal(true); }} 
+                                        />
                                     </td>
                                 </tr>
                             ))}

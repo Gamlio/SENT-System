@@ -38,7 +38,7 @@ services:
     container_name: sent_frontend
     restart: always
     ports:
-      - "3000:3000"
+      - "3000:80"
     depends_on:
       - backend
     stdin_open: true # Giữ cho React không bị tắt log

@@ -184,6 +184,12 @@ func AddIncidentActivity(c *gin.Context) {
 	// Convert mảng đường dẫn ảnh thành JSON String
 	imagesJSON, _ := json.Marshal(imagePaths)
 
+	// Ensure incident.ID is valid before creating activity
+	if incident.ID == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Incident ID is zero, cannot add activity"})
+		return
+	}
+
 	// --- LƯU TIMELINE (NHẬT KÝ HOẠT ĐỘNG) ---
 	activity := models.IncidentActivity{
 		IncidentID: incident.ID,
@@ -191,10 +197,14 @@ func AddIncidentActivity(c *gin.Context) {
 		ActionType: actionType,
 		Content:    content,
 		OldStatus:  oldStatus,
-		NewStatus:  newStatus,
-		Images:     string(imagesJSON), // Ghi ảnh vào DB
+		NewStatus:  incident.Status,
+		Images:     string(imagesJSON),
 	}
-	database.DB.Create(&activity)
+
+	if err := database.DB.Create(&activity).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add incident activity: " + err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "Cập nhật thành công",
@@ -239,8 +249,12 @@ func UpdatePlaybookProgress(c *gin.Context) {
 
 	// Convert lại thành JSON string để lưu
 	jsonBytes, _ := json.Marshal(gin.H{"steps": req.Steps})
-
-	database.DB.Model(&models.Incident{}).Where("id = ?", id).Update("playbook_progress", string(jsonBytes))
+	incidentID := parseUint(id)
+	if incidentID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid incident ID"})
+		return
+	}
+	database.DB.Model(&models.Incident{}).Where("id = ?", incidentID).Update("playbook_progress", string(jsonBytes))
 	c.JSON(200, gin.H{"message": "Progress saved"})
 }
 
@@ -316,18 +330,31 @@ func AssignIncident(c *gin.Context) {
 		return
 	}
 
-	// Cập nhật người thụ lý và đổi trạng thái sang Investigating
-	if err := database.DB.Model(&models.Incident{}).Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"assignee_id": userID,
-			"status":      "Investigating",
-		}).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Lỗi cập nhật"})
+	incidentID := parseUint(id)
+	if incidentID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid incident ID"})
+		return
+	}
+
+	// Use IncidentService to update status and assignee
+	if err := database.DB.Model(&models.Incident{}).Where("id = ?", incidentID).Updates(map[string]interface{}{"status": "Investigating", "assignee_id": userID}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign incident: " + err.Error()})
 		return
 	}
 
 	c.JSON(200, gin.H{"message": "Đã nhận xử lý sự cố"})
 }
+
+// Helper function to parse uint from string
+func parseUint(s string) uint {
+	var i uint
+	_, err := fmt.Sscanf(s, "%d", &i)
+	if err != nil {
+		return 0
+	}
+	return i
+}
+
 func ExecuteLiveAction(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {

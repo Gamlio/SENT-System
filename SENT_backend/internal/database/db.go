@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sent_backend/internal/models"
+	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -21,6 +22,14 @@ func InitDB() {
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		panic("Failed to connect to database!")
+	}
+
+	// Tối ưu Connection Pool
+	sqlDB, err := DB.DB()
+	if err == nil {
+		sqlDB.SetMaxIdleConns(10)           // Số kết nối rảnh rỗi tối đa (Giữ RAM thấp)
+		sqlDB.SetMaxOpenConns(100)          // Tổng số kết nối tối đa
+		sqlDB.SetConnMaxLifetime(time.Hour) // Xóa kết nối sau 1 giờ
 	}
 
 	fmt.Println("⏳ Đang đồng bộ hóa cơ sở dữ liệu...")

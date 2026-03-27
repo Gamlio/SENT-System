@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, ShieldCheck, Terminal, Lock, Usb, Cpu, Server, Briefcase, UserX,Trash2, X,Fingerprint } from 'lucide-react';
+import { MoreVertical, ShieldCheck, Terminal, Lock, Usb, Cpu, Server, Briefcase, UserX, Trash2, X, Fingerprint, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AppDialog from '../../../components/AppDialog';
 import axios from '../../../api/axios'; // Đảm bảo đường dẫn axios chuẩn
 
-const AgentActions = ({ agent }) => {
+const AgentActions = ({ agent, onRefresh, onOpenAssignModal }) => {
     const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const [showTypeModal, setShowTypeModal] = useState(false);
@@ -105,7 +105,7 @@ const handleDeleteAgent = () => {
     };
 
     return (
-        <div className="relative flex items-center" ref={menuRef}>
+        <div className="relative flex items-center justify-end" ref={menuRef}>
             <button 
                 onClick={(e) => {
                     e.stopPropagation(); 
@@ -123,55 +123,41 @@ const handleDeleteAgent = () => {
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tiện ích mở rộng</p>
                     </div>
                     
+                    {/* [MỚI]: NÚT PHÂN CÔNG QUẢN LÝ */}
                     <button
                         onClick={(e) => { 
-                            e.stopPropagation(); 
-                            setIsOpen(false);
-                            handleTriggerBaseline();
+                            e.stopPropagation(); setIsOpen(false);
+                            if(onOpenAssignModal) onOpenAssignModal();
                         }}
-                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-emerald-400 flex items-center gap-3 transition border-l-2 border-emerald-500/50 bg-emerald-500/5"
+                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-blue-400 flex items-center gap-3 transition border-l-2 border-blue-500/50 bg-blue-500/5"
                     >
-                        <Fingerprint size={16} /> Quét & Thiết lập Baseline
+                        <UserCheck size={16} /> Phân công Quản lý
                     </button>
 
                     <button
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
-                            setIsOpen(false);
-                            navigate(`/agents/${agent.hwid}/software`); 
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setIsOpen(false); handleTriggerBaseline(); }}
+                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-emerald-400 flex items-center gap-3 transition"
+                    >
+                        <Fingerprint size={16} /> Quét Baseline
+                    </button>
+
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setIsOpen(false); navigate(`/agents/${agent.hwid}/software`); }}
                         className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-emerald-400 flex items-center gap-3 transition"
                     >
                         <ShieldCheck size={16} /> Cấu hình Phần mềm
                     </button>
 
-                    {/* [MỚI] NÚT ĐỔI PHÂN LOẠI THIẾT BỊ */}
                     <button
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
-                            setIsOpen(false);
-                            setShowTypeModal(true); // Bật Modal
-                        }}
-                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-purple-400 flex items-center gap-3 transition border-l-2 border-purple-500/50 bg-purple-500/5"
+                        onClick={(e) => { e.stopPropagation(); setIsOpen(false); setShowTypeModal(true); }}
+                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-purple-400 flex items-center gap-3 transition"
                     >
                         <Cpu size={16} /> Phân loại thiết bị
                     </button>
 
-                    <button className="w-full text-left px-4 py-3 text-sm text-slate-600 flex items-center gap-3 cursor-not-allowed" title="Sắp ra mắt">
-                        <Usb size={16} /> Quản lý USB (Sắp có)
-                    </button>
-                    <button className="w-full text-left px-4 py-3 text-sm text-slate-600 flex items-center gap-3 cursor-not-allowed" title="Sắp ra mắt">
-                        <Terminal size={16} /> Remote Terminal
-                    </button>
-                    <button className="w-full text-left px-4 py-3 text-sm text-red-500/50 flex items-center gap-3 cursor-not-allowed" title="Sắp ra mắt">
-                        <Lock size={16} /> Khóa máy từ xa
-                    </button>
                     <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteAgent(); // Gọi hàm xóa mới
-                        }}
-                        className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-3 transition"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteAgent(); }}
+                        className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-3 transition border-t border-slate-700/50"
                     >
                         <Trash2 size={16} /> Yêu cầu Gỡ bỏ
                     </button>

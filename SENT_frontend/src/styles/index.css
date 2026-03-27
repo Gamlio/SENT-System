@@ -1,43 +1,36 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
 body {
   margin: 0;
-  background-color: #0f172a; /* Màu nền Deep Navy */
+  background-color: #0f172a;
   color: #f1f5f9;
   font-family: 'Inter', sans-serif;
 }
-/* Ẩn mũi tên trong input type number */
 input[type=number]::-webkit-inner-spin-button, 
 input[type=number]::-webkit-outer-spin-button { 
+  appearance: none;
   -webkit-appearance: none; 
   margin: 0; 
 }
 input[type=number] {
+  appearance: textfield;
   -moz-appearance: textfield;
 }
-/* --- TÙY CHỈNH THANH CUỘN (SCROLLBAR) --- */
-/* Dành cho Chrome, Edge, Safari */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent; 
 }
-
 ::-webkit-scrollbar-thumb {
-  background-color: #334155; /* Màu slate-700 */
+  background-color: #334155;
   border-radius: 10px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #475569; /* Màu slate-600 khi di chuột vào */
+  background-color: #475569;
 }
-
-/* Dành cho Firefox */
 * {
   scrollbar-width: thin;
   scrollbar-color: #334155 transparent;

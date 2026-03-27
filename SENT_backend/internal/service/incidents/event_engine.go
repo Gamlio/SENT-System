@@ -6,6 +6,7 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/scoring"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -15,65 +16,85 @@ const (
 	DefaultCorrelationWindow = 24 * time.Hour // Cửa sổ thời gian gom nhóm sự cố
 )
 
+func (s *IncidentService) applyContextualMatrix(alertType, basePriority, departmentTag string) string {
+	tag := strings.ToUpper(departmentTag)
+	switch alertType {
+	case "USB Violation":
+		if tag == "DEV" {
+			return "P4"
+		}
+		if tag == "FINANCE" {
+			return "P1"
+		}
+		if tag == "PROD" {
+			return "P2"
+		}
+	case "Software Violation", "Zero Trust Violation", "Defense Evasion":
+		if tag == "DEV" {
+			return "P3"
+		}
+		if tag == "FINANCE" || tag == "PROD" {
+			return "P1"
+		}
+	case "Unauthorized Port", "Firewall Disabled":
+		if tag == "DEV" {
+			return "P2"
+		}
+		if tag == "FINANCE" || tag == "PROD" {
+			return "P1"
+		}
+	}
+	return basePriority
+}
+
 // TriggerSecurityEvent: Nhận tín hiệu từ Sensor và đưa vào quy trình Triage (Phân loại)
 func (s *IncidentService) TriggerSecurityEvent(agent models.Agent, alertType, title, description, priority string) {
-	// 1. Tạo bản ghi Alert (Bằng chứng thô)
+	// 1. Lọc qua Ma trận Ngữ cảnh để lấy Priority chuẩn
+	finalPriority := s.applyContextualMatrix(alertType, priority, agent.DepartmentTag)
+
 	alert := models.SecurityAlert{
 		OrgID:       agent.OrgID,
 		HWID:        agent.HWID,
 		AlertType:   alertType,
 		Title:       title,
 		Description: description,
-		Severity:    s.getSeverityByPriority(priority), // Map P1->Critical...
+		Priority:    finalPriority,
+		Severity:    s.getSeverityByPriority(finalPriority),
 		IsResolved:  false,
 	}
 	database.DB.Create(&alert)
 
-	// 2. THUẬT TOÁN CORRELATION: Tìm hoặc Tạo Incident trong một transaction để tránh race condition
 	var correlatedIncident models.Incident
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		timeWindow := time.Now().Add(-DefaultCorrelationWindow)
-
-		// Tìm Case: Cùng Máy + Cùng Loại Lỗi + Trạng thái chưa đóng + Trong cửa sổ thời gian
-		err := tx.Where(
-			"agent_hw_id = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
-			agent.HWID, alertType, timeWindow,
-		).First(&correlatedIncident).Error
+		err := tx.Where("agent_hw_id = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
+			agent.HWID, alertType, timeWindow).First(&correlatedIncident).Error
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// TRƯỜNG HỢP A: Chưa có Case phù hợp -> Khởi tạo Case mới tinh
 			correlatedIncident = models.Incident{
 				OrgID:       agent.OrgID,
 				AgentHWID:   agent.HWID,
 				Type:        alertType,
-				Priority:    priority,
-				Severity:    s.getSeverityByPriority(priority),
+				Priority:    finalPriority,
+				Severity:    s.getSeverityByPriority(finalPriority),
 				Status:      "Open",
-				Description: fmt.Sprintf("Hệ thống tự động phát hiện chuỗi sự kiện: %s", title),
+				Description: fmt.Sprintf("Hệ thống tự động phát hiện: %s", title),
 			}
 			if err := tx.Create(&correlatedIncident).Error; err != nil {
 				return err
 			}
 		} else if err == nil {
-			// TRƯỜNG HỢP B: Đã có Case -> Nâng cấp độ nghiêm trọng nếu cần
 			updates := map[string]interface{}{"updated_at": time.Now()}
-
-			if s.shouldUpgradePriority(correlatedIncident.Priority, priority) {
-				updates["priority"] = priority
-				updates["severity"] = s.getSeverityByPriority(priority)
+			if s.shouldUpgradePriority(correlatedIncident.Priority, finalPriority) {
+				updates["priority"] = finalPriority
+				updates["severity"] = s.getSeverityByPriority(finalPriority)
 			}
-			if err := tx.Model(&correlatedIncident).Updates(updates).Error; err != nil {
-				return err
-			}
-		} else {
-			return err // Lỗi khác
+			tx.Model(&correlatedIncident).Updates(updates)
 		}
-
-		// 3. Liên kết Alert vào Case
 		return tx.Model(&alert).Update("incident_id", correlatedIncident.ID).Error
 	})
 
-	// 4. Tính lại điểm rủi ro sau khi transaction thành công
+	// 4. Gọi Engine tính điểm v6.0
 	if err == nil {
 		scoring.RecalculateRiskScore(agent.HWID)
 	}

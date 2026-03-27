@@ -6,6 +6,7 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	agentService "sent_backend/internal/service/agents"
+	"sent_backend/internal/service/scoring"
 
 	"github.com/gin-gonic/gin"
 )
@@ -49,4 +50,26 @@ func PushDataHandler(c *gin.Context) {
 
 	// 4. Phản hồi ngay lập tức cho Agent
 	c.JSON(http.StatusOK, gin.H{"message": "Dữ liệu đã được tiếp nhận", "status": agent.Status})
+}
+func UpdateDepartment(c *gin.Context) {
+	hwid := c.Param("hwid")
+	var req struct {
+		DepartmentTag string `json:"department_tag" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	// Lưu xuống DB
+	if err := database.DB.Model(&models.Agent{}).Where("hw_id = ?", hwid).Update("department_tag", req.DepartmentTag).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi cập nhật phòng ban"})
+		return
+	}
+
+	// [TÙY CHỌN] Tính lại điểm rủi ro ngay lập tức vì đổi ngữ cảnh có thể làm thay đổi P1/P4
+	scoring.RecalculateRiskScore(hwid)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Đã cập nhật Nhãn bảo mật (Department)"})
 }
