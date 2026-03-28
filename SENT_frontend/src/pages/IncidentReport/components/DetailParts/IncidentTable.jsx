@@ -1,24 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Search, AlertTriangle, CheckCircle, Flame, Lock, Usb, Activity } from 'lucide-react';
+import { ShieldAlert, Search, AlertTriangle, CheckCircle, Flame, Lock, Usb, Activity, Clock } from 'lucide-react';
 import Pagination from '../../../../components/common/Pagination';
 
-// Giữ nguyên getPriorityColor
 const getPriorityColor = (priority) => {
-    switch (priority) {
-        case 'P1': return 'bg-red-500/20 text-red-500 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.5)]'; 
-        case 'P2': return 'bg-orange-500/20 text-orange-400 border-orange-500/50'; 
-        case 'P3': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'; 
-        default: return 'bg-slate-500/20 text-slate-400 border-slate-500/50';
-    }
+    if (priority === 'P1') return 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]';
+    if (priority === 'P2') return 'bg-orange-500';
+    return 'bg-yellow-500';
 };
 
-// [MỚI] Icon và Màu cho Tên Case
-const getTypeBadge = (type) => {
-    if (type.includes('Malware')) return { icon: Flame, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' };
-    if (type.includes('Firewall')) return { icon: ShieldAlert, color: 'text-red-400 bg-red-500/10 border-red-500/20' };
-    if (type.includes('Defense') || type.includes('Evasion')) return { icon: Lock, color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' };
-    if (type.includes('USB')) return { icon: Usb, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
-    return { icon: Activity, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' };
+const getTypeBadge = (type = '') => {
+    if (type.includes('Malware')) return { icon: Flame, color: 'text-rose-400' };
+    if (type.includes('Firewall')) return { icon: ShieldAlert, color: 'text-red-400' };
+    if (type.includes('Defense') || type.includes('Evasion')) return { icon: Lock, color: 'text-orange-400' };
+    if (type.includes('USB')) return { icon: Usb, color: 'text-emerald-400' };
+    return { icon: Activity, color: 'text-blue-400' };
 };
 
 const IncidentTable = ({ rawData, onViewDetail }) => {
@@ -40,75 +35,81 @@ const IncidentTable = ({ rawData, onViewDetail }) => {
     const currentData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     return (
-        <div className="bg-[#1e293b] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden mt-6">
-            {/* Header / Filter giữ nguyên */}
-            <div className="p-5 border-b border-slate-800 bg-slate-800/20 flex flex-wrap gap-4 justify-between items-center">
-                <div className="flex gap-2">
+        <div className="bg-[#0A101D] rounded-lg border border-slate-800 shadow-2xl flex flex-col overflow-hidden font-sans mt-4">
+            {/* TOOLBAR */}
+            <div className="p-3 border-b border-slate-800 bg-[#111827] flex flex-wrap gap-4 justify-between items-center">
+                <div className="flex gap-1 p-1 bg-[#050B14] rounded-md border border-slate-800">
                     {['ALL', 'Open', 'Investigating', 'Resolved'].map(status => (
                         <button key={status} onClick={() => setFilterStatus(status)}
-                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${filterStatus === status ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-900/50 text-slate-400 hover:text-white hover:bg-slate-800'}`}>
-                            {status === 'ALL' ? 'Tất cả' : status === 'Open' ? 'Đang mở' : status === 'Investigating' ? 'Đang điều tra' : 'Đã đóng'}
+                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-widest transition-all ${filterStatus === status ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`}>
+                            {status === 'ALL' ? 'Tất cả' : status}
                         </button>
                     ))}
                 </div>
-                <div className="relative w-64">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input type="text" placeholder="Tìm theo máy trạm hoặc lỗi..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 text-sm text-white rounded-xl pl-9 pr-4 py-2 outline-none focus:border-indigo-500 transition-colors" />
+                <div className="relative w-72">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input type="text" placeholder="Search IPs, Hostnames, Rules..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-[#050B14] border border-slate-800 text-xs text-white rounded pl-9 pr-4 py-2 outline-none focus:border-indigo-500 transition-colors font-mono" />
                 </div>
             </div>
 
-            {/* Bảng Dữ liệu */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+            {/* BẢNG DỮ LIỆU */}
+            <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left border-collapse whitespace-nowrap">
                     <thead>
-                        <tr className="bg-slate-900/80 border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-500">
-                            <th className="p-4 font-bold">Mức độ</th>
-                            <th className="p-4 font-bold">Hồ sơ sự cố</th>
-                            <th className="p-4 font-bold">Nạn nhân (Asset)</th>
-                            <th className="p-4 font-bold">Trạng thái</th>
-                            <th className="p-4 font-bold">Thời gian tạo</th>
-                            <th className="p-4 font-bold text-center">Thao tác</th>
+                        <tr className="bg-[#111827] text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+                            <th className="p-3 font-black">Level</th>
+                            <th className="p-3 font-black">Detection Type</th>
+                            <th className="p-3 font-black">Target Asset</th>
+                            <th className="p-3 font-black">Status</th>
+                            <th className="p-3 font-black text-right">Timestamp</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
                         {currentData.length === 0 ? (
-                            <tr><td colSpan="6" className="p-10 text-center text-slate-500 font-bold">Không tìm thấy sự cố nào</td></tr>
+                            <tr><td colSpan="5" className="p-8 text-center text-slate-600 text-[11px] font-bold uppercase tracking-widest">NO RECORDS FOUND</td></tr>
                         ) : currentData.map((inc) => {
                             const badge = getTypeBadge(inc.type);
+                            const hoursOpen = Math.floor((new Date() - new Date(inc.CreatedAt || inc.created_at)) / (1000 * 60 * 60));
+                            
                             return (
-                                <tr key={inc.ID} onClick={() => onViewDetail(inc.ID)} className="hover:bg-slate-800/30 transition-colors cursor-pointer group">
-                                    <td className="p-4">
-                                        <div className={`inline-flex flex-col items-center justify-center w-12 h-12 rounded-xl border ${getPriorityColor(inc.priority)}`}>
-                                            <span className="text-sm font-black">{inc.priority}</span>
+                                <tr key={inc.ID} onClick={() => onViewDetail(inc.ID)} className="hover:bg-slate-800/40 transition-colors cursor-pointer group">
+                                    <td className="p-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`w-1.5 h-6 rounded-full ${getPriorityColor(inc.priority)}`}></span>
+                                            <div>
+                                                <p className="text-[10px] font-mono text-slate-500">#{inc.ID}</p>
+                                                <p className={`text-[11px] font-black ${inc.priority === 'P1' ? 'text-red-400' : 'text-orange-400'}`}>{inc.priority}</p>
+                                            </div>
                                         </div>
                                     </td>
-                                    <td className="p-4">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className={`px-2 py-0.5 rounded border text-[10px] font-black uppercase flex items-center gap-1 ${badge.color}`}>
-                                                <badge.icon size={10}/> {inc.type}
-                                            </span>
+                                    <td className="p-3 min-w-[200px]">
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                            <badge.icon size={12} className={badge.color}/>
+                                            <span className="text-xs font-bold text-white group-hover:text-indigo-300 transition">{inc.type}</span>
                                         </div>
-                                        <p className="text-xs text-slate-400 font-medium line-clamp-1 max-w-md">Bao gồm: {inc.Alerts?.length || 1} cảnh báo chi tiết</p>
+                                        <p className="text-[10px] text-slate-500 font-mono truncate max-w-[250px]">{inc.description}</p>
                                     </td>
-                                    <td className="p-4">
-                                        <p className="text-sm font-bold text-white mb-0.5">{inc.Agent?.hostname || 'Unknown'}</p>
-                                        <p className="text-[10px] text-slate-500 font-mono bg-slate-900 inline-block px-1.5 rounded">{inc.Agent?.ip_address || '0.0.0.0'}</p>
+                                    <td className="p-3">
+                                        <p className="text-xs font-bold text-slate-200 mb-0.5 group-hover:text-white">{inc.Agent?.hostname || 'Unknown'}</p>
+                                        <p className="text-[10px] text-slate-500 font-mono bg-[#050B14] inline-block px-1 rounded border border-slate-800">{inc.Agent?.ip_address || '0.0.0.0'}</p>
                                     </td>
-                                    <td className="p-4">
-                                        {inc.status === 'Resolved' ? 
-                                            <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-500"><CheckCircle size={14}/> Đã xử lý</span> :
-                                            inc.status === 'Investigating' ?
-                                            <span className="flex items-center gap-1.5 text-xs font-bold text-blue-400"><Search size={14}/> Đang điều tra</span> :
-                                            <span className="flex items-center gap-1.5 text-xs font-bold text-red-400 animate-pulse"><AlertTriangle size={14}/> Mới</span>
-                                        }
+                                    <td className="p-3">
+                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${
+                                            inc.status === 'Open' ? 'text-red-400 border-red-500/30 bg-red-500/10' : 
+                                            inc.status === 'Investigating' ? 'text-blue-400 border-blue-500/30 bg-blue-500/10' : 
+                                            'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+                                        }`}>
+                                            {inc.status}
+                                        </span>
                                     </td>
-                                    <td className="p-4 text-xs font-mono text-slate-400">{new Date(inc.CreatedAt || inc.created_at).toLocaleString('vi-VN')}</td>
-                                    <td className="p-4 text-center">
-                                        <button onClick={(e) => { e.stopPropagation(); onViewDetail(inc.ID); }}
-                                            className="text-indigo-400 hover:text-white text-xs font-bold border border-indigo-500/30 px-4 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-600 transition shadow-lg" >
-                                            Chi tiết
-                                        </button>
+                                    <td className="p-3 text-right">
+                                        <p className="text-[11px] font-mono text-slate-400">{new Date(inc.CreatedAt || inc.created_at).toLocaleString('vi-VN')}</p>
+                                        {inc.status !== 'Resolved' && (
+                                            <p className={`text-[9px] font-bold mt-1 flex items-center justify-end gap-1 uppercase tracking-widest ${hoursOpen > 24 ? 'text-red-500 animate-pulse' : 'text-slate-500'}`}>
+                                                <Clock size={10}/> {hoursOpen}h Pending
+                                            </p>
+                                        )}
                                     </td>
                                 </tr>
                             );
@@ -117,7 +118,7 @@ const IncidentTable = ({ rawData, onViewDetail }) => {
                 </table>
             </div>
             {totalPages > 1 && (
-                <div className="p-3 border-t border-slate-700 bg-slate-900/50">
+                <div className="p-2 border-t border-slate-800 bg-[#111827]">
                     <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                 </div>
             )}
