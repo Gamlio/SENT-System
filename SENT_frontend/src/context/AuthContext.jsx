@@ -28,7 +28,7 @@ export const AuthProvider = ({ children }) => {
     const login = async (loginData) => {
         try {
             // loginData sẽ bao gồm { username, password }
-            const res = await API.post('/auth/login', loginData); 
+            const res = await API.post('auth/login', loginData); 
             
             // 1. CẬP NHẬT: Thêm permissions và lấy đúng tên trường token
             const userData = { 

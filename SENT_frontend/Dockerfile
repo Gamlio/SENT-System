@@ -1,25 +1,18 @@
-
+# Stage 1: Build
 FROM node:20-bullseye as build
 WORKDIR /app
-
-# Khai báo biến môi trường ngay từ đầu
-ENV CI=false
-ENV GENERATE_SOURCEMAP=false
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
-
+RUN rm -f package-lock.json && npm install
 COPY . .
 
-# Lệnh build chính thức
-RUN npm run build -- --no-minify
+ENV VITE_API_URL=/api/v1
+ENV VITE_WS_URL=ws://localhost:8000/ws
+# Vite build mặc định rất tối ưu, không cần --no-minify nữa
+RUN npm run build
 
-# Giai đoạn 2: Nginx (Chỉ chạy khi Stage 1 thành công)
+# Stage 2: Nginx
 FROM nginx:alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy tệp tĩnh từ thư mục build của bạn
 COPY --from=build /app/build /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

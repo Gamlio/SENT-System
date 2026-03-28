@@ -31,6 +31,7 @@ services:
       - DB_PASSWORD="Thanh@123"
       - DB_NAME=sent_db
       - PORT=8000
+      - ALLOWED_ORIGINS=http://localhost:3000
 
   # --- FRONTEND ---
   frontend:
@@ -41,7 +42,7 @@ services:
       - "3000:80"
     depends_on:
       - backend
-    stdin_open: true # Giữ cho React không bị tắt log
+    stdin_open: true 
 
 volumes:
   postgres_data:

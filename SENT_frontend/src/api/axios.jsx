@@ -1,6 +1,7 @@
 import axios from 'axios';
 // Lấy URL từ .env, nếu không có thì dùng localhost mặc định
-const baseURL = process.env.REACT_APP_API_URL
+const baseURL = import.meta.env.VITE_API_URL
+
 
 const instance = axios.create({
     baseURL: baseURL,

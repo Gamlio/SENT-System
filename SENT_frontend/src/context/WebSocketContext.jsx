@@ -26,7 +26,7 @@ export const WebSocketProvider = ({ children }) => {
     useEffect(() => {
         const connect = () => {
             // 1. Lấy token từ một nguồn đáng tin cậy (thường là 'accessToken' theo AuthContext)
-            const token = localStorage.getItem('accessToken');
+            const token = localStorage.getItem('sent_token');
                           
             if (!token) {
                 console.warn('⚠️ [WebSocket] Không tìm thấy Token, tạm hoãn kết nối...');

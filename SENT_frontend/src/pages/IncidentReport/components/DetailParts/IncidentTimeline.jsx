@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { User, Activity, AlertOctagon, FileText } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_API_URL;
+const API_URL = import.meta.env.VITE_API_URL;
 const token = localStorage.getItem('token')
 const IncidentTimeline = ({ incident }) => {
     
