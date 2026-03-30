@@ -2,31 +2,32 @@ package dashboard
 
 import (
 	"net/http"
-	"sent_backend/internal/database"
-	"sent_backend/internal/models"
-	"time"
+
+	"sent_backend/internal/service/controllers"
 
 	"github.com/gin-gonic/gin"
 )
 
-func GetDashboardStats(c *gin.Context) {
-	// 1. Lấy OrgID từ người dùng (R1/R2 xem tất cả, R3/R4 xem theo công ty)
-	orgID := c.MustGet("org_id").(uint)
+// Khởi tạo một Controller trung tâm
+var dashController = &controllers.DashboardController{}
 
-	var stats struct {
-		TotalAgents  int64 `json:"total_agents"`
-		OnlineAgents int64 `json:"online_agents"`
-		TotalAlerts  int64 `json:"total_alerts"`
-		TotalRegions int64 `json:"total_regions"`
+// GetDashboardStats: Handler siêu mỏng (Thin Handler)
+func GetDashboardStats(c *gin.Context) {
+	// 1. Nhận Context từ Request (VD: OrgID của User)
+	orgIDVal, exists := c.Get("org_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không xác định được tổ chức"})
+		return
+	}
+	orgID := orgIDVal.(uint)
+
+	// 2. Chuyển tiếp công việc nặng nhọc cho Controller/Service
+	summary, err := dashController.FetchDetailedSummary(orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi truy xuất dữ liệu tổng quan"})
+		return
 	}
 
-	// 2. Truy vấn số liệu thực tế từ Database
-	database.DB.Model(&models.Agent{}).Where("org_id = ?", orgID).Count(&stats.TotalAgents)
-	threshold := time.Now().Add(-2 * time.Minute)
-	database.DB.Model(&models.Agent{}).Where("org_id = ? AND last_seen >= ?", orgID, threshold).Count(&stats.OnlineAgents)
-
-	database.DB.Model(&models.SecurityAlert{}).Where("org_id = ?", orgID).Count(&stats.TotalAlerts)
-	database.DB.Model(&models.Region{}).Where("org_id = ?", orgID).Count(&stats.TotalRegions)
-
-	c.JSON(http.StatusOK, stats)
+	// 3. Trả về kết quả
+	c.JSON(http.StatusOK, summary)
 }

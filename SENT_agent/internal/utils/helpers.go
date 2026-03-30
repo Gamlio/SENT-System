@@ -1,4 +1,4 @@
-package utils // <--- BẮT BUỘC PHẢI LÀ UTILS
+package utils
 
 import (
 	"crypto/sha256"

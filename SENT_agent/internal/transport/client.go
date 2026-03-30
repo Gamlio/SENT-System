@@ -20,10 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const (
-	SERVER_URL = "http://localhost:8000/api/v1/agents/push"
-	LOG_FILE   = "agent_history.log"
-)
+const LOG_FILE = "agent_history.log"
 
 // XÓA bỏ trường CompanyCode ở đây
 type Payload struct {
@@ -65,6 +62,7 @@ func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, f
 	c.Mutex.Unlock()
 
 	// Đã xóa config.Current.CompanyCode
+	// Construct the payload for sending data
 	payload := Payload{
 		Type:     "DATA",
 		LogType:  logType,
@@ -74,9 +72,9 @@ func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, f
 	}
 
 	jsonBytes, _ := json.Marshal(payload)
-	signature := generateSignature(jsonBytes, config.Current.SecretKey)
+	signature := generateSignature(jsonBytes, config.Current.SecretKey) // Generate signature for the payload
 	// Tạo Request mới để có thể nhét Header vào
-	req, err := http.NewRequest("POST", SERVER_URL, bytes.NewBuffer(jsonBytes))
+	req, err := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/agents/push", bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		return "ERROR"
 	}
@@ -160,7 +158,7 @@ func (c *Client) SendAlert(hwid, hostname, alertType, message, severity string) 
 	jsonBytes, _ := json.Marshal(alertPayload)
 	signature := generateSignature(jsonBytes, config.Current.SecretKey)
 
-	req, _ := http.NewRequest("POST", SERVER_URL, bytes.NewBuffer(jsonBytes))
+	req, _ := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/agents/push", bytes.NewBuffer(jsonBytes))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Sent-Signature", signature)
 
@@ -189,7 +187,7 @@ func (c *Client) StartHybridCommunication(hwid string, onCommand func(string, in
 	go func() {
 		for {
 			// Tự động suy luận Host từ SERVER_URL thay vì hardcode localhost
-			parsedURL, _ := url.Parse(SERVER_URL)
+			parsedURL, _ := url.Parse(config.Current.BackendURL)
 			wsScheme := "ws"
 			if parsedURL.Scheme == "https" {
 				wsScheme = "wss"

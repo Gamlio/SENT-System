@@ -7,6 +7,7 @@ import (
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
 	"strings"
+	"time"
 
 	"gorm.io/gorm/clause"
 )
@@ -29,9 +30,29 @@ func ProcessSoftware(agent models.Agent, data interface{}) {
 	}
 
 	incSvc := &incidents.IncidentService{}
-	database.DB.Where("agent_hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
 
+	// 1. TẠO MAP ĐỂ LƯU CÁC TIẾN TRÌNH ĐANG CHẠY (Dùng Tên + Hash làm khóa để tránh trùng)
+	incomingSoftwareMap := make(map[string]bool)
+
+	// 2. CHIỀU THÊM MỚI / CẬP NHẬT (UPSERT)
 	for _, rec := range records {
+		uniqueKey := rec.SoftwareName + "_" + rec.FileHash
+		incomingSoftwareMap[uniqueKey] = true
+
+		var existingItem models.SoftwareItem
+		result := database.DB.Where("agent_hw_id = ? AND software_name = ? AND file_hash = ?", agent.HWID, rec.SoftwareName, rec.FileHash).First(&existingItem)
+
+		if result.Error == nil {
+			// Đã tồn tại -> Cập nhật trạng thái và thời gian
+			database.DB.Model(&existingItem).Updates(map[string]interface{}{
+				"status":     rec.Status,
+				"is_running": rec.IsRunning,
+				"updated_at": time.Now(),
+			})
+			continue
+		}
+
+		// Tạo bản ghi mới
 		dbItem := models.SoftwareItem{
 			AgentHWID:       agent.HWID,
 			SoftwareName:    rec.SoftwareName,
@@ -44,26 +65,32 @@ func ProcessSoftware(agent models.Agent, data interface{}) {
 		}
 		database.DB.Create(&dbItem)
 
-		// 1. Kiểm tra Mã độc (Cập nhật gọi incSvc)
+		// --- CHỈ BÁO ĐỘNG KHI CÓ PHẦN MỀM MỚI ---
 		if rec.FileHash != "" && checkMaliciousHash(rec.FileHash) {
 			incSvc.TriggerSecurityEvent(agent, "Malware Detected", "[P1] Cảnh báo Mã Độc", fmt.Sprintf("Tiến trình: %s", rec.SoftwareName), "P1")
 		}
-
-		// 2. Lẩn tránh (Ghost Registry)
 		if rec.Status == "GHOST_REGISTRY" {
 			incSvc.TriggerSecurityEvent(agent, "Defense Evasion", "[P2] Xóa dấu vết phần mềm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P2")
 		}
-
-		// 3. Phân mềm cấm
 		if checkBannedSoftware(rec.SoftwareName) {
 			incSvc.TriggerSecurityEvent(agent, "Software Violation", "[P3] Cài đặt phần mềm cấm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P3")
 		}
+		if agent.IsZeroTrust && !VerifySoftware(rec, agent) {
+			incSvc.TriggerSecurityEvent(agent, "Zero Trust Violation", "[P1] Tiến trình lạ xuất hiện", fmt.Sprintf("Chưa phê duyệt: %s", rec.SoftwareName), "P1")
+		}
+	}
 
-		// 4. [ZERO TRUST] Kiểm tra danh sách Whitelist
-		if agent.IsZeroTrust {
-			if !VerifySoftware(rec, agent) {
-				incSvc.TriggerSecurityEvent(agent, "Zero Trust Violation", "[P1] Tiến trình lạ xuất hiện", fmt.Sprintf("Chưa phê duyệt: %s", rec.SoftwareName), "P1")
-			}
+	// 3. CHIỀU ĐÓNG (DIFFING): Tìm các phần mềm vừa bị tắt
+	var activeSoftwares []models.SoftwareItem
+	// Tìm các phần mềm của máy này đang được ghi nhận là Đang chạy
+	database.DB.Where("agent_hw_id = ? AND is_running = ?", agent.HWID, true).Find(&activeSoftwares)
+
+	for _, dbSoft := range activeSoftwares {
+		uniqueKey := dbSoft.SoftwareName + "_" + dbSoft.FileHash
+		// Nếu phần mềm trong DB KHÔNG có mặt trong danh sách Agent gửi lên đợt này
+		if !incomingSoftwareMap[uniqueKey] {
+			// Cập nhật trạng thái là đã dừng (không xóa đi để giữ lịch sử)
+			database.DB.Model(&dbSoft).Update("is_running", false)
 		}
 	}
 }

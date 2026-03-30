@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import Sidebar from './components/Sidebar.jsx';
 import Navbar from './components/Navbar.jsx';
+import Profile from './components/Profile.jsx';
 
 import Login from './pages/Auth/Login.jsx';
 import Register from './pages/Auth/Register.jsx';
@@ -71,14 +72,16 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/login/:companyCode" element={<Login />} />
                     <Route path="/register" element={<Register />} />
-
+                    
+                    {/* Protected Routes */}
                     {/* Core Routes */}
                     <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                     <Route path="/chat-ai" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
+                    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     
                     <Route path="/agents" element={<ProtectedRoute requiredPermission="agent_view"><AgentList /></ProtectedRoute>} />
                     <Route path="/agents/:hwid" element={<ProtectedRoute requiredPermission="agent_view"><AgentDetail /></ProtectedRoute>} />
-                    
+                    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/incidents" element={<ProtectedRoute requiredPermission="incident_view"><IncidentList /></ProtectedRoute>} />
                     <Route path="/incidents/:id" element={<IncidentDetail />} />
                     

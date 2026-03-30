@@ -26,7 +26,7 @@ func GetIncidents(c *gin.Context) {
 	fmt.Println("\n--- [DEBUG API] Frontend đang gọi lấy danh sách Incident ---")
 
 	// 2. Thử Query cơ bản nhất (Bỏ Preload tạm thời để xem có phải lỗi quan hệ bảng không)
-	result := database.DB.Order("created_at desc").Find(&incidents)
+	result := database.DB.Preload("Agent").Order("created_at desc").Find(&incidents)
 
 	if result.Error != nil {
 		fmt.Printf(">> LỖI DB: %v\n", result.Error)

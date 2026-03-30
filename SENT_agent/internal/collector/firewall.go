@@ -20,25 +20,29 @@ func (s *FirewallSensor) Name() string {
 }
 
 // 4. Đưa logic cũ vào hàm Collect()
-func (s *FirewallSensor) Collect() interface{} {
+func (s *FirewallSensor) Collect() (interface{}, error) {
 	isOff := false
+	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "windows":
-		cmd := exec.Command("cmd", "/c", "netsh advfirewall show allprofiles state")
-		out, _ := cmd.Output()
-		isOff = strings.Contains(strings.ToLower(string(out)), "off")
+		cmd = exec.Command("cmd", "/c", "netsh advfirewall show allprofiles state")
 	case "linux":
-		cmd := exec.Command("ufw", "status")
-		out, _ := cmd.Output()
-		isOff = strings.Contains(strings.ToLower(string(out)), "inactive")
+		// Cảnh báo: Logic này chỉ check 'ufw'. Linux có thể dùng firewalld, iptables.
+		cmd = exec.Command("ufw", "status")
 	case "darwin":
-		cmd := exec.Command("/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate")
-		out, _ := cmd.Output()
-		isOff = strings.Contains(strings.ToLower(string(out)), "disabled")
+		cmd = exec.Command("/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate")
+	default:
+		return FirewallRecord{FirewallOff: false}, nil // Hệ điều hành không hỗ trợ
 	}
 
-	return FirewallRecord{
-		FirewallOff: isOff,
+	out, err := cmd.Output()
+	// Tương tự Antivirus, lỗi command không tồn tại không nên làm dừng agent.
+	// Sẽ log trong tương lai, hiện tại chỉ kiểm tra output nếu không có lỗi.
+	if err == nil {
+		output := strings.ToLower(string(out))
+		isOff = strings.Contains(output, "off") || strings.Contains(output, "inactive") || strings.Contains(output, "disabled")
 	}
+
+	return FirewallRecord{FirewallOff: isOff}, nil
 }

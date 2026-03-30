@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"fmt"
 	"runtime"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -24,10 +25,20 @@ func (s *InventorySensor) Name() string {
 }
 
 // 4. Đưa logic cũ vào hàm Collect()
-func (s *InventorySensor) Collect() interface{} {
-	hInfo, _ := host.Info()
-	cpuInfo, _ := cpu.Info()
-	vMem, _ := mem.VirtualMemory()
+func (s *InventorySensor) Collect() (interface{}, error) {
+	hInfo, err := host.Info()
+	if err != nil {
+		return nil, fmt.Errorf("lỗi lấy thông tin host: %w", err)
+	}
+	cpuInfo, err := cpu.Info()
+	if err != nil {
+		// Có thể không phải lỗi nghiêm trọng, vẫn tiếp tục với CPU Unknown
+		cpuInfo = []cpu.InfoStat{}
+	}
+	vMem, err := mem.VirtualMemory()
+	if err != nil {
+		return nil, fmt.Errorf("lỗi lấy thông tin RAM: %w", err)
+	}
 
 	model := "Unknown CPU"
 	if len(cpuInfo) > 0 {
@@ -39,9 +50,9 @@ func (s *InventorySensor) Collect() interface{} {
 		displayOS = "Windows " + hInfo.PlatformVersion // Logic giản lược
 	}
 
-	return map[string]interface{}{
-		"os_info":      displayOS,
-		"cpu_model":    model,
-		"ram_total_gb": vMem.Total / 1024 / 1024 / 1024,
-	}
+	return InventoryRecord{
+		OSInfo:     displayOS,
+		CPUModel:   model,
+		RAMTotalGB: vMem.Total / 1024 / 1024 / 1024,
+	}, nil
 }

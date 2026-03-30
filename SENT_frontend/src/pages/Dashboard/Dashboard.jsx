@@ -1,19 +1,23 @@
-// src/pages/Dashboard/Dashboard.jsx (Mẫu cấu trúc đề xuất)
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Monitor, AlertTriangle, Activity, Flame, ArrowUpRight } from 'lucide-react';
+import { 
+    Shield, Monitor, AlertTriangle, Activity, 
+    Flame, Lock, ShieldAlert, Crosshair, Radar 
+} from 'lucide-react';
 import axiosInstance from '../../api/axios';
-import { useSocketSubscription } from '../../context/useSocketSubscription'; // Dùng hook bạn đã có
+import { useSocketSubscription } from '../../context/useSocketSubscription';
+
+import DashboardCharts from './components/DashboardCharts';
+import DashboardTable from './components/DashboardTable';
 
 const Dashboard = () => {
     const navigate = useNavigate();
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Lấy dữ liệu tổng quan từ Backend
     const fetchDashboardData = useCallback(async () => {
         try {
-            const res = await axiosInstance.get('/dashboard/summary');
+            const res = await axiosInstance.get('/dashboard/stats');
             setStats(res.data);
         } catch (error) {
             console.error("Lỗi tải Dashboard:", error);
@@ -22,82 +26,109 @@ const Dashboard = () => {
         }
     }, []);
 
-    useEffect(() => {
-        fetchDashboardData();
-    }, [fetchDashboardData]);
+    useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
 
-    // Lắng nghe Real-time: Khi có sự cố mới hoặc thiết bị thay đổi trạng thái -> Load lại Dashboard
     useSocketSubscription(['NEW_INCIDENT', 'AGENT_STATUS_CHANGED', 'INCIDENT_RESOLVED'], () => {
-        console.log('[WS] Có thay đổi hệ thống, cập nhật lại Dashboard...');
         fetchDashboardData();
     });
 
-    if (loading || !stats) return <div className="p-10 text-emerald-500 animate-pulse">Đang tải trung tâm chỉ huy...</div>;
+    if (loading || !stats) return (
+        <div className="h-[calc(100vh-60px)] bg-[#050B14] flex flex-col items-center justify-center gap-4">
+            <Radar size={40} className="text-indigo-500 animate-spin-slow"/>
+            <p className="text-indigo-500 font-mono text-sm tracking-widest animate-pulse uppercase">Syncing Telemetry Data...</p>
+        </div>
+    );
+
+    // Chuẩn bị dữ liệu cho Bảng Top Risk
+    const topRiskColumns = [
+        { key: 'hostname', label: 'Asset Name', render: (row) => <span className="font-bold text-white">{row.hostname}</span> },
+        { key: 'ip_address', label: 'IP', render: (row) => <span className="font-mono text-slate-400">{row.ip_address}</span> },
+        { key: 'department_tag', label: 'Dept', render: (row) => <span className="bg-[#050B14] border border-slate-700 px-1.5 py-0.5 rounded text-[9px] text-slate-300">{row.department_tag}</span> },
+        { key: 'risk_score', label: 'Risk', render: (row) => <span className={`font-black font-mono ${row.risk_score > 70 ? 'text-red-500' : 'text-orange-500'}`}>{row.risk_score}</span> }
+    ];
+
+    // Chuẩn bị dữ liệu cho Bảng Live Alerts
+    const recentAlertColumns = [
+        { key: 'alert_type', label: 'Detection', render: (row) => <span className="font-bold text-slate-200">{row.alert_type}</span> },
+        { key: 'severity', label: 'Level', render: (row) => <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${row.severity === 'Critical' ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-orange-500/10 text-orange-400 border-orange-500/30'}`}>{row.severity}</span> },
+        { key: 'agent_name', label: 'Target', render: (row) => <span className="font-mono text-slate-400">{row.agent_name.substring(0,8)}...</span> },
+        { key: 'created_at', label: 'Time', render: (row) => <span className="font-mono text-slate-500">{new Date(row.created_at).toLocaleTimeString('vi-VN')}</span> }
+    ];
 
     return (
-        <div className="p-6 h-full overflow-y-auto bg-[#050B14] text-slate-200">
-            <h1 className="text-2xl font-black text-white mb-6 flex items-center gap-3">
-                <Activity className="text-blue-500"/> Trung Tâm Chỉ Huy SOC
-            </h1>
-
-            {/* HÀNG 1: KPI CARDS (Thống kê nhanh) */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                <KpiCard icon={<AlertTriangle/>} title="Sự cố đang mở (OPEN)" value={stats.open_incidents} color="red" />
-                <KpiCard icon={<Monitor/>} title="Máy trạm Online" value={`${stats.online_agents}/${stats.total_agents}`} color="emerald" />
-                <KpiCard icon={<Flame/>} title="Máy có Risk Score > 70" value={stats.high_risk_agents} color="orange" />
-                <KpiCard icon={<Shield/>} title="Tỷ lệ phủ Zero Trust" value={`${stats.zero_trust_coverage}%`} color="blue" />
-            </div>
-
-            {/* HÀNG 2: BIỂU ĐỒ & DANH SÁCH RỦI RO */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                {/* Khu vực Biểu đồ (Chiếm 2 cột) - Gợi ý dùng Recharts hoặc Chart.js */}
-                <div className="lg:col-span-2 bg-[#0A101D] p-5 rounded-2xl border border-slate-800 shadow-lg">
-                    <h3 className="font-bold text-slate-400 mb-4 uppercase text-xs tracking-widest">Xu hướng cảnh báo 7 ngày qua</h3>
-                    {/* Thêm Component LineChart của Recharts vào đây */}
-                    <div className="h-64 border-2 border-dashed border-slate-800 rounded-xl flex items-center justify-center text-slate-600">Khu vực nhúng Biểu đồ</div>
+        <div className="h-[calc(100vh-60px)] bg-[#050B14] text-slate-200 p-5 font-sans overflow-y-auto custom-scrollbar">
+            
+            <div className="mb-4 flex items-end justify-between">
+                <div>
+                    <h1 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tight">
+                        <Crosshair className="text-indigo-500"/> SOC COMMAND CENTER
+                    </h1>
+                    <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Real-time Telemetry & Threat Intelligence</p>
                 </div>
-
-                {/* Danh sách máy trạm nguy hiểm nhất (Top Risk Assets) */}
-                <div className="bg-[#0A101D] p-5 rounded-2xl border border-slate-800 shadow-lg flex flex-col">
-                    <h3 className="font-bold text-red-400 mb-4 uppercase text-xs tracking-widest flex items-center gap-2">
-                        <Flame size={14}/> Top Tài sản rủi ro (Risk Score)
-                    </h3>
-                    <div className="flex-1 space-y-3">
-                        {stats.top_risk_agents.map((agent, idx) => (
-                            <div key={idx} onClick={() => navigate(`/agents/${agent.hwid}`)} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-slate-800 hover:border-red-500/50 cursor-pointer transition group">
-                                <div>
-                                    <p className="font-bold text-sm text-slate-200 group-hover:text-white">{agent.hostname}</p>
-                                    <p className="text-[10px] text-slate-500">{agent.ip_address}</p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-red-500 font-black text-lg">{agent.risk_score}</span>
-                                    <ArrowUpRight size={16} className="text-slate-600 group-hover:text-red-400"/>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                <div className="flex items-center gap-2 bg-[#0A101D] border border-slate-800 px-3 py-1.5 rounded-lg">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span className="text-[10px] font-mono text-emerald-400 font-bold tracking-widest">SYSTEM SECURE</span>
                 </div>
             </div>
+
+            {/* TIER 1: KPI CỐT LÕI (MẬT ĐỘ DÀY) */}
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
+                <KpiCard icon={<Monitor size={18}/>} title="Total Assets" value={stats.total_agents} subValue={`${stats.online_agents} Online`} color="blue" />
+                <KpiCard icon={<Flame size={18}/>} title="High Risk" value={stats.high_risk_agents} subValue={`${((stats.high_risk_agents/stats.total_agents)*100).toFixed(1)}% Fleet`} color="red" isAlert={stats.high_risk_agents > 0}/>
+                <KpiCard icon={<ShieldAlert size={18}/>} title="Raw Alerts" value={stats.total_alerts} subValue="Last 24h" color="orange" />
+                <KpiCard icon={<AlertTriangle size={18}/>} title="Open Cases" value={stats.open_incidents} subValue={`${stats.resolved_incidents} Resolved`} color="purple" />
+                <KpiCard icon={<Lock size={18}/>} title="Zero Trust" value={`${stats.zero_trust_coverage.toFixed(1)}%`} subValue="Enforcement" color="emerald" />
+                <KpiCard icon={<Shield size={18}/>} title="Avg Trust" value={stats.average_trust_score.toFixed(1)} subValue="System Health" color="indigo" />
+            </div>
+
+            {/* TIER 2: BIỂU ĐỒ TRỰC QUAN (CHART) */}
+            <div className="mb-4">
+                <DashboardCharts stats={stats} />
+            </div>
+
+            {/* TIER 3: BẢNG DỮ LIỆU ACTIONABLE */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <DashboardTable 
+                    title="Top Risk Agents" 
+                    icon={Flame} 
+                    data={stats.top_risk_agents} 
+                    columns={topRiskColumns} 
+                    colorClass="text-red-400"
+                    onRowClick={(row) => navigate(`/agents/${row.hwid}`)}
+                />
+                <DashboardTable 
+                    title="Live Threat Feed" 
+                    icon={Activity} 
+                    data={stats.recent_alerts} 
+                    columns={recentAlertColumns} 
+                    colorClass="text-orange-400"
+                />
+            </div>
+
         </div>
     );
 };
 
-const KpiCard = ({ icon, title, value, color }) => {
-    const colorClasses = {
-        red: 'text-red-500 bg-red-500/10 border-red-500/20',
-        emerald: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
-        orange: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
-        blue: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+const KpiCard = ({ icon, title, value, subValue, color, isAlert }) => {
+    const colorMap = {
+        red: 'text-red-500 bg-red-500/10 border-red-500/30',
+        emerald: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30',
+        orange: 'text-orange-500 bg-orange-500/10 border-orange-500/30',
+        blue: 'text-blue-500 bg-blue-500/10 border-blue-500/30',
+        purple: 'text-purple-500 bg-purple-500/10 border-purple-500/30',
+        indigo: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30',
     };
     return (
-        <div className="bg-[#0A101D] p-5 rounded-2xl border border-slate-800 shadow-lg flex items-center gap-4 relative overflow-hidden">
-            <div className={`p-4 rounded-xl ${colorClasses[color]} z-10`}>{icon}</div>
-            <div className="z-10">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{title}</p>
-                <p className="text-3xl font-black text-white tracking-tighter">{value}</p>
+        <div className={`bg-[#0A101D] p-4 rounded-xl border border-slate-800 shadow-lg relative overflow-hidden group ${isAlert ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : ''}`}>
+            {isAlert && <div className="absolute top-0 right-0 w-12 h-12 bg-red-500/10 rounded-bl-full animate-pulse"></div>}
+            <div className="flex items-start justify-between mb-3">
+                <div className={`p-2 rounded-lg ${colorMap[color]}`}>{icon}</div>
+                <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">{title}</span>
             </div>
-            {/* Background Glow */}
-            <div className={`absolute -right-4 -bottom-4 w-24 h-24 blur-3xl opacity-20 ${colorClasses[color].split(' ')[0].replace('text-', 'bg-')}`}></div>
+            <div>
+                <p className={`text-2xl font-black font-mono tracking-tighter ${colorMap[color].split(' ')[0]}`}>{value}</p>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">{subValue}</p>
+            </div>
         </div>
     );
 };

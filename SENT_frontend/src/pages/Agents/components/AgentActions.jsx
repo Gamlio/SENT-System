@@ -117,49 +117,38 @@ const handleDeleteAgent = () => {
             </button>
 
             {/* DANH SÁCH MENU */}
-            {isOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-[#1e293b] border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
-                    <div className="px-4 py-2 border-b border-slate-700/50 bg-slate-800/50">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tiện ích mở rộng</p>
+           {isOpen && (
+                <div className="absolute right-0 top-full mt-1 w-48 bg-[#0A101D] border border-slate-700 rounded-lg shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-[99] overflow-hidden animate-in fade-in zoom-in duration-100">
+                    <div className="px-3 py-1.5 border-b border-slate-800 bg-[#111827]">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Action Menu</p>
                     </div>
                     
-                    {/* [MỚI]: NÚT PHÂN CÔNG QUẢN LÝ */}
                     <button
-                        onClick={(e) => { 
-                            e.stopPropagation(); setIsOpen(false);
-                            if(onOpenAssignModal) onOpenAssignModal();
-                        }}
-                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-blue-400 flex items-center gap-3 transition border-l-2 border-blue-500/50 bg-blue-500/5"
+                        onClick={(e) => { e.stopPropagation(); setIsOpen(false); if(onOpenAssignModal) onOpenAssignModal(); }}
+                        className="w-full text-left px-3 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-slate-800 hover:text-indigo-400 flex items-center gap-2.5 transition border-l-2 border-indigo-500/0 hover:border-indigo-500"
                     >
-                        <UserCheck size={16} /> Phân công Quản lý
+                        <UserCheck size={14} /> Assign Owner
                     </button>
 
                     <button
                         onClick={(e) => { e.stopPropagation(); setIsOpen(false); handleTriggerBaseline(); }}
-                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-emerald-400 flex items-center gap-3 transition"
+                        className="w-full text-left px-3 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-slate-800 hover:text-emerald-400 flex items-center gap-2.5 transition"
                     >
-                        <Fingerprint size={16} /> Quét Baseline
-                    </button>
-
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setIsOpen(false); navigate(`/agents/${agent.hwid}/software`); }}
-                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-emerald-400 flex items-center gap-3 transition"
-                    >
-                        <ShieldCheck size={16} /> Cấu hình Phần mềm
+                        <Fingerprint size={14} /> Run Baseline
                     </button>
 
                     <button
                         onClick={(e) => { e.stopPropagation(); setIsOpen(false); setShowTypeModal(true); }}
-                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 hover:text-purple-400 flex items-center gap-3 transition"
+                        className="w-full text-left px-3 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-slate-800 hover:text-purple-400 flex items-center gap-2.5 transition"
                     >
-                        <Cpu size={16} /> Phân loại thiết bị
+                        <Cpu size={14} /> Asset Tier
                     </button>
 
                     <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteAgent(); }}
-                        className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-3 transition border-t border-slate-700/50"
+                        className="w-full text-left px-3 py-2.5 text-[11px] font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-2.5 transition border-t border-slate-800"
                     >
-                        <Trash2 size={16} /> Yêu cầu Gỡ bỏ
+                        <Trash2 size={14} /> Remove Agent
                     </button>
                 </div>
             )}

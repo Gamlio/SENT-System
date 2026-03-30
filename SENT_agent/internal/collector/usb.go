@@ -11,6 +11,14 @@ import (
 	"strings"
 )
 
+// Khai báo các biểu thức chính quy (Regex) ở cấp package để biên dịch một lần duy nhất.
+// Đây là một tối ưu hiệu suất quan trọng, tránh việc biên dịch lại regex trong các vòng lặp.
+var (
+	reLinuxUSB   = regexp.MustCompile(`ID ([a-f0-9]{4}):([a-f0-9]{4}) (.*)`)
+	reWindowsVID = regexp.MustCompile(`VID_([A-Za-z0-9]{4})`)
+	reWindowsPID = regexp.MustCompile(`PID_([A-Za-z0-9]{4})`)
+)
+
 // 1. Khai báo Struct cho Sensor
 type USBSensor struct{}
 
@@ -31,7 +39,7 @@ func (s *USBSensor) Name() string {
 }
 
 // CollectUSB: Thu thập và định danh USB đa nền tảng
-func (s *USBSensor) Collect() interface{} {
+func (s *USBSensor) Collect() (interface{}, error) {
 	var usbList []USBRecord
 
 	if runtime.GOOS == "windows" {
@@ -44,7 +52,7 @@ func (s *USBSensor) Collect() interface{} {
 		cmd := exec.Command("powershell", "-NoProfile", "-Command", psCommand)
 		output, err := cmd.Output()
 		if err != nil {
-			return usbList
+			return nil, fmt.Errorf("lỗi thực thi lệnh PowerShell: %w", err)
 		}
 
 		jsonStr := strings.TrimSpace(string(output))
@@ -54,7 +62,7 @@ func (s *USBSensor) Collect() interface{} {
 
 		var rawList []map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &rawList); err != nil {
-			return usbList
+			return nil, fmt.Errorf("lỗi parse JSON từ PowerShell: %w", err)
 		}
 
 		for _, dev := range rawList {
@@ -77,58 +85,62 @@ func (s *USBSensor) Collect() interface{} {
 				EventType:    "plugged",
 			})
 		}
-		return usbList
+		return usbList, nil
 	}
 
 	if runtime.GOOS == "linux" {
 		// Sử dụng lsusb trên Linux (Định dạng: Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub)
 		cmd := exec.Command("lsusb")
 		output, err := cmd.Output()
-		if err == nil {
-			lines := strings.Split(string(output), "\n")
-			for _, line := range lines {
-				if line == "" {
-					continue
-				}
+		if err != nil {
+			return nil, fmt.Errorf("lỗi thực thi lsusb: %w", err)
+		}
 
-				// Dùng Regex bóc tách ID và Tên
-				re := regexp.MustCompile(`ID ([a-f0-9]{4}):([a-f0-9]{4}) (.*)`)
-				matches := re.FindStringSubmatch(line)
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			if line == "" {
+				continue
+			}
 
-				if len(matches) >= 4 {
-					vid := matches[1]
-					pid := matches[2]
-					name := strings.TrimSpace(matches[3])
-					serial := "N/A" // lsusb mặc định không hiện serial, cần udevadm nếu muốn sâu hơn
+			// Dùng Regex global đã khai báo sẵn, không biên dịch lại
+			matches := reLinuxUSB.FindStringSubmatch(line)
 
-					hash := generateDeviceHash(vid, pid, serial)
+			if len(matches) >= 4 {
+				vid := matches[1]
+				pid := matches[2]
+				name := strings.TrimSpace(matches[3])
+				serial := "N/A" // lsusb mặc định không hiện serial, cần udevadm nếu muốn sâu hơn
 
-					usbList = append(usbList, USBRecord{
-						DeviceName:   name,
-						DeviceID:     line, // Lưu nguyên dòng log làm ID thô
-						VID:          vid,
-						PID:          pid,
-						SerialNumber: serial,
-						DeviceHash:   hash,
-						EventType:    "plugged",
-					})
-				}
+				hash := generateDeviceHash(vid, pid, serial)
+
+				usbList = append(usbList, USBRecord{
+					DeviceName:   name,
+					DeviceID:     line, // Lưu nguyên dòng log làm ID thô
+					VID:          vid,
+					PID:          pid,
+					SerialNumber: serial,
+					DeviceHash:   hash,
+					EventType:    "plugged",
+				})
 			}
 		}
-		return usbList
+		return usbList, nil
 	}
 
 	if runtime.GOOS == "darwin" {
 		// macOS: Dùng system_profiler xuất ra JSON
 		cmd := exec.Command("system_profiler", "SPUSBDataType", "-json")
-		output, _ := cmd.Output()
+		output, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("lỗi thực thi system_profiler: %w", err)
+		}
 		// (Phần parse JSON của macOS khá phức tạp và lồng nhau nhiều tầng,
 		// ở đây giữ khung để bạn có thể mở rộng bằng thư viện gjson sau này)
 		_ = output
-		return usbList
+		return usbList, nil
 	}
 
-	return usbList
+	return usbList, nil
 }
 
 // --- CÁC HÀM PHỤ TRỢ (HELPERS) ---
@@ -140,14 +152,12 @@ func parseWindowsUSBID(pnpID string) (vid, pid, serial string) {
 	serial = "UNKNOWN"
 
 	// 1. Lấy VID
-	reVid := regexp.MustCompile(`VID_([A-Za-z0-9]{4})`)
-	if match := reVid.FindStringSubmatch(pnpID); len(match) > 1 {
+	if match := reWindowsVID.FindStringSubmatch(pnpID); len(match) > 1 {
 		vid = match[1]
 	}
 
 	// 2. Lấy PID
-	rePid := regexp.MustCompile(`PID_([A-Za-z0-9]{4})`)
-	if match := rePid.FindStringSubmatch(pnpID); len(match) > 1 {
+	if match := reWindowsPID.FindStringSubmatch(pnpID); len(match) > 1 {
 		pid = match[1]
 	}
 

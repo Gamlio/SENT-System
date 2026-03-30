@@ -1,182 +1,215 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { 
-    LogOut, Bell, Search, Sparkles, User, 
-    Settings, ShieldAlert, Palette, UserCog, CheckCircle2 
+    LayoutDashboard, Monitor, ShieldAlert, LogOut, Search, Command, 
+    Bell, ChevronDown, User, Settings, Lock, X, Activity,
+    Zap, Cpu, AlertTriangle, Bot, CheckCircle,
 } from 'lucide-react';
 
+// IMPORT HHOOK CHUẨN CỦA BẠN ĐỂ LẮNG NGHE SOCKET
+import { useSocketSubscription } from '../context/useSocketSubscription';
+
+const notificationsData = [
+    { id: 1, type: 'INCIDENT', status: 'UNREAD', title: 'Máy trạm #A098 cắm USB lạ', severity: 'High', time: '1p trước' },
+    { id: 2, type: 'ALERT', status: 'UNREAD', title: 'Quá tải CPU trên Server #PROD-01', severity: 'Critical', time: '5p trước' },
+    { id: 3, type: 'SYSTEM', status: 'READ', title: 'Baseline completed on #WIN-HANA', severity: 'Info', time: '12p trước' },
+    { id: 4, type: 'POLICY', status: 'UNREAD', title: 'Cập nhật Policy Zero-Trust cho Sales', severity: 'Medium', time: '1h trước' },
+];
+
 const Navbar = ({ onOpenCopilot }) => {
-    const { user, logout } = useAuth();
+    const navigate = useNavigate();
     const location = useLocation();
-
-    // --- STATE QUẢN LÝ DROPDOWN ---
-    const [isNotifOpen, setIsNotifOpen] = useState(false);
-    const [isProfileOpen, setIsProfileMenuOpen] = useState(false);
-
-    // Refs để bắt sự kiện click ra ngoài
+    
+    // STATES CHO NOTIFICATION PANEL
+    const [showNotifPanel, setShowNotifPanel] = useState(false);
+    const [notifications, setNotifications] = useState(notificationsData);
+    const [unreadCount, setUnreadCount] = useState(0);
     const notifRef = useRef(null);
-    const profileRef = useRef(null);
 
-    // Xử lý đóng menu khi click ra ngoài
+    // STATES CHO USER DROPDOWN
+    const [showUserDropdown, setShowUserDropdown] = useState(false);
+    const userDropdownRef = useRef(null);
+    
+    const userString = localStorage.getItem('user');
+    const user = userString ? JSON.parse(userString) : { full_name: 'SOC Analyst', role: 'admin', department_tag: 'SOC_L1' };
+
+    // CẬP NHẬT SỐ THÔNG BÁO CHƯA ĐỌC
+    useEffect(() => {
+        setUnreadCount(notifications.filter(n => n.status === 'UNREAD').length);
+    }, [notifications]);
+
+    // ĐÓNG PANEL KHI CLICK RA NGOÀI
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (notifRef.current && !notifRef.current.contains(event.target)) setIsNotifOpen(false);
-            if (profileRef.current && !profileRef.current.contains(event.target)) setIsProfileMenuOpen(false);
+            if (notifRef.current && !notifRef.current.contains(event.target)) { setShowNotifPanel(false); }
+            if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) { setShowUserDropdown(false); }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    if (!user) return null;
+    // -----------------------------------------------------------------
+    // LẮNG NGHE SỰ KIỆN LIVE QUA SOCKET (TRUE REAL-TIME)
+    // -----------------------------------------------------------------
+    const handleNewLiveEvent = useCallback((payload) => {
+        // console.log("🔥 Bắt được sóng Live Event trong Navbar:", payload);
+        
+        const newNotif = {
+            id: Date.now(),
+            type: payload.type || 'ALERT',
+            status: 'UNREAD',
+            title: payload.content || 'Cảnh báo vi phạm mới nhận được',
+            severity: payload.priority || 'Critical', // P1 -> Critical
+            time: 'Vừa xong'
+        };
 
-    // Breadcrumb động
-    const getPageTitle = () => {
-        const path = location.pathname;
-        if (path === '/') return 'Tổng quan hệ thống';
-        if (path.startsWith('/agents')) return 'Quản lý Máy trạm';
-        if (path.startsWith('/incidents')) return 'Trung tâm Sự cố';
-        if (path.startsWith('/admin/policy-center')) return 'Trung tâm Chính sách';
-        if (path.startsWith('/admin/docs')) return 'Kho tri thức AI';
-        if (path.startsWith('/admin/users')) return 'Quản lý Người dùng';
-        if (path.startsWith('/chat-ai')) return 'Trợ lý AI Copilot';
-        return 'Bảng điều khiển';
+        // Bơm thông báo mới lên đầu danh sách
+        setNotifications(prev => [newNotif, ...prev.slice(0, 19)]); // Giữ tối đa 20 cái
+    }, []);
+
+    useSocketSubscription(['NEW_INCIDENT', 'AGENT_STATUS_CHANGED'], handleNewLiveEvent);
+    // -----------------------------------------------------------------
+
+    const handleLogout = () => {
+        localStorage.clear();
+        navigate('/login');
     };
 
-    // Dữ liệu thông báo giả lập (Sau này gọi API lấy từ DB)
-    const mockNotifications = [
-        { id: 1, type: 'P1', text: 'LAPTOP-ATGELDMK vừa tắt Tường lửa', time: 'Vài giây trước' },
-        { id: 2, type: 'P2', text: 'Phát hiện mã độc trên máy Kế toán 01', time: '5 phút trước' },
-        { id: 3, type: 'INFO', text: 'Hệ thống vừa cập nhật Playbook mới', time: '1 giờ trước' },
-    ];
+    const markAllAsRead = () => {
+        setNotifications(prev => prev.map(n => ({ ...n, status: 'READ' })));
+    };
 
     return (
-        <header className="bg-[#1e293b]/90 backdrop-blur-md border-b border-slate-800 px-8 py-4 sticky top-0 z-40 flex justify-between items-center">
+        <nav className="h-[60px] bg-[#0A101D] border-b border-slate-800 flex items-center justify-between px-6 shrink-0 relative z-50 shadow-md font-sans">
             
-            {/* Trái: Page Title */}
-            <div>
-                <h2 className="text-lg font-bold text-white">{getPageTitle()}</h2>
-                <p className="text-xs text-slate-500">Real-time Security Operations Center</p>
+            {/* LOGO SECTION */}
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
+                <div className="p-2 bg-indigo-500 rounded-lg shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+                    <Activity size={18} className="text-white"/>
+                </div>
+                <h1 className="text-xl font-extrabold text-white tracking-tighter">SENT SOC</h1>
             </div>
 
-            {/* Phải: Tools & Profile */}
-            <div className="flex items-center gap-6">
+            {/* ACTION SECTION */}
+            <div className="flex items-center gap-3">
                 
-                {/* 1. NÚT GỌI AI */}
-                <button 
-                    onClick={onOpenCopilot} 
-                    className="flex items-center gap-2 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 px-4 py-1.5 rounded-full transition-all hover:scale-105"
+                {/* COPILOT BUTTON */}
+                <button
+                    onClick={onOpenCopilot}
+                    className="p-2.5 rounded-lg border border-slate-700 hover:border-indigo-500 hover:bg-slate-800 transition group"
+                    aria-label="Open Copilot"
                 >
-                    <Sparkles size={16} />
-                    <span className="text-xs font-bold tracking-wide">Ask AI</span>
+                    <Command size={16} className="text-slate-500 group-hover:text-indigo-400" />
                 </button>
-                
-                <div className="flex items-center gap-4 text-slate-400 relative">
-                    <button className="hover:text-white transition"><Search size={20}/></button>
-                    
-                    {/* 2. THANH THÔNG BÁO (NOTIFICATION) */}
-                    <div ref={notifRef} className="relative">
-                        <button 
-                            onClick={() => { setIsNotifOpen(!isNotifOpen); setIsProfileMenuOpen(false); }}
-                            className={`transition relative p-1.5 rounded-lg ${isNotifOpen ? 'bg-slate-800 text-white' : 'hover:text-white hover:bg-slate-800/50'}`}
-                        >
-                            <Bell size={20}/>
-                            <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#1e293b] animate-pulse"></span>
-                        </button>
 
-                        {/* Dropdown Thông báo */}
-                        {isNotifOpen && (
-                            <div className="absolute right-0 top-full mt-3 w-80 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] overflow-hidden animate-in fade-in slide-in-from-top-2">
-                                <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
-                                    <h3 className="font-bold text-white text-sm">Thông báo hệ thống</h3>
-                                    <span className="text-[10px] text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded-full">3 Mới</span>
-                                </div>
-                                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
-                                    {mockNotifications.map(notif => (
-                                        <div key={notif.id} className="p-4 border-b border-slate-800/50 hover:bg-slate-800/50 transition cursor-pointer flex gap-3">
-                                            <div className="mt-0.5 shrink-0">
-                                                {notif.type === 'P1' ? <ShieldAlert size={16} className="text-red-500"/> :
-                                                 notif.type === 'P2' ? <ShieldAlert size={16} className="text-orange-500"/> :
-                                                 <CheckCircle2 size={16} className="text-emerald-500"/>}
-                                            </div>
-                                            <div>
-                                                <p className="text-sm text-slate-200 mb-1 leading-snug">{notif.text}</p>
-                                                <p className="text-[10px] text-slate-500 font-mono">{notif.time}</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="p-3 text-center bg-slate-900/50 hover:bg-slate-800 transition cursor-pointer">
-                                    <span className="text-xs font-bold text-indigo-400">Xem tất cả</span>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="w-px h-6 bg-slate-700"></div>
-
-                {/* 3. MENU TÀI KHOẢN (PROFILE) */}
-                <div className="flex items-center gap-4 relative" ref={profileRef}>
-                    
-                    {/* Mã CTY */}
-                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-900 rounded-xl border border-slate-700 shadow-inner">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Mã CTY:</span>
-                        <span className="text-sm font-mono font-black text-emerald-400 select-all cursor-pointer" title="Click đúp để bôi đen copy">
-                            {user.company_code || 'N/A'}
-                        </span>
-                    </div>
-
-                    {/* Nút bấm mở Menu Tài khoản */}
+                {/* NOTIFICATION SECTION (LIVE) */}
+                <div className="relative" ref={notifRef}>
                     <button 
-                        onClick={() => { setIsProfileMenuOpen(!isProfileOpen); setIsNotifOpen(false); }}
-                        className={`flex items-center gap-3 text-left pl-2 pr-1 py-1 rounded-xl transition ${isProfileOpen ? 'bg-slate-800' : 'hover:bg-slate-800/50'}`}
+                        onClick={() => setShowNotifPanel(!showNotifPanel)}
+                        className={`p-2.5 rounded-lg border border-slate-700 hover:border-indigo-500 hover:bg-slate-800 transition group ${showNotifPanel ? 'bg-slate-800 border-indigo-500' : ''}`}
                     >
-                        <div className="hidden md:block">
-                            <p className="text-sm font-bold text-white leading-tight">{user.username}</p>
-                            <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">{user.role}</p>
-                        </div>
-                        <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-md border border-indigo-400">
-                            <User size={18}/>
-                        </div>
+                        <Bell size={16} className={`text-slate-500 group-hover:text-indigo-400 ${showNotifPanel ? 'text-indigo-400' : ''}`} />
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-600 rounded-full text-white text-[9px] font-black font-mono flex items-center justify-center border-2 border-[#0A101D] animate-pulse">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
+                        )}
                     </button>
 
-                    {/* Dropdown Menu Tài khoản */}
-                    {isProfileOpen && (
-                        <div className="absolute right-0 top-full mt-3 w-56 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] overflow-hidden animate-in fade-in slide-in-from-top-2">
-                            <div className="p-4 border-b border-slate-800 bg-slate-900/50">
-                                <p className="text-sm font-bold text-white truncate">{user.full_name || user.username}</p>
-                                <p className="text-xs text-slate-500 truncate mt-0.5">{user.email || 'Chưa cập nhật email'}</p>
+                    {/* LIVE NOTIFICATION PANEL */}
+                    {showNotifPanel && (
+                        <div className="absolute right-0 top-full mt-2 w-[350px] bg-[#0A101D] rounded-xl border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col">
+                            {/* Panel Header */}
+                            <div className="px-4 py-3 border-b border-slate-800 bg-[#111827] flex justify-between items-center">
+                                <h3 className="text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2">
+                                    <Bot size={14} className="text-indigo-400"/> Live Operations Feed
+                                </h3>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={markAllAsRead} className="text-[10px] text-slate-500 hover:text-white transition uppercase font-black">Đánh dấu đã đọc</button>
+                                    <button onClick={() => setShowNotifPanel(false)} className="text-slate-500 hover:text-white transition"><X size={16}/></button>
+                                </div>
+                            </div>
+
+                            {/* Panel Body (Scrollable) */}
+                            <div className="flex-1 max-h-[350px] overflow-y-auto custom-scrollbar bg-[#050B14]">
+                                {notifications.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-600 text-[11px] font-mono italic">
+                                        SYSTEMS SECURE. NO RECENT INCIDENTS.
+                                    </div>
+                                ) : notifications.map(n => (
+                                    <div key={n.id} className={`p-3 border-b border-slate-800 flex items-start gap-3 hover:bg-slate-800/40 cursor-pointer ${n.status === 'UNREAD' ? 'bg-[#111827]/50' : ''}`}>
+                                        <div className={`shrink-0 p-1.5 rounded border ${n.severity === 'Critical' ? 'bg-red-500/10 text-red-500 border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.2)]' : n.severity === 'High' ? 'bg-orange-500/10 text-orange-400 border-orange-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'}`}>
+                                            {n.severity === 'Critical' ? <AlertTriangle size={14}/> : <Zap size={14}/>}
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-[11px] text-slate-100 leading-relaxed"><span className={`font-black font-mono mr-1.5 ${n.severity === 'Critical' ? 'text-red-400' : 'text-orange-400'}`}>{n.severity}</span>{n.title}</p>
+                                            <div className="flex justify-between items-center mt-1">
+                                                <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">{n.type}</p>
+                                                <p className="text-[9px] text-slate-600 font-mono italic">{n.time}</p>
+                                            </div>
+                                        </div>
+                                        {n.status === 'UNREAD' && <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-1.5 shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse"></div>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* USER DROPDOWN SECTION */}
+                <div className="relative" ref={userDropdownRef}>
+                    <button 
+                        onClick={() => setShowUserDropdown(!showUserDropdown)}
+                        className={`pl-3 pr-2 py-1.5 rounded-lg border transition-colors flex items-center gap-2 group ${showUserDropdown ? 'bg-slate-800 border-indigo-500' : 'bg-[#111827] border-slate-700 hover:border-indigo-500'}`}
+                    >
+                        <div className="w-7 h-7 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-black text-xs">
+                            {user.full_name?.substring(0,2).toUpperCase()}
+                        </div>
+                        <div className="text-left leading-tight hidden md:block">
+                            <p className="text-xs font-black text-white">{user.full_name}</p>
+                            <p className="text-[9px] text-slate-500 font-mono tracking-widest uppercase">@{user.department_tag || 'OFFICE'}</p>
+                        </div>
+                        <ChevronDown size={14} className={`text-slate-600 group-hover:text-indigo-400 transition-transform ${showUserDropdown ? 'rotate-180 text-indigo-400' : ''}`}/>
+                    </button>
+
+                    {/* DROPDOWN MENU */}
+                    {showUserDropdown && (
+                        <div className="absolute right-0 top-full mt-2 w-48 bg-[#0A101D] rounded-xl border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                            
+                            {/* Menu Header */}
+                            <div className="px-4 py-3 border-b border-slate-800 bg-[#111827]">
+                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Account & Ops</p>
+                                <p className="text-xs font-bold text-white mt-1 truncate">{user.full_name}</p>
                             </div>
                             
-                            <div className="p-2 space-y-1">
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition">
-                                    <UserCog size={16} className="text-blue-400"/>
-                                    Cập nhật thông tin
+                            {/* Menu Items */}
+                            <div className="p-1.5 space-y-0.5">
+                                {/* ADD LINK TO PROFILE */}
+                                <Link to="/profile" onClick={() => setShowUserDropdown(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors font-bold">
+                                    <User size={14} className="text-slate-500"/> Personal Profile
+                                </Link>
+                                <button className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors font-bold">
+                                    <Settings size={14} className="text-slate-500"/> Preferences
                                 </button>
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition">
-                                    <Palette size={16} className="text-purple-400"/>
-                                    Cài đặt giao diện
-                                </button>
-                                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition">
-                                    <Settings size={16} className="text-slate-400"/>
-                                    Cài đặt hệ thống
+                                <button className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors font-bold">
+                                    <Lock size={14} className="text-slate-500"/> Session & Access
                                 </button>
                             </div>
 
-                            <div className="p-2 border-t border-slate-800">
+                            {/* Menu Footer */}
+                            <div className="border-t border-slate-800 p-1.5 bg-[#050B14]">
                                 <button 
-                                    onClick={logout}
-                                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold text-red-400 hover:text-white bg-red-500/10 hover:bg-red-500 rounded-xl transition"
+                                    onClick={handleLogout}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-red-400 hover:bg-red-500/10 rounded-lg transition-colors font-bold"
                                 >
-                                    <LogOut size={16} /> Đăng xuất
+                                    <LogOut size={14}/> TERMINATE SESSION
                                 </button>
                             </div>
                         </div>
                     )}
                 </div>
             </div>
-        </header>
+        </nav>
     );
 };
 

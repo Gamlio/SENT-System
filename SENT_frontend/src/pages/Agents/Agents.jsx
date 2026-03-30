@@ -10,25 +10,23 @@ import { useUsers } from '../User/hooks/useUsers';
 import AgentActions from './components/AgentActions'; 
 import GenerateTokenButton from './components/GenerateTokenButton';
 import AgentBulkActions from './components/AgentBulkActions';
-import AppDialog from '../../components/AppDialog';
 import { useSocketSubscription } from '../../context/useSocketSubscription';
 import axios from '../../api/axios';
 
-// --- Static Data ---
 const riskScoringLevels = [
-    { label: 'Rủi Ro Thấp', value: 'Low', color: 'cyan', icon: <ShieldCheck />, bg: '#e6fffb' },
-    { label: 'Rủi Ro Trung Bình', value: 'Medium', color: 'orange', icon: <Monitor />, bg: '#fff7e6' },
-    { label: 'Rủi Ro Cao', value: 'High', color: 'red', icon: <ShieldAlert />, bg: '#fff1f0' },
-    { label: 'Nguy Hiểm', value: 'Critical', color: 'magenta', icon: <ShieldAlert />, bg: '#fff0f6' },
+    { label: 'Rủi Ro Thấp', value: 'Low', color: '#10b981', icon: <ShieldCheck /> },
+    { label: 'Rủi Ro Trung Bình', value: 'Medium', color: '#f59e0b', icon: <Monitor /> },
+    { label: 'Rủi Ro Cao', value: 'High', color: '#ef4444', icon: <ShieldAlert /> },
+    { label: 'Nguy Hiểm', value: 'Critical', color: '#be123c', icon: <ShieldAlert /> },
 ];
 
 const AgentStatusTag = React.memo(({ status }) => {
     const isOnline = status === 'online';
     return (
-        <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-tighter border flex items-center gap-1 w-fit ${
-            isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-500 border-slate-700'
+        <div className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 w-max ${
+            isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]' : 'bg-slate-800 text-slate-500 border-slate-700'
         }`}>
-            <div className={`w-1 h-1 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></div>
+            <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></div>
             {isOnline ? 'Online' : 'Offline'}
         </div>
     );
@@ -43,14 +41,13 @@ const RiskScoreDisplay = React.memo(({ score }) => {
         return false;
     });
 
-    if (!level) return <span className="text-slate-500 text-sm font-mono">{score}</span>;
+    if (!level) return <span className="text-slate-500 text-xs font-mono">{score}</span>;
 
     return (
         <div className="flex items-center gap-2">
-            <span className="text-xl font-black text-white w-8 text-right font-mono">{score}</span>
-            <div style={{ color: level.color }} className="flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg bg-slate-800 border border-slate-700">
-                {React.cloneElement(level.icon, { size: 12 })}
-                {level.label}
+            <span className={`text-lg font-black w-8 text-right font-mono ${score > 70 ? 'text-red-500' : score > 30 ? 'text-amber-500' : 'text-emerald-500'}`}>{score}</span>
+            <div style={{ color: level.color, borderColor: `${level.color}40`, backgroundColor: `${level.color}10` }} className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border">
+                {React.cloneElement(level.icon, { size: 10 })} {level.label}
             </div>
         </div>
     );
@@ -60,36 +57,22 @@ const Agents = () => {
     const navigate = useNavigate();
     const {
         currentAgents = [], searchQuery, setSearchQuery, 
-        currentPage, setCurrentPage, totalPages, fetchAgents,
-        sortConfig, setSortConfig, agents = [], loading
+        sortConfig, setSortConfig, agents = [], fetchAgents
     } = useAgents();
 
     const { users = [] } = useUsers();
-    
-    // --- State Management ---
     const [selectedAgents, setSelectedAgents] = useState([]);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [targetAgentHwid, setTargetAgentHwid] = useState(null);
-    const [deleteReason, setDeleteReason] = useState('');
     const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: '', hwids: [] });
 
-    // --- Real-time Optimization (Debounce) ---
     const debounceRef = useRef(null);
     const handleAgentUpdate = useCallback(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-            console.log("🔄 [WS] Refreshing Agent List (Debounced)");
-            fetchAgents();
-        }, 500);
+        debounceRef.current = setTimeout(() => fetchAgents(), 500);
     }, [fetchAgents]);
 
     useSocketSubscription(['AGENT_STATUS_CHANGED', 'REFRESH_AGENT_LIST', 'BASELINE_COMPLETED'], handleAgentUpdate);
-
-    // --- Action Handlers ---
-    const closeDialog = () => {
-        setDialogConfig(prev => ({ ...prev, isOpen: false }));
-        setDeleteReason('');
-    };
 
     const handleAssignManager = async (userId) => {
         try {
@@ -101,43 +84,33 @@ const Agents = () => {
             setShowAssignModal(false);
             setSelectedAgents([]);
             fetchAgents();
-        } catch (err) {
-            alert("Lỗi phân công: " + (err.response?.data?.error || "Server error"));
-        }
+        } catch (err) { alert("Lỗi phân công!"); }
     };
 
-    // --- CẤU TRÚC BẢNG MỚI ---
     const tableColumns = useMemo(() => [
         {
-            key: 'hostname',
-            label: 'Thiết bị & Trạng thái',
-            sortable: true,
-            className: 'w-[30%]', 
+            key: 'hostname', label: 'Asset / IP', className: 'w-[30%]', 
             render: (a) => {
-                // Động Icon theo Device Type
                 const isOnline = a.status === 'online';
                 let IconComponent = Monitor;
-                let iconColor = isOnline ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 bg-slate-800';
+                let iconColor = isOnline ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 'text-slate-500 bg-slate-800 border-slate-700';
                 
-                if (a.device_type === 'SERVER') { IconComponent = Server; iconColor = isOnline ? 'text-purple-400 bg-purple-500/10' : 'text-purple-900 bg-slate-800'; }
-                if (a.device_type === 'IT_ADMIN') { IconComponent = Briefcase; iconColor = isOnline ? 'text-blue-400 bg-blue-500/10' : 'text-blue-900 bg-slate-800'; }
-                if (a.device_type === 'GUEST') { IconComponent = UserX; iconColor = 'text-stone-400 bg-stone-500/10'; }
+                if (a.device_type === 'SERVER') { IconComponent = Server; iconColor = isOnline ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-purple-900 bg-slate-800 border-slate-700'; }
+                if (a.device_type === 'IT_ADMIN') { IconComponent = Briefcase; iconColor = isOnline ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' : 'text-blue-900 bg-slate-800 border-slate-700'; }
 
                 return (
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <div className={`p-2.5 rounded-xl shrink-0 transition-colors ${iconColor}`}>
-                            <IconComponent size={18} />
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg border transition-colors ${iconColor}`}>
+                            <IconComponent size={14} />
                         </div>
-                        <div className="min-w-0 flex-1">
-                            <h4 className="font-bold text-white text-sm truncate group-hover:text-emerald-400 transition-colors" title={a.hostname}>
+                        <div>
+                            <h4 className="font-bold text-white text-xs truncate group-hover:text-indigo-400 transition-colors cursor-pointer" title={a.hostname}>
                                 {a.hostname}
                             </h4>
                             <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[10px] font-mono text-slate-500 shrink-0">{a.ip_address}</span>
+                                <span className="text-[10px] font-mono text-slate-500">{a.ip_address}</span>
                                 {a.baseline_status === 'COMPLETED' && (
-                                    <span className="text-[8px] font-black uppercase tracking-widest bg-indigo-500/20 text-indigo-400 px-1 rounded border border-indigo-500/30">
-                                        BASELINE OK
-                                    </span>
+                                    <span className="text-[8px] font-black uppercase tracking-widest bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30">BASELINED</span>
                                 )}
                             </div>
                         </div>
@@ -146,162 +119,94 @@ const Agents = () => {
             }
         },
         {
-            key: 'manager',
-            label: 'Người phụ trách',
-            className: 'w-[20%]',
+            key: 'manager', label: 'Owner / Dept', className: 'w-[20%]',
             render: (a) => (
-                <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0 flex items-center justify-center text-slate-500 border border-slate-700">
-                        <User size={14} />
-                    </div>
-                    <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-300 truncate">{a.manager?.full_name || 'Chưa bàn giao'}</p>
-                        <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter truncate">
-                            {a.department_tag || 'OFFICE'} {/* Hiển thị Department Tag */}
-                        </p>
-                    </div>
+                <div>
+                    <p className="text-[11px] font-bold text-slate-300 truncate">{a.manager?.full_name || 'Unassigned'}</p>
+                    <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mt-0.5 border border-slate-700 bg-[#050B14] w-max px-1.5 py-0.5 rounded">
+                        {a.department_tag || 'OFFICE'}
+                    </p>
                 </div>
             )
         },
         {
-            key: 'trust',
-            label: 'Uy Tín (1 Năm)',
-            sortable: true,
-            className: 'w-[15%]',
+            key: 'trust', label: 'Trust', className: 'w-[15%]', sortable: true,
             render: (a) => {
                 const trust = a.trust_score ?? 100;
                 const color = trust >= 80 ? 'bg-emerald-500' : trust >= 50 ? 'bg-yellow-500' : 'bg-red-500';
                 return (
-                    <div className="flex flex-col gap-1 w-24">
-                        <div className="flex justify-between items-center text-[10px] font-bold">
-                            <span className={trust >= 80 ? 'text-emerald-400' : trust >= 50 ? 'text-yellow-400' : 'text-red-400'}>{trust}/100</span>
-                        </div>
-                        <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                            <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${trust}%` }}></div>
-                        </div>
+                    <div className="w-24">
+                        <span className={`text-[10px] font-bold font-mono ${trust >= 80 ? 'text-emerald-400' : trust >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>{trust}/100</span>
+                        <div className="w-full bg-[#050B14] rounded-full h-1 mt-1 border border-slate-800"><div className={`h-full rounded-full ${color}`} style={{ width: `${trust}%` }}></div></div>
                     </div>
                 );
             }
         },
         {
-            key: 'risk',
-            label: 'Rủi ro',
-            sortable: true,
-            className: 'w-[15%]',
-            render: (a) => <div className="flex justify-start"><RiskScoreDisplay score={a.risk_score} /></div>
+            key: 'risk', label: 'Risk Score', className: 'w-[15%]', sortable: true,
+            render: (a) => <RiskScoreDisplay score={a.risk_score} />
         },
         {
-            key: 'last_seen',
-            label: 'Cập nhật',
-            sortable: true,
-            className: 'w-[15%]',
+            key: 'last_seen', label: 'Status / Seen', className: 'w-[15%]', sortable: true,
             render: (a) => (
-                <div className="flex flex-col">
+                <div className="flex flex-col gap-1">
                     <AgentStatusTag status={a.status} />
-                    <span className="text-slate-500 text-[10px] font-medium mt-1 truncate">
-                        {getTimeAgo(a.last_seen, a.status)}
-                    </span>
+                    <span className="text-slate-500 text-[9px] font-mono uppercase tracking-widest truncate">{getTimeAgo(a.last_seen, a.status)}</span>
                 </div>
             )
         }
     ], []);
-    // --- Render ---
+
     return (
-        //pb-40 để nhường chỗ cho thanh Bulk Actions ở đáy
-        <div className="p-6 max-w-[1600px] mx-auto text-slate-200 pb-40 relative">
+        <div className="p-6 h-[calc(100vh-60px)] flex flex-col text-slate-200 bg-[#050B14] font-sans">
             
-            {/* 1. Header Section: Sửa lỗi vị trí và tỷ lệ */}
-            {/* Trên mobile flex-col gap-4, trên md+ flex-row items-center justify-between mb-10 */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-10">
+            <div className="flex justify-between items-end mb-4 shrink-0">
                 <div>
-                    <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-                        <Monitor className="text-emerald-500" size={32}/> 
-                        Hệ thống Máy trạm
+                    <h1 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tight">
+                        <Monitor className="text-indigo-500"/> ENDPOINT ASSETS
                     </h1>
-                    <p className="text-slate-500 font-medium mt-1">
-                        Quản lý và giám sát an ninh thiết bị đầu cuối ({agents.length} máy).
-                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Total Enrolled Devices: {agents.length}</p>
                 </div>
-                {/* Nút bấm tự động nằm sang bên phải trên máy tính */}
-                <div className="w-full md:w-auto">
-                    <GenerateTokenButton />
-                </div>
+                <GenerateTokenButton />
             </div>
 
-            {/* 2. Main Content Table */}
-            <div className="bg-[#1e293b] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden relative">
-                
-                {/* Thanh tìm kiếm: Tối ưu vị trí */}
-                <div className="p-5 border-b border-slate-800 bg-slate-800/20 flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
-                    <div className="relative w-full sm:max-w-md">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                        <input 
-                            type="text" 
-                            placeholder="Tìm kiếm theo tên máy, IP, HWID..."
-                            className="w-full bg-slate-900 border border-slate-700 rounded-2xl py-3 pl-12 pr-4 text-sm text-white placeholder:text-slate-600 focus:border-emerald-500/50 outline-none transition-all shadow-inner"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+            <div className="flex-1 bg-[#0A101D] rounded-lg border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+                <div className="p-3 border-b border-slate-800 bg-[#111827] flex justify-between items-center shrink-0">
+                    <div className="relative w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                        <input type="text" placeholder="Search IP, Hostname..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-[#050B14] border border-slate-800 text-xs text-white rounded pl-9 pr-4 py-1.5 outline-none focus:border-indigo-500 font-mono transition-colors" />
                     </div>
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                        <Tag color="green" className="font-mono text-xs px-3 py-1 rounded-lg">Online: {agents.filter(a=>a.status === 'online').length}</Tag>
-                        <button onClick={() => fetchAgents()} className="p-3 bg-slate-900 hover:bg-slate-800 rounded-xl transition text-slate-500 hover:text-white border border-slate-700">
-                            <Activity size={18} />
-                        </button>
+                    <div className="flex items-center gap-2">
+                        <Tag className="text-emerald-500" size={12}/> <span className="text-[10px] font-mono font-bold text-slate-400">ONLINE: {agents.filter(a=>a.status === 'online').length}</span>
                     </div>
                 </div>
 
-                {/* Bảng dữ liệu co giãn thông minh */}
-                <div className="overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
-                        <thead>
-                            <tr className="border-b border-slate-800/50 bg-slate-900/30">
-                                <th className="p-4 w-12 text-center">
-                                    <input 
-                                        type="checkbox" 
-                                        className="w-4 h-4 rounded border-slate-700 bg-slate-800 checked:bg-emerald-500 transition-all cursor-pointer accent-emerald-500"
-                                        onChange={(e) => {
-                                            if (e.target.checked) setSelectedAgents(currentAgents.map(a => a.hwid));
-                                            else setSelectedAgents([]);
-                                        }}
-                                    />
-                                </th>
+                {/* KHUNG BẢNG VỚI MIN-HEIGHT CHỐNG CẮT DROPDOWN */}
+                <div className="overflow-x-auto custom-scrollbar flex-1 min-h-[450px] relative pb-20">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                        <thead className="sticky top-0 z-10 bg-[#111827]">
+                            <tr className="border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-500">
+                                <th className="p-3 w-10 text-center"><input type="checkbox" className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" onChange={(e) => setSelectedAgents(e.target.checked ? currentAgents.map(a => a.hwid) : [])}/></th>
                                 {tableColumns.map(col => (
-                                    <th key={col.key} className={`p-4 text-[10px] font-black uppercase tracking-widest text-slate-500 ${col.className}`}>
-                                        <div className="flex items-center gap-2 cursor-pointer hover:text-slate-300 transition-colors" 
-                                             onClick={() => col.sortable && setSortConfig({ key: col.key, direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
+                                    <th key={col.key} className={`p-3 font-black ${col.className}`}>
+                                        <div className="flex items-center gap-1.5 cursor-pointer hover:text-white" onClick={() => col.sortable && setSortConfig({ key: col.key, direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
                                             {col.label} {col.sortable && <ArrowUpDown size={10}/>}
                                         </div>
                                     </th>
                                 ))}
-                                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500 w-20 text-right">Thao tác</th>
+                                <th className="p-3 text-right font-black">ACTION</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800/40">
+                        <tbody className="divide-y divide-slate-800/50">
                             {currentAgents.map((agent) => (
-                                <tr key={agent.hwid} className="group hover:bg-slate-800/30 transition-all cursor-pointer items-center" onClick={() => navigate(`/agents/${agent.hwid}`)}>
-                                    <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={selectedAgents.includes(agent.hwid)}
-                                            onChange={() => {
-                                                setSelectedAgents(prev => prev.includes(agent.hwid) ? prev.filter(id => id !== agent.hwid) : [...prev, agent.hwid]);
-                                            }}
-                                            className="w-4 h-4 rounded border-slate-700 bg-slate-800 checked:bg-emerald-500 transition-all cursor-pointer accent-emerald-500"
-                                        />
+                                <tr key={agent.hwid} className="hover:bg-slate-800/30 transition-colors cursor-pointer group" onClick={() => navigate(`/agents/${agent.hwid}`)}>
+                                    <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                                        <input type="checkbox" checked={selectedAgents.includes(agent.hwid)} onChange={() => setSelectedAgents(prev => prev.includes(agent.hwid) ? prev.filter(id => id !== agent.hwid) : [...prev, agent.hwid])} className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" />
                                     </td>
-                                    {tableColumns.map(col => (
-                                        <td key={col.key} className={`p-4 align-middle ${col.className}`}>
-                                            {col.render(agent)}
-                                        </td>
-                                    ))}
-                                    <td className="p-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                        {/* TRUYỀN HÀM MỞ MODAL ASSIGN VÀO ĐÂY */}
-                                        <AgentActions 
-                                            agent={agent} 
-                                            onRefresh={fetchAgents} 
-                                            onOpenAssignModal={() => { setTargetAgentHwid(agent.hwid); setShowAssignModal(true); }} 
-                                        />
+                                    {tableColumns.map(col => <td key={col.key} className={`p-3 ${col.className}`}>{col.render(agent)}</td>)}
+                                    <td className="p-3 text-right" onClick={e => e.stopPropagation()}>
+                                        <AgentActions agent={agent} onRefresh={fetchAgents} onOpenAssignModal={() => { setTargetAgentHwid(agent.hwid); setShowAssignModal(true); }} />
                                     </td>
                                 </tr>
                             ))}
@@ -310,40 +215,31 @@ const Agents = () => {
                 </div>
             </div>
 
-            {/* 3. Bulk Actions Bar: Sửa vị trí thành cố định ở đáy */}
             {selectedAgents.length > 0 && (
-                <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-slate-900/80 backdrop-blur-sm border-t border-slate-800 shadow-lg animate-in slide-in-from-bottom duration-300">
-                    <div className="max-w-[1600px] mx-auto">
-                        <AgentBulkActions 
-                            selectedAgents={selectedAgents} 
-                            clearSelection={() => setSelectedAgents([])} 
-                            onRefresh={fetchAgents}
-                            onOpenAssignModal={() => { setTargetAgentHwid(null); setShowAssignModal(true); }}
-                            onOpenDeleteModal={(hwids) => setDialogConfig({ isOpen: true, type: 'BULK_DELETE', hwids })}
-                        />
-                    </div>
+                <div className="fixed bottom-0 left-6 right-6 z-50 p-3 bg-[#0A101D] border-t border-slate-800 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] flex justify-center">
+                    <AgentBulkActions selectedAgents={selectedAgents} clearSelection={() => setSelectedAgents([])} onRefresh={fetchAgents} onOpenApproveModal={() => { setTargetAgentHwid(null); setShowAssignModal(true); }} onOpenDeleteModal={(hwids) => setDialogConfig({ isOpen: true, type: 'BULK_DELETE', hwids })}/>
                 </div>
             )}
 
-            {/* 4. Modals giữ nguyên logic */}
+            {/* MODAL PHÂN CÔNG */}
             {showAssignModal && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-[#1e293b] w-full max-w-lg rounded-3xl border border-slate-700 shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/50">
-                            <h3 className="text-xl font-bold text-white flex items-center gap-3"><UserCheck className="text-emerald-400"/> Phân công quản lý</h3>
-                            <button onClick={() => setShowAssignModal(false)} className="text-slate-500 hover:text-white transition"><X size={24}/></button>
+                    <div className="bg-[#0A101D] w-full max-w-md rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#111827]">
+                            <h3 className="text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2"><UserCheck size={14} className="text-indigo-400"/> Phân công quản lý</h3>
+                            <button onClick={() => setShowAssignModal(false)} className="text-slate-500 hover:text-white transition"><X size={16}/></button>
                         </div>
-                        <div className="p-6 max-h-[400px] overflow-y-auto space-y-2">
+                        <div className="p-2 max-h-[300px] overflow-y-auto custom-scrollbar">
                             {users.map(u => (
-                                <button key={u.id} onClick={() => handleAssignManager(u.id)} className="w-full flex items-center justify-between p-4 hover:bg-emerald-500/10 rounded-2xl border border-transparent hover:border-emerald-500/30 transition-all group">
+                                <button key={u.id} onClick={() => handleAssignManager(u.id)} className="w-full flex items-center justify-between p-3 hover:bg-indigo-500/10 rounded-lg border border-transparent hover:border-indigo-500/30 transition-all group">
                                     <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-slate-900 rounded-lg text-slate-500 group-hover:text-emerald-400 transition-colors"><User size={18}/></div>
+                                        <div className="p-1.5 bg-[#050B14] border border-slate-800 rounded text-slate-500 group-hover:text-indigo-400 transition-colors"><User size={14}/></div>
                                         <div className="text-left">
-                                            <p className="text-sm font-bold text-white">{u.full_name}</p>
-                                            <p className="text-[10px] text-slate-500 font-mono">@{u.username}</p>
+                                            <p className="text-xs font-bold text-white">{u.full_name}</p>
+                                            <p className="text-[9px] text-slate-500 font-mono">@{u.username}</p>
                                         </div>
                                     </div>
-                                    <ChevronRight size={16} className="text-slate-700 group-hover:text-emerald-400 transition-transform group-hover:translate-x-1"/>
+                                    <ChevronRight size={14} className="text-slate-700 group-hover:text-indigo-400 transition-transform group-hover:translate-x-1"/>
                                 </button>
                             ))}
                         </div>

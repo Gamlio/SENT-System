@@ -65,9 +65,10 @@ func main() {
 		{
 			agentPublicGroup.POST("/push", agents.PushDataHandler)
 			agentPublicGroup.POST("/enroll", agents.EnrollAgent)
+			agentPublicGroup.GET("/sync-policies", policies.SyncPoliciesForAgent)
 		}
 		protected := v1Group.Group("")
-		protected.Use(middleware.AuthRequired()) // <--- CHỐT BẢO VỆ NẰM Ở ĐÂY
+		protected.Use(middleware.AuthRequired())
 		{
 			usersGroup := protected.Group("/users")
 			{
@@ -88,7 +89,7 @@ func main() {
 				agentsGroup.POST("/:hwid/trigger-baseline", agents.TriggerBaseline)
 				agentsGroup.PUT("/:hwid/assign", agents.AssignManager)
 				agentsGroup.PUT("/:hwid/device-type", agents.UpdateDeviceType)
-				agentPublicGroup.GET("/sync-policies", policies.SyncPoliciesForAgent)
+				agentsGroup.PUT("/:hwid/department", agents.UpdateDepartment)
 				agentsGroup.POST("/:hwid/request-delete", agents.RequestDeleteAgent)
 				agentsGroup.POST("/bulk-request-delete", agents.RequestBulkDeleteAgents)
 			}
@@ -113,8 +114,8 @@ func main() {
 			}
 			dashGroup := protected.Group("/dashboard")
 			{
+				// Trỏ về đúng Handler mỏng vừa tạo
 				dashGroup.GET("/stats", dashboard.GetDashboardStats)
-
 			}
 
 			incidentsGroup := protected.Group("/incidents")
@@ -156,7 +157,6 @@ func main() {
 				filesGroup.GET("/incidents/:filename", incidents.GetIncidentImage)
 			}
 		}
-		r.Run(":8000")
 	}
 
 	port := os.Getenv("PORT")

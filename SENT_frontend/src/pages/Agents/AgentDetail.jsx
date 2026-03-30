@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Cpu, ArrowLeft, User, Smartphone, Mail, ShieldAlert, ShieldCheck, Fingerprint, Tag } from 'lucide-react';
+import { Cpu, ArrowLeft, User, ShieldCheck, Fingerprint, Tag, Network, Monitor, AlertTriangle, ShieldAlert, Zap, Usb, Package } from 'lucide-react';
 import axios from '../../api/axios';
 
 import AgentUSB from './components/AgentUSB';
@@ -9,19 +9,17 @@ import AgentLogs from './components/AgentLogs';
 import AgentPort from './components/AgentPort';
 import { useSocketSubscription } from '../../context/useSocketSubscription';
 
-
 const AgentDetail = () => {
     const { hwid } = useParams();
     const navigate = useNavigate();
     const [agent, setAgent] = useState(null);
     const [logs, setLogs] = useState([]);
+    const [activeTab, setActiveTab] = useState('LOGS'); // Tabs điều hướng khung phải
     const lastFetchTime = useRef(0);
 
     const fetchDetail = useCallback(async (force = false) => {
         const now = Date.now();
-        // Chốt chặn 2 giây
         if (!force && now - lastFetchTime.current < 2000) return;
-
         try {
             const res = await axios.get(`/agents/${hwid}`);
             setAgent(res.data);
@@ -31,189 +29,174 @@ const AgentDetail = () => {
         } catch (err) { console.error(err); }
     }, [hwid]);
 
-    useEffect(() => {
-        fetchDetail(true);
-    }, [fetchDetail]);
-
+    useEffect(() => { fetchDetail(true); }, [fetchDetail]);
     useSocketSubscription(['REFRESH_DATA', 'AGENT_UPDATE'], (data) => { if (data?.hwid === hwid) fetchDetail(); });
 
-    // [MỚI]: Hàm gọi cập nhật Phòng ban
     const handleUpdateDepartment = async (tag) => {
         try {
             await axios.put(`/agents/${hwid}/department`, { department_tag: tag });
-            fetchDetail(true); // Tải lại để thấy thay đổi
+            fetchDetail(true); 
         } catch (err) { alert("Lỗi cập nhật phòng ban!"); }
     };
 
-    if (!agent) return <div className="p-10 text-slate-400 font-bold text-center">Đang tải dữ liệu...</div>;
+    if (!agent) return (
+        <div className="h-screen bg-[#050B14] flex flex-col items-center justify-center gap-4">
+            <Zap size={40} className="text-indigo-500 animate-pulse"/>
+            <p className="text-indigo-500 font-mono text-sm tracking-widest animate-pulse uppercase">Retrieving Asset Profile...</p>
+        </div>
+    );
     
     const inv = agent.inventory || {}; 
     const isOnline = agent.status === 'online';
 
     return (
-        <div className="text-slate-200 p-6 pb-20 max-w-[1600px] mx-auto">
-            {/* --- HEADER --- */}
-            <div className="flex flex-col md:flex-row md:items-center gap-4 mb-6">
+        <div className="h-[calc(100vh-60px)] bg-[#050B14] text-slate-200 flex flex-col font-sans overflow-hidden">
+            
+            {/* --- HEADER TỔNG --- */}
+            <div className="h-14 border-b border-slate-800 bg-[#0A101D] px-6 flex justify-between items-center shrink-0 z-10 shadow-md">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => navigate('/agents')} className="p-2 bg-slate-800 rounded-xl hover:bg-slate-700 transition text-slate-400 hover:text-white shrink-0">
-                        <ArrowLeft size={20}/>
-                    </button>
+                    <button onClick={() => navigate('/agents')} className="text-slate-500 hover:text-white transition"><ArrowLeft size={16}/></button>
+                    <div className="h-6 w-px bg-slate-800"></div>
+                    <Monitor size={16} className={isOnline ? 'text-emerald-400' : 'text-slate-500'}/>
+                    <h1 className="text-sm font-black text-white uppercase tracking-widest">{agent.hostname}</h1>
+                    <span className="text-[10px] text-slate-500 font-mono bg-[#050B14] px-1.5 py-0.5 rounded border border-slate-800">{agent.hwid}</span>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${agent.baseline_status === 'COMPLETED' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                        <Fingerprint size={10}/> {agent.baseline_status || 'NO BASELINE'}
+                    </div>
+                    <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></div> {isOnline ? 'ONLINE' : 'OFFLINE'}
+                    </div>
+                </div>
+            </div>
+
+            {/* --- BODY CHIA ĐÔI MÀN HÌNH --- */}
+            <div className="flex-1 flex overflow-hidden">
+                
+                {/* NỬA TRÁI (35%): THÔNG TIN TỔNG QUAN DÀY ĐẶC */}
+                <div className="w-[380px] h-full overflow-y-auto custom-scrollbar border-r border-slate-800 bg-[#0A101D]/50 p-5 flex flex-col gap-5 shrink-0">
+                    
+                    {/* RISK & TRUST SCORE TIGHT GRID */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-[#111827] border border-slate-800 rounded-lg p-3 text-center shadow-inner">
+                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Risk Score</p>
+                            <div className="flex items-baseline justify-center gap-0.5">
+                                <span className={`text-3xl font-black tracking-tighter ${agent.risk_score > 70 ? 'text-red-500' : agent.risk_score > 30 ? 'text-amber-500' : 'text-emerald-500'}`}>{agent.risk_score || 0}</span>
+                                <span className="text-[10px] text-slate-600 font-bold">/100</span>
+                            </div>
+                        </div>
+                        <div className="bg-[#111827] border border-slate-800 rounded-lg p-3 text-center shadow-inner relative overflow-hidden">
+                            <ShieldCheck size={40} className="absolute -right-3 -bottom-3 text-emerald-500/5 rotate-12" />
+                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1 relative z-10">Trust Score</p>
+                            <div className="flex items-baseline justify-center gap-0.5 relative z-10">
+                                <span className={`text-3xl font-black tracking-tighter ${(agent.trust_score ?? 100) >= 80 ? 'text-emerald-500' : (agent.trust_score ?? 100) >= 50 ? 'text-yellow-500' : 'text-red-500'}`}>{agent.trust_score ?? 100}</span>
+                                <span className="text-[10px] text-slate-600 font-bold">/100</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* TAGS & QUẢN LÝ PHÒNG BAN */}
                     <div>
-                        <h1 className="text-2xl font-black text-white">{agent.hostname}</h1>
-                        <p className="text-xs text-slate-500 font-mono mt-0.5">{agent.hwid}</p>
-                    </div>
-                </div>
-                
-                {/* THANH TRẠNG THÁI */}
-                <div className="md:ml-auto flex items-center gap-3 flex-wrap justify-start md:justify-end">
-                    
-                    {/* Ngữ Cảnh Phòng Ban (Drop-down đổi Tag trực tiếp) */}
-                    <div className="flex items-center bg-slate-800 rounded-full border border-slate-700 overflow-hidden">
-                        <div className="px-3 py-1.5 bg-slate-900 flex items-center gap-1.5 text-[10px] font-black uppercase text-slate-400 border-r border-slate-700">
-                            <Tag size={12}/> Phòng Ban
-                        </div>
-                        <select 
-                            value={agent.department_tag || 'OFFICE'} 
-                            onChange={(e) => handleUpdateDepartment(e.target.value)}
-                            className="bg-transparent text-[10px] font-bold uppercase text-amber-400 px-3 py-1.5 outline-none cursor-pointer hover:bg-slate-700 transition-colors"
-                        >
-                            <option value="OFFICE" className="bg-slate-800">Văn Phòng (Mặc định)</option>
-                            <option value="DEV" className="bg-slate-800 text-blue-400">DEV (Lập trình/IT)</option>
-                            <option value="FINANCE" className="bg-slate-800 text-emerald-400">FINANCE (Kế Toán)</option>
-                            <option value="PROD" className="bg-slate-800 text-purple-400">PROD (Sản xuất)</option>
-                        </select>
-                    </div>
-
-                    {/* Trạng thái Baseline */}
-                    <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${
-                        agent.baseline_status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                        agent.baseline_status === 'SCANNING' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse' :
-                        'bg-slate-800 text-slate-500 border-slate-700'
-                    }`}>
-                        <Fingerprint size={12}/> BASELINE: {agent.baseline_status || 'NONE'}
-                    </div>
-
-                    <div className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border flex items-center gap-2 ${
-                        isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'
-                    }`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></div>
-                        {isOnline ? 'Trực tuyến' : 'Ngoại tuyến'}
-                    </div>
-                </div>
-            </div>
-           
-
-            {/* --- GRID CHÍNH: 3 CỘT (Thông tin - Uy tín - Người quản lý) --- */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch mb-8">
-                
-                {/* 1. ĐIỂM RỦI RO (TỨC THỜI) & CẤU HÌNH */}
-                <div className="space-y-6 flex flex-col">
-                    <div className="p-5 bg-slate-900/80 rounded-3xl border border-slate-700/50 shadow-xl relative overflow-hidden flex-shrink-0">
-                        <div className="flex justify-between items-end mb-4 relative z-10">
-                            <div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Rủi ro Tức thời</p>
-                                <div className="flex items-baseline gap-1">
-                                    <span className={`text-4xl font-black tracking-tighter ${agent.risk_score > 70 ? 'text-red-500' : agent.risk_score > 30 ? 'text-yellow-500' : 'text-emerald-500'}`}>{agent.risk_score || 0}</span>
-                                    <span className="text-xs text-slate-500 font-bold">/ 100</span>
-                                </div>
+                        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5 border-b border-slate-800 pb-1.5"><Tag size={12}/> Security Context</h3>
+                        <div className="bg-[#111827] border border-slate-800 rounded-lg p-3 flex flex-col gap-2">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Department / Role</span>
+                                <select 
+                                    value={agent.department_tag || 'OFFICE'} 
+                                    onChange={(e) => handleUpdateDepartment(e.target.value)}
+                                    className="bg-[#050B14] text-[10px] font-black uppercase tracking-widest text-indigo-400 px-2 py-1 rounded border border-slate-700 outline-none cursor-pointer"
+                                >
+                                    <option value="OFFICE">OFFICE (Default)</option>
+                                    <option value="DEV">DEV (IT/Code)</option>
+                                    <option value="FINANCE">FINANCE (Risk: High)</option>
+                                    <option value="PROD">PROD (Server)</option>
+                                </select>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Device Tier</span>
+                                <span className="text-[10px] font-black uppercase text-slate-300">{agent.device_type || 'OFFICE'}</span>
                             </div>
                         </div>
-                        
-                        <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                            <div className={`h-2.5 rounded-full ${agent.risk_score > 70 ? 'bg-red-500' : agent.risk_score > 30 ? 'bg-yellow-500' : 'bg-emerald-500'}`} style={{ width: `${agent.risk_score || 0}%` }}></div>
+                    </div>
+
+                    {/* THÔNG SỐ CẤU HÌNH (SPECS) */}
+                    <div>
+                        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5 border-b border-slate-800 pb-1.5"><Cpu size={12}/> Hardware Specs</h3>
+                        <div className="bg-[#111827] border border-slate-800 rounded-lg p-3 space-y-2">
+                            <InfoRow label="IP Address" value={agent.ip_address} icon={<Network size={10} className="text-emerald-500"/>} />
+                            <InfoRow label="CPU" value={inv.cpu_model} />
+                            <InfoRow label="RAM" value={`${inv.ram_total_gb} GB`} />
+                            <InfoRow label="OS" value={inv.os_info} />
                         </div>
                     </div>
 
-                    <div className="bg-[#1e293b] p-5 rounded-3xl border border-slate-800 shadow-xl flex-1">
-                        <h3 className="text-xs font-black text-slate-500 uppercase flex items-center gap-2 mb-4 tracking-widest">
-                            <Cpu size={14}/> Cấu hình
-                        </h3>
-                        <div className="space-y-3">
-                            <InfoRow label="IP Address" value={agent.ip_address} />
-                            <InfoRow label="CPU Model" value={inv.cpu_model} />
-                            <InfoRow label="RAM Total" value={`${inv.ram_total_gb} GB`} />
-                            <InfoRow label="OS System" value={inv.os_info} />
-                        </div>
-                    </div>
-                </div>
-
-                {/* 2. CHỈ SỐ UY TÍN (TRUST SCORE) - Đánh giá 1 năm */}
-                <div className="bg-slate-900/80 p-6 rounded-3xl border border-slate-700/50 shadow-xl flex flex-col justify-center items-center text-center relative overflow-hidden">
-                    <ShieldCheck size={120} className="absolute -right-10 -bottom-10 text-emerald-500/5 rotate-12" />
-                    
-                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6">Lý lịch An ninh (Trust Score)</h3>
-                    
-                    {/* Vòng tròn điểm */}
-                    <div className="relative w-40 h-40 flex items-center justify-center mb-4">
-                        <svg className="w-full h-full rotate-[-90deg]" viewBox="0 0 36 36">
-                            <path className="text-slate-800" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                            <path 
-                                className={`${(agent.trust_score ?? 100) >= 80 ? 'text-emerald-500' : (agent.trust_score ?? 100) >= 50 ? 'text-yellow-500' : 'text-red-500'} transition-all duration-1000`} 
-                                strokeDasharray={`${agent.trust_score ?? 100}, 100`} 
-                                strokeWidth="3" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
-                            />
-                        </svg>
-                        <div className="absolute flex flex-col items-center">
-                            <span className="text-4xl font-black text-white tracking-tighter">{agent.trust_score ?? 100}</span>
-                            <span className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Điểm 1 Năm</span>
-                        </div>
-                    </div>
-                    
-                    <p className="text-[11px] text-slate-400 mt-2 px-4 leading-relaxed">
-                        Mỗi sự cố <span className="text-red-400 font-bold">P1</span> sẽ trừ 15 điểm. Hoạt động an toàn 7 ngày liên tiếp cộng 2 điểm.
-                    </p>
-                </div>
-
-                {/* 3. NGƯỜI CHỊU TRÁCH NHIỆM */}
-                <div className="bg-[#1e293b] p-5 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-3 opacity-10 text-emerald-500"><User size={80}/></div>
-                    <h3 className="text-xs font-black text-slate-500 uppercase flex items-center gap-2 mb-4 tracking-widest z-10 relative">
-                        <User size={14}/> Người chịu trách nhiệm
-                    </h3>
-                    {agent.manager ? (
-                        <div className="relative z-10">
-                            <p className="text-lg font-bold text-white mb-1">{agent.manager.full_name}</p>
-                            <p className="text-xs text-slate-500 font-mono mb-4">@{agent.manager.username}</p>
-                            <div className="space-y-2 mt-3">
-                                <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-xl border border-slate-700/50">
-                                    <Smartphone size={14} className="text-blue-400"/> {agent.manager.phone || 'Chưa cập nhật SDT'}
+                    {/* NGƯỜI QUẢN LÝ */}
+                    <div>
+                        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5 border-b border-slate-800 pb-1.5"><User size={12}/> Assigned Owner</h3>
+                        <div className="bg-[#111827] border border-slate-800 rounded-lg p-3">
+                            {agent.manager ? (
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500"><User size={14}/></div>
+                                    <div>
+                                        <p className="text-xs font-bold text-white mb-0.5">{agent.manager.full_name}</p>
+                                        <p className="text-[10px] text-slate-500 font-mono">@{agent.manager.username} • {agent.manager.phone}</p>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-xl border border-slate-700/50">
-                                    <Mail size={14} className="text-emerald-400"/> {agent.manager.email || 'Chưa cập nhật Email'}
-                                </div>
-                            </div>
+                            ) : (
+                                <p className="text-[10px] font-mono text-slate-500 italic">No owner assigned. Asset is orphaned.</p>
+                            )}
                         </div>
-                    ) : (
-                        <div className="py-6 text-center border-2 border-dashed border-slate-700 rounded-xl bg-slate-900/30 mt-4">
-                            <p className="text-sm text-slate-500 font-bold">Chưa phân công nhân sự</p>
-                        </div>
-                    )}
+                    </div>
+
                 </div>
-            </div>
 
-            {/* --- PHẦN 2: DANH SÁCH CHI TIẾT (XẾP DỌC, MỞ RỘNG NGANG FULL) --- */}
-            <div className="space-y-6 mb-8 w-full">
-                <AgentSoftware software={agent.software || []} />
-                <AgentUSB usbLogs={agent.usb_logs || []} />
-                <AgentPort portLogs={agent.open_ports || []} />
-            </div>
+                {/* NỬA PHẢI (65%): TABS CHI TIẾT DỮ LIỆU */}
+                <div className="flex-1 flex flex-col bg-[#050B14] relative border-l border-slate-800/50 min-w-0">
+                    
+                    {/* TABS HEADER TRÀN NGANG */}
+                    <div className="flex border-b border-slate-800 bg-[#0A101D] shrink-0 overflow-x-auto custom-scrollbar">
+                        <TabButton active={activeTab === 'LOGS'} onClick={() => setActiveTab('LOGS')} icon={ShieldAlert} label={`Alert Logs (${logs.length})`} color="text-red-400" />
+                        <TabButton active={activeTab === 'SOFTWARE'} onClick={() => setActiveTab('SOFTWARE')} icon={Package} label={`Software (${agent.software?.length || 0})`} color="text-blue-400" />
+                        <TabButton active={activeTab === 'USB'} onClick={() => setActiveTab('USB')} icon={Usb} label={`USB History (${agent.usb_logs?.length || 0})`} color="text-emerald-400" />
+                        <TabButton active={activeTab === 'PORTS'} onClick={() => setActiveTab('PORTS')} icon={Network} label={`Open Ports (${agent.open_ports?.length || 0})`} color="text-amber-400" />
+                    </div>
 
-            {/* --- PHẦN DƯỚI: NHẬT KÝ CẢNH BÁO (Full Width) --- */}
-            <div className="space-y-4">
-                 <h3 className="text-xs font-black text-slate-500 uppercase flex items-center gap-2 tracking-widest pl-2">
-                    <ShieldAlert size={14} className="text-red-400"/> Lịch sử Cảnh báo & Vi phạm
-                </h3>
-                <AgentLogs logs={logs} />
+                    {/* TABS CONTENT (KHUNG ĐỦ TO ĐỂ CHỨA CÁC COMPONENT CON) */}
+                    <div className="flex-1 overflow-hidden p-4">
+                        {/* Mình bọc css cho các thẻ con bên trong giãn 100% height */}
+                        <div className="h-full w-full [&>div]:h-full [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none">
+                            {activeTab === 'LOGS' && <AgentLogs logs={logs} />}
+                            {activeTab === 'SOFTWARE' && <AgentSoftware software={agent.software || []} />}
+                            {activeTab === 'USB' && <AgentUSB usbLogs={agent.usb_logs || []} />}
+                            {activeTab === 'PORTS' && <AgentPort portLogs={agent.open_ports || []} />}
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div> 
     );
 };
 
-const InfoRow = ({ label, value }) => (
-    <div className="flex justify-between text-xs border-b border-slate-800/50 pb-2 last:border-0">
-        <span className="text-slate-500 font-bold">{label}</span>
-        <span className="text-white font-mono truncate max-w-[60%]">{value || 'N/A'}</span>
+// --- COMPONENT NHỎ HỖ TRỢ HIỂN THỊ ---
+const InfoRow = ({ label, value, icon }) => (
+    <div className="flex justify-between items-center text-[10px]">
+        <span className="text-slate-500 font-bold uppercase tracking-wider">{label}</span>
+        <span className="text-slate-300 font-mono truncate max-w-[60%] flex items-center gap-1.5">{icon} {value || 'N/A'}</span>
     </div>
+);
+
+const TabButton = ({ active, onClick, icon: Icon, label, color }) => (
+    <button 
+        onClick={onClick}
+        className={`flex items-center gap-2 px-6 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap ${
+            active ? `border-indigo-500 text-white bg-slate-800/30` : `border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/10`
+        }`}
+    >
+        <Icon size={14} className={active ? color : 'text-slate-500'}/> {label}
+    </button>
 );
 
 export default AgentDetail;

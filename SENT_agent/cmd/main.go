@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"time"
@@ -24,6 +25,11 @@ func main() {
 		fmt.Println("\nNhấn Enter để thoát...")
 		fmt.Scanln()
 	}()
+
+	// [QUAN TRỌNG] Kiểm tra quyền Admin/Root trước khi làm bất cứ điều gì
+	if !utils.IsAdmin() {
+		log.Fatal("FATAL: Agent yêu cầu quyền Administrator/Root để hoạt động. Vui lòng chạy lại bằng 'Run as Administrator' hoặc 'sudo'.")
+	}
 
 	hInfo, _ := host.Info()
 
@@ -54,11 +60,15 @@ func main() {
 		case "TRIGGER_BASELINE":
 			fmt.Println("🚀 Đang thiết lập Baseline chuẩn...")
 			// Thu thập lại Software và gửi Baseline
-			sw := (&collector.SoftwareSensor{}).Collect()
-			client.SendBaseline(hwid, hostname, "software", sw)
+			sw, err := (&collector.SoftwareSensor{}).Collect()
+			if err == nil {
+				client.SendBaseline(hwid, hostname, "software", sw)
+			}
 
-			usb := (&collector.USBSensor{}).Collect()
-			client.SendBaseline(hwid, hostname, "usb", usb)
+			usb, err := (&collector.USBSensor{}).Collect()
+			if err == nil {
+				client.SendBaseline(hwid, hostname, "usb", usb)
+			}
 		case "ISOLATE":
 			// Logic cô lập máy bằng cách tắt toàn bộ kết nối mạng
 			fmt.Println("🛑 Đã nhận lệnh cô lập máy!")
@@ -77,7 +87,14 @@ func main() {
 
 		// 3. DUYỆT QUA TẤT CẢ CÁC SENSOR ĐÃ ĐĂNG KÝ
 		for _, sensor := range collector.Registry {
-			data := sensor.Collect()
+			data, err := sensor.Collect()
+			if err != nil {
+				log.Printf("⚠️ [WARNING] Sensor '%s' gặp lỗi: %v", sensor.Name(), err)
+				// Nếu data là nil do lỗi nghiêm trọng, bỏ qua không gửi để tránh lỗi Backend
+				if data == nil {
+					continue
+				}
+			}
 
 			go func(logType string, logData interface{}) {
 				status := client.SendPayload(hwid, hostname, logType, logData, false)

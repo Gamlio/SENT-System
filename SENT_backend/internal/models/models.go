@@ -177,6 +177,7 @@ type OpenPort struct {
 	AgentHWID   string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
 	Port        int    `json:"port"`
 	ProcessName string `json:"process_name"`
+	Status      string `json:"status" gorm:"default:'OPEN'"`
 }
 
 type USBLog struct {

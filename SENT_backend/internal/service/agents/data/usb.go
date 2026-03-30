@@ -6,8 +6,7 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
-
-	"gorm.io/gorm/clause"
+	"time"
 )
 
 type AgentUSBRecord struct {
@@ -27,7 +26,28 @@ func ProcessUSB(agent models.Agent, data interface{}) {
 		return
 	}
 
+	incSvc := &incidents.IncidentService{}
+
+	// 1. TẠO MAP CHỨA DANH SÁCH USB ĐANG CẮM
+	incomingUsbMap := make(map[string]bool)
+
+	// 2. CHIỀU THÊM MỚI / CẬP NHẬT (UPSERT)
 	for _, rec := range records {
+		incomingUsbMap[rec.DeviceHash] = true
+
+		var existingUSB models.USBLog
+		result := database.DB.Where("agent_hw_id = ? AND device_hash = ?", agent.HWID, rec.DeviceHash).First(&existingUSB)
+
+		if result.Error == nil {
+			// USB đã từng cắm -> Cập nhật trạng thái thành CONNECTED và update thời gian
+			database.DB.Model(&existingUSB).Updates(map[string]interface{}{
+				"event_type": "CONNECTED",
+				"updated_at": time.Now(),
+			})
+			continue
+		}
+
+		// USB Mới Tinh -> Lưu vào DB
 		usb := models.USBLog{
 			AgentHWID:    agent.HWID,
 			DeviceName:   rec.DeviceName,
@@ -36,26 +56,29 @@ func ProcessUSB(agent models.Agent, data interface{}) {
 			PID:          rec.PID,
 			SerialNumber: rec.SerialNumber,
 			DeviceHash:   rec.DeviceHash,
-			EventType:    rec.EventType,
+			EventType:    "CONNECTED", // Ép trạng thái ban đầu là đang cắm
 		}
+		database.DB.Create(&usb)
 
-		// Upsert: Cập nhật EventType/Time nếu đã tồn tại, Tạo mới nếu chưa có
-		result := database.DB.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "agent_hw_id"}, {Name: "device_hash"}},
-			DoUpdates: clause.AssignmentColumns([]string{"event_type", "updated_at"}),
-		}).Create(&usb)
+		// Phát cảnh báo do có USB mới
+		incSvc.TriggerSecurityEvent(agent,
+			"USB Violation",
+			"[P3] Thiết bị ngoại vi mới",
+			fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s)", rec.DeviceName, rec.VID),
+			"P3",
+		)
+	}
 
-		if result.Error == nil {
-			incSvc := &incidents.IncidentService{}
-			isNew := usb.CreatedAt.Unix() == usb.UpdatedAt.Unix()
-			if isNew {
-				incSvc.TriggerSecurityEvent(agent,
-					"USB Violation",
-					"[P3] Thiết bị ngoại vi mới",
-					fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s)", rec.DeviceName, rec.VID),
-					"P3",
-				)
-			}
+	// 3. CHIỀU RÚT RA (DIFFING): Tìm các USB vừa bị rút
+	var connectedUSBs []models.USBLog
+	// Tìm các USB đang được ghi nhận là CONNECTED
+	database.DB.Where("agent_hw_id = ? AND event_type = ?", agent.HWID, "CONNECTED").Find(&connectedUSBs)
+
+	for _, dbUsb := range connectedUSBs {
+		// Nếu USB trong DB KHÔNG có trong danh sách Agent gửi lên
+		if !incomingUsbMap[dbUsb.DeviceHash] {
+			// Đánh dấu là đã rút ra
+			database.DB.Model(&dbUsb).Update("event_type", "DISCONNECTED")
 		}
 	}
 }

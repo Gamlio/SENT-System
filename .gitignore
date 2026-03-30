@@ -8,3 +8,5 @@ pkg/
 agent_history.log
 *.json
 package-lock.json
+/bin/
+/dist/
