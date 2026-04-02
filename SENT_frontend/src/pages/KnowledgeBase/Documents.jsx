@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
     FileText, UploadCloud, Trash2, Edit, CheckCircle, 
-    Clock, RefreshCw, Eye, Download, Search, X, ShieldAlert 
+    Clock, RefreshCw, Eye, Download, Search, X, ShieldAlert, Tag
 } from 'lucide-react';
 import { useDocuments } from './hooks/useDocuments';
 import { useAuth } from '../../context/AuthContext';
@@ -59,115 +59,136 @@ const Documents = () => {
     };
 
     return (
-        <div className="text-slate-200 relative">
-            <header className="mb-8">
-                <h1 className="text-3xl font-bold text-white">Quản lý Chính sách & Tài liệu</h1>
-                <p className="text-slate-400 text-sm">Nạp dữ liệu pháp lý và quy định nội bộ cho AI Security Agent</p>
-            </header>
+        <div className="p-6 text-slate-200 h-[calc(100vh-60px)] flex flex-col bg-[#050B14] font-sans">
+            
+            <div className="flex justify-between items-end mb-4 shrink-0">
+                <div>
+                    <h1 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tight">
+                        <FileText className="text-indigo-500"/> QUẢN LÝ CHÍNH SÁCH & TÀI LIỆU
+                    </h1>
+                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Nạp dữ liệu pháp lý và quy định nội bộ cho AI Security Agent.</p>
+                </div>
+            </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* --- CỘT TRÁI: FORM UPLOAD (Chỉ hiện nếu có quyền manage) --- */}
-                {canManageDocs ? (
-                    <div className="bg-[#1e293b] p-6 rounded-3xl border border-slate-800 shadow-xl h-fit">
-                        <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                            <UploadCloud className="text-emerald-400" size={20}/> Tải lên tài liệu
-                        </h3>
-                        <form onSubmit={handleUploadSubmit} className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Tiêu đề</label>
-                                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required
-                                    className="w-full mt-2 p-3 bg-slate-900/50 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Phân loại</label>
-                                <select value={category} onChange={(e) => setCategory(e.target.value)}
-                                    className="w-full mt-2 p-3 bg-slate-900/50 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white">
-                                    <option value="Internal">Quy định nội bộ</option>
-                                    <option value="ISO27001">Tiêu chuẩn ISO 27001</option>
-                                    <option value="Law">Luật An ninh mạng</option>
-                                </select>
-                            </div>
-                            <div className="border-2 border-dashed border-slate-700 rounded-2xl p-6 text-center relative hover:border-emerald-500/50 cursor-pointer transition">
-                                <input type="file" onChange={(e) => setFile(e.target.files[0])} 
-                                    className="absolute inset-0 opacity-0 cursor-pointer" accept=".pdf,.doc,.docx" />
-                                <FileText className="mx-auto text-slate-500 mb-2" size={32}/>
-                                <p className="text-sm text-slate-400">{file ? file.name : "Kéo thả hoặc chọn file PDF/Word"}</p>
-                            </div>
-                            <button type="submit" disabled={isUploading}
-                                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-500/20 disabled:opacity-50">
-                                {isUploading ? "Đang xử lý..." : "Bắt đầu nạp tài liệu"}
-                            </button>
-                        </form>
+            <div className="flex-1 bg-[#0A101D] rounded-lg border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+                <div className="p-3 border-b border-slate-800 bg-[#111827] flex justify-between items-center shrink-0">
+                    <div className="relative w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                        <input type="text" placeholder="Search documents..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-[#050B14] border border-slate-800 text-xs text-white rounded pl-9 pr-4 py-1.5 outline-none focus:border-indigo-500 font-mono transition-colors" />
                     </div>
-                ) : (
-                    <div className="bg-slate-900/30 p-8 rounded-3xl border border-slate-800/50 border-dashed text-center h-fit">
-                        <ShieldAlert className="mx-auto text-slate-700 mb-4" size={48}/>
-                        <p className="text-slate-500 text-sm italic font-medium">
-                            Bạn chỉ có quyền xem tài liệu. <br/> Vui lòng liên hệ Admin để được cấp quyền quản lý.
-                        </p>
+                    <div className="flex items-center gap-2">
+                        <Tag className="text-emerald-500" size={12}/> <span className="text-[10px] font-mono font-bold text-slate-400">TOTAL: {filteredDocs.length}</span>
                     </div>
-                )}
+                </div>
 
-                {/* --- CỘT PHẢI: DANH SÁCH TÀI LIỆU --- */}
-                <div className="xl:col-span-2 flex flex-col h-full">
-                    <div className="mb-6 relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20}/>
-                        <input 
-                            type="text" 
-                            placeholder="Tìm kiếm theo tiêu đề hoặc phân loại..." 
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-12 pr-4 py-4 bg-[#1e293b] border border-slate-800 rounded-2xl text-white outline-none focus:border-emerald-500 transition shadow-lg"
-                        />
-                    </div>
-
-                    <div className="space-y-4 flex-1">
-                        {currentDocuments.map((doc) => (
-                            <div key={doc.ID} className="bg-[#1e293b] p-5 rounded-2xl border border-slate-800 flex justify-between items-center group hover:border-slate-700 transition">
-                                <div className="flex gap-4 items-center">
-                                    <div className="p-3 bg-slate-900 rounded-xl text-emerald-400"><FileText size={24}/></div>
-                                    <div>
-                                        <h4 className="font-bold text-white truncate max-w-[200px] sm:max-w-xs">{doc.title}</h4>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-400 rounded uppercase font-bold">{doc.category}</span>
-                                            <span className="text-[10px] text-slate-500 font-medium"><Clock size={10} className="inline mr-1"/>{new Date(doc.CreatedAt).toLocaleDateString()}</span>
-                                        </div>
-                                    </div>
+                <div className="flex-1 flex">
+                    {/* CỘT TRÁI: FORM UPLOAD */}
+                    {canManageDocs ? (
+                        <div className="w-1/3 p-4 border-r border-slate-800">
+                            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                                <UploadCloud className="text-emerald-400" size={20}/> Tải lên tài liệu
+                            </h3>
+                            <form onSubmit={handleUploadSubmit} className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Tiêu đề</label>
+                                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required
+                                        className="w-full mt-2 p-3 bg-slate-900/50 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white" />
                                 </div>
-                                <div className="flex items-center gap-4 sm:gap-6">
-                                    {/* Trạng thái xử lý AI */}
-                                    {doc.is_processed ? (
-                                        <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20"><CheckCircle size={12}/> AI READY</span>
-                                    ) : (
-                                        <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20"><RefreshCw size={12} className="animate-spin"/> PROCESSING</span>
-                                    )}
-                                    
-                                    <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => handleViewDocument(doc)} className="p-2 bg-slate-800 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition" title="Xem trên màn hình"><Eye size={16}/></button>
-                                        <button onClick={() => handleDownloadDocument(doc.file_path, doc.file_name)} className="p-2 bg-slate-800 text-indigo-400 hover:bg-indigo-500/20 rounded-lg transition" title="Tải xuống máy"><Download size={16}/></button>
-                                        
-                                        {/* Nút hành động chỉ dành cho quyền Manage */}
-                                        {canManageDocs && (
-                                            <>
-                                                <button onClick={() => setEditingDoc(doc)} className="p-2 bg-slate-800 text-blue-400 hover:bg-blue-500/20 rounded-lg transition" title="Sửa thông tin"><Edit size={16}/></button>
-                                                <button onClick={() => deleteDoc(doc.ID)} className="p-2 bg-slate-800 text-red-400 hover:bg-red-500/20 rounded-lg transition" title="Xóa tài liệu"><Trash2 size={16}/></button>
-                                            </>
-                                        )}
-                                    </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Phân loại</label>
+                                    <select value={category} onChange={(e) => setCategory(e.target.value)}
+                                        className="w-full mt-2 p-3 bg-slate-900/50 border border-slate-700 rounded-xl outline-none focus:border-emerald-500 text-white">
+                                        <option value="Internal">Quy định nội bộ</option>
+                                        <option value="ISO27001">Tiêu chuẩn ISO 27001</option>
+                                        <option value="Law">Luật An ninh mạng</option>
+                                    </select>
                                 </div>
-                            </div>
-                        ))}
-                        {filteredDocs.length === 0 && (
-                            <div className="text-center py-20 text-slate-600 border-2 border-dashed border-slate-800 rounded-3xl font-medium italic">Không tìm thấy tài liệu nào phù hợp.</div>
-                        )}
-                    </div>
+                                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-6 text-center relative hover:border-emerald-500/50 cursor-pointer transition">
+                                    <input type="file" onChange={(e) => setFile(e.target.files[0])} 
+                                        className="absolute inset-0 opacity-0 cursor-pointer" accept=".pdf,.doc,.docx" />
+                                    <FileText className="mx-auto text-slate-500 mb-2" size={32}/>
+                                    <p className="text-sm text-slate-400">{file ? file.name : "Kéo thả hoặc chọn file PDF/Word"}</p>
+                                </div>
+                                <button type="submit" disabled={isUploading}
+                                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+                                    {isUploading ? "Đang xử lý..." : "Bắt đầu nạp tài liệu"}
+                                </button>
+                            </form>
+                        </div>
+                    ) : (
+                        <div className="w-1/3 p-4 border-r border-slate-800 flex flex-col items-center justify-center">
+                            <ShieldAlert className="text-slate-700 mb-4" size={48}/>
+                            <p className="text-slate-500 text-sm italic font-medium text-center">
+                                Bạn chỉ có quyền xem tài liệu. <br/> Vui lòng liên hệ Admin để được cấp quyền quản lý.
+                            </p>
+                        </div>
+                    )}
 
-                    <div className="px-4 pb-4">
-                        <Pagination 
-                            currentPage={currentPage}
-                            totalPages={totalPages}
-                            onPageChange={setCurrentPage}
-                        />
+                    {/* CỘT PHẢI: DANH SÁCH TÀI LIỆU */}
+                    <div className="flex-1 flex flex-col">
+                        <div className="overflow-x-auto custom-scrollbar flex-1 min-h-[450px] relative pb-20">
+                            <table className="w-full text-left border-collapse whitespace-nowrap">
+                                <thead className="sticky top-0 z-10 bg-[#111827]">
+                                    <tr className="border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-500">
+                                        <th className="p-3 font-black">Tài liệu</th>
+                                        <th className="p-3 font-black">Phân loại</th>
+                                        <th className="p-3 font-black">Trạng thái</th>
+                                        <th className="p-3 font-black">Ngày tạo</th>
+                                        {canManageDocs && <th className="p-3 text-right font-black">Thao tác</th>}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/50">
+                                    {currentDocuments.map((doc) => (
+                                        <tr key={doc.ID} className="hover:bg-slate-800/30 transition-colors cursor-pointer group">
+                                            <td className="p-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-slate-900 rounded text-emerald-400"><FileText size={16}/></div>
+                                                    <div>
+                                                        <p className="text-xs font-bold text-white truncate max-w-[200px]">{doc.title}</p>
+                                                        <p className="text-[10px] text-slate-500 font-mono">ID: {doc.ID}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="p-3">
+                                                <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-400 rounded uppercase font-bold">{doc.category}</span>
+                                            </td>
+                                            <td className="p-3">
+                                                {doc.is_processed ? (
+                                                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20"><CheckCircle size={12} className="inline mr-1"/> AI READY</span>
+                                                ) : (
+                                                    <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20"><RefreshCw size={12} className="inline mr-1 animate-spin"/> PROCESSING</span>
+                                                )}
+                                            </td>
+                                            <td className="p-3">
+                                                <span className="text-[10px] text-slate-500 font-mono">{new Date(doc.CreatedAt).toLocaleDateString()}</span>
+                                            </td>
+                                            {canManageDocs && (
+                                                <td className="p-3 text-right">
+                                                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition">
+                                                        <button onClick={() => handleViewDocument(doc)} className="p-2 bg-slate-800 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition" title="Xem trên màn hình"><Eye size={16}/></button>
+                                                        <button onClick={() => handleDownloadDocument(doc.file_path, doc.file_name)} className="p-2 bg-slate-800 text-indigo-400 hover:bg-indigo-500/20 rounded-lg transition" title="Tải xuống máy"><Download size={16}/></button>
+                                                        <button onClick={() => setEditingDoc(doc)} className="p-2 bg-slate-800 text-blue-400 hover:bg-blue-500/20 rounded-lg transition" title="Sửa thông tin"><Edit size={16}/></button>
+                                                        <button onClick={() => deleteDoc(doc.ID)} className="p-2 bg-slate-800 text-red-400 hover:bg-red-500/20 rounded-lg transition" title="Xóa tài liệu"><Trash2 size={16}/></button>
+                                                    </div>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {filteredDocs.length === 0 && (
+                                <div className="p-10 text-center text-slate-500 italic">Không tìm thấy tài liệu nào phù hợp.</div>
+                            )}
+                        </div>
+
+                        <div className="px-4 pb-4">
+                            <Pagination 
+                                currentPage={currentPage}
+                                totalPages={totalPages}
+                                onPageChange={setCurrentPage}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

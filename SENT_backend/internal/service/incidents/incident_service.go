@@ -1,11 +1,15 @@
 package incidents
 
 import (
+	"context"
 	"fmt"
+	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/scoring"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"gorm.io/gorm"
 )
 
@@ -44,13 +48,16 @@ func (s *IncidentService) CreateIncidentFromAlert(alert *models.SecurityAlert, a
 		return nil, fmt.Errorf("failed to create incident: %w", err)
 	}
 
-	// Link the alert to the new incident
+	// Link the alert to the new incident (Mongo)
 	alert.IncidentID = &incident.ID
-	if err := s.db.Save(alert).Error; err != nil {
-		fmt.Printf("Warning: Failed to link alert %d to incident %d: %v\n", alert.ID, incident.ID, err)
+	if database.SecurityAlertCollection != nil {
+		_, err := database.SecurityAlertCollection.UpdateOne(context.TODO(), bson.M{"_id": alert.ID}, bson.M{"$set": bson.M{"incident_id": incident.ID}})
+		if err != nil && err != mongo.ErrNoDocuments {
+			fmt.Printf("Warning: Failed to link alert %v to incident %d: %v\n", alert.ID, incident.ID, err)
+		}
 	}
 
-	// 2. SỬA: Cập nhật LastIncidentAt trực tiếp bằng GORM thông qua HWID
+	// 2. Cập nhật LastIncidentAt trực tiếp bằng GORM thông qua HWID
 	now := time.Now()
 	if err := s.db.Model(&models.Agent{}).Where("hw_id = ?", agent.HWID).Update("last_incident_at", &now).Error; err != nil {
 		fmt.Printf("Warning: Failed to update LastIncidentAt for agent %s: %v\n", agent.HWID, err)
@@ -77,9 +84,12 @@ func (s *IncidentService) ResolveIncident(incidentID uint, agentHWID string, res
 		return fmt.Errorf("failed to update incident status: %w", err)
 	}
 
-	// Close all associated alerts
-	if err := s.db.Model(&models.SecurityAlert{}).Where("incident_id = ?", incidentID).Update("is_resolved", true).Error; err != nil {
-		fmt.Printf("Warning: Failed to resolve associated alerts for incident %d: %v\n", incidentID, err)
+	// Close all associated alerts in Mongo
+	if database.SecurityAlertCollection != nil {
+		_, err := database.SecurityAlertCollection.UpdateMany(context.TODO(), bson.M{"incident_id": incidentID}, bson.M{"$set": bson.M{"is_resolved": true}})
+		if err != nil {
+			fmt.Printf("Warning: Failed to resolve associated alerts for incident %d: %v\n", incidentID, err)
+		}
 	}
 
 	// SỬA: Gọi tính lại điểm rủi ro bằng hàm toàn cục
@@ -91,28 +101,60 @@ func (s *IncidentService) ResolveIncident(incidentID uint, agentHWID string, res
 // GetAllIncidents fetches all incidents with preloaded agent information.
 func (s *IncidentService) GetAllIncidents(orgID uint) ([]models.Incident, error) {
 	var incidents []models.Incident
-	err := s.db.Where("org_id = ?", orgID).Preload("Agent").Order("created_at desc").Find(&incidents).Error
+	err := s.db.Where("org_id = ?", orgID).Order("created_at desc").Find(&incidents).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch incidents: %w", err)
 	}
+
+	for idx := range incidents {
+		var agent models.Agent
+		loaderErr := s.db.Where("hw_id = ?", incidents[idx].AgentHWID).First(&agent).Error
+		if loaderErr == nil {
+			incidents[idx].Agent = agent
+		}
+
+		if database.SecurityAlertCollection != nil {
+			cursor, _ := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"incident_id": incidents[idx].ID})
+			var alerts []models.SecurityAlert
+			cursor.All(context.TODO(), &alerts)
+			incidents[idx].Alerts = alerts
+		}
+	}
+
 	return incidents, nil
 }
 
 // GetIncidentByID fetches a single incident with all related preloads.
 func (s *IncidentService) GetIncidentByID(incidentID uint) (*models.Incident, error) {
 	var incident models.Incident
-	err := s.db.
-		Preload("Agent").
-		Preload("Alerts").
-		Preload("Assignee").
-		Preload("Activities.User").
-		Preload("Activities", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at asc")
-		}).
-		First(&incident, incidentID).Error
+	err := s.db.First(&incident, incidentID).Error
 	if err != nil {
 		return nil, fmt.Errorf("incident not found: %w", err)
 	}
+
+	var agent models.Agent
+	if loadErr := s.db.Where("hw_id = ?", incident.AgentHWID).First(&agent).Error; loadErr == nil {
+		incident.Agent = agent
+	}
+
+	if database.SecurityAlertCollection != nil {
+		cursor, _ := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"incident_id": incident.ID})
+		var alerts []models.SecurityAlert
+		cursor.All(context.TODO(), &alerts)
+		incident.Alerts = alerts
+	}
+
+	var activities []models.IncidentActivity
+	s.db.Preload("User").Where("incident_id = ?", incidentID).Order("created_at asc").Find(&activities)
+	incident.Activities = activities
+
+	if incident.AssigneeID != nil {
+		var assignee models.User
+		if s.db.First(&assignee, *incident.AssigneeID).Error == nil {
+			incident.Assignee = &assignee
+		}
+	}
+
 	return &incident, nil
 }
 

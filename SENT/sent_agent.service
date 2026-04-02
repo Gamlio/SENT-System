@@ -5,10 +5,10 @@ After=network.target
 
 [Service]
 # Đường dẫn tới file thực thi của Agent sau khi build
-ExecStart=/usr/local/bin/sent_agent
+ExecStart=/usr/local/bin/SENT
 
 # Thư mục làm việc của Agent (nơi chứa file config và log)
-WorkingDirectory=/opt/sent_agent/
+WorkingDirectory=/opt/SENT/
 
 # Tự động khởi động lại nếu Agent bị tắt hoặc crash
 Restart=always

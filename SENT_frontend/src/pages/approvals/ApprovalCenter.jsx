@@ -45,11 +45,15 @@ const ApprovalCenter = () => {
     ];
 
     return (
-        <div className="p-6 h-full flex flex-col space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-black text-white flex items-center gap-3">
-                    <ClipboardCheck className="text-amber-500" size={28}/> Trung tâm Phê duyệt
-                </h1>
+        <div className="p-6 text-slate-200 h-[calc(100vh-60px)] flex flex-col bg-[#050B14] font-sans">
+            
+            <div className="flex justify-between items-end mb-4 shrink-0">
+                <div>
+                    <h1 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tight">
+                        <ClipboardCheck className="text-indigo-500" size={28}/> TRUNG TÂM PHÊ DUYỆT
+                    </h1>
+                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Quản lý và phê duyệt các yêu cầu hệ thống.</p>
+                </div>
                 
                 {/* Bộ lọc trạng thái */}
                 <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-800">
@@ -65,7 +69,7 @@ const ApprovalCenter = () => {
             </div>
 
             {/* Bộ lọc Module */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mb-4">
                 {modules.map(tab => (
                     <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
@@ -76,7 +80,7 @@ const ApprovalCenter = () => {
                 ))}
             </div>
 
-            <div className="flex-1 bg-[#1e293b] rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
+            <div className="flex-1 bg-[#0A101D] rounded-lg border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
                 <ApprovalList tickets={tickets} onReview={handleReview} loading={loading} />
             </div>
         </div>

@@ -24,13 +24,13 @@ func generateCompanyCode() string {
 
 func RegisterSMEHandler(c *gin.Context) {
 	var req struct {
-		CompanyName string `json:"company_name"`
-		Email       string `json:"email"` // [MỚI] Bắt buộc có Email để gửi link
-		Username    string `json:"username"`
-		Password    string `json:"password"`
+		CompanyName string `json:"company_name" binding:"required,min=3,max=100"`
+		Email       string `json:"email" binding:"required,email"` // [MỚI] Bắt buộc có Email để gửi link
+		Username    string `json:"username" binding:"required,min=3,max=50,alphanum"`
+		Password    string `json:"password" binding:"required,min=8,max=128"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu sai định dạng"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu sai định dạng: " + err.Error()})
 		return
 	}
 
@@ -115,13 +115,13 @@ func RegisterSMEHandler(c *gin.Context) {
 
 func LoginHandler(c *gin.Context) {
 	var req struct {
-		CompanyCode string `json:"company_code"` // [BẢO MẬT] BẮT BUỘC PHẢI CÓ
-		Username    string `json:"username"`
-		Password    string `json:"password"`
+		CompanyCode string `json:"company_code" binding:"required,min=7,max=20,alphanum-"` // [BẢO MẬT] BẮT BUỘC PHẢI CÓ
+		Username    string `json:"username" binding:"required,min=3,max=50"`
+		Password    string `json:"password" binding:"required,min=1,max=128"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ: " + err.Error()})
 		return
 	}
 

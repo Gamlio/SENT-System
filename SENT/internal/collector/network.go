@@ -1,8 +1,8 @@
 package collector
 
 import (
+	"SENT/internal/utils"
 	"log"
-	"sent_agent/internal/utils"
 
 	psnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"

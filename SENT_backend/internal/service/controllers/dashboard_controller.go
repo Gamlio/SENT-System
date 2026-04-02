@@ -1,9 +1,13 @@
 package controllers
 
 import (
+	"context"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // --- CÁC STRUCT GÓI GỌN DỮ LIỆU SOC CHI TIẾT ---
@@ -111,25 +115,23 @@ func (dc *DashboardController) FetchDetailedSummary(orgID uint) (*DashboardSumma
 
 	// Luồng 5: Phân bổ Alerts theo mức độ
 	go func() {
-		type Result struct {
-			Severity string
-			Total    int64
-		}
-		var results []Result
-		err := database.DB.Model(&models.SecurityAlert{}).
-			Select("severity, count(*) as total").
-			Where("org_id = ?", orgID).
-			Group("severity").Scan(&results).Error
-
 		var totalAlerts int64
-		for _, r := range results {
-			summary.AlertsBySeverity[r.Severity] = r.Total
-			totalAlerts += r.Total
+		if database.SecurityAlertCollection != nil {
+			cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"org_id": orgID})
+			if err != nil {
+				errChan <- err
+				return
+			}
+			var alerts []models.SecurityAlert
+			cursor.All(context.TODO(), &alerts)
+			for _, al := range alerts {
+				summary.AlertsBySeverity[al.Severity]++
+				totalAlerts++
+			}
 		}
 		summary.TotalAlerts = totalAlerts
-		errChan <- err
+		errChan <- nil
 	}()
-
 	// Luồng 6: Top 5 máy rủi ro cao nhất (Actionable Insight)
 	go func() {
 		var agents []models.Agent
@@ -149,19 +151,25 @@ func (dc *DashboardController) FetchDetailedSummary(orgID uint) (*DashboardSumma
 
 	// Luồng 7: 5 Cảnh báo mới nhất (Live Feed)
 	go func() {
-		var alerts []models.SecurityAlert
-		err := database.DB.Where("org_id = ?", orgID).Order("created_at desc").Limit(5).Find(&alerts).Error
-
-		for _, al := range alerts {
-			// Tối ưu: Nếu muốn lấy AgentName, thực tế bạn nên Preload hoặc Cache. Ở đây gán HWID tạm.
-			summary.RecentAlerts = append(summary.RecentAlerts, AlertView{
-				AlertType: al.AlertType,
-				Severity:  al.Severity,
-				AgentName: al.HWID,
-				CreatedAt: al.CreatedAt,
-			})
+		if database.SecurityAlertCollection != nil {
+			opts := options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(5)
+			cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"org_id": orgID}, opts)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			var alerts []models.SecurityAlert
+			cursor.All(context.TODO(), &alerts)
+			for _, al := range alerts {
+				summary.RecentAlerts = append(summary.RecentAlerts, AlertView{
+					AlertType: al.AlertType,
+					Severity:  al.Severity,
+					AgentName: al.HWID,
+					CreatedAt: al.CreatedAt,
+				})
+			}
 		}
-		errChan <- err
+		errChan <- nil
 	}()
 
 	// Đợi 7 luồng hoàn tất

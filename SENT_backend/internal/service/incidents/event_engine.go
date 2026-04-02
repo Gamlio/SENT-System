@@ -1,6 +1,7 @@
 package incidents
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sent_backend/internal/database"
@@ -9,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"gorm.io/gorm"
 )
 
@@ -62,7 +66,14 @@ func (s *IncidentService) TriggerSecurityEvent(agent models.Agent, alertType, ti
 		Severity:    s.getSeverityByPriority(finalPriority),
 		IsResolved:  false,
 	}
-	database.DB.Create(&alert)
+	if database.SecurityAlertCollection != nil {
+		res, err := database.SecurityAlertCollection.InsertOne(context.TODO(), alert)
+		if err == nil {
+			if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
+				alert.ID = oid
+			}
+		}
+	}
 
 	var correlatedIncident models.Incident
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
@@ -91,7 +102,15 @@ func (s *IncidentService) TriggerSecurityEvent(agent models.Agent, alertType, ti
 			}
 			tx.Model(&correlatedIncident).Updates(updates)
 		}
-		return tx.Model(&alert).Update("incident_id", correlatedIncident.ID).Error
+
+		if database.SecurityAlertCollection != nil {
+			_, err := database.SecurityAlertCollection.UpdateOne(context.TODO(), bson.M{"_id": alert.ID}, bson.M{"$set": bson.M{"incident_id": correlatedIncident.ID}})
+			if err != nil && err != mongo.ErrNoDocuments {
+				return err
+			}
+		}
+
+		return nil
 	})
 
 	// 4. Gọi Engine tính điểm v6.0
@@ -112,8 +131,13 @@ func (s *IncidentService) AutoResolveIncident(hwid string, alertType string) {
 				"description": incident.Description + " [Hệ thống tự động đóng do vi phạm đã được khắc phục]",
 			})
 
-			// Đóng toàn bộ alert liên quan
-			tx.Model(&models.SecurityAlert{}).Where("incident_id = ?", incident.ID).Update("is_resolved", true)
+			// Đóng toàn bộ alert liên quan (Mongo)
+			if database.SecurityAlertCollection != nil {
+				_, err := database.SecurityAlertCollection.UpdateMany(context.TODO(), bson.M{"incident_id": incident.ID}, bson.M{"$set": bson.M{"is_resolved": true}})
+				if err != nil {
+					fmt.Printf("Warning: failed to update SecurityAlert resolution in Mongo: %v", err)
+				}
+			}
 
 			// Ghi log vào Timeline
 			tx.Create(&models.IncidentActivity{

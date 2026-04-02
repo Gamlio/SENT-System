@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_NAME="sent_agent"
+APP_NAME="SENT"
 VERSION="4.0"
 
 echo "🚀 Đang bắt đầu biên dịch $APP_NAME v$VERSION..."

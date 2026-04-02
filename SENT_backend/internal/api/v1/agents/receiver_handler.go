@@ -13,10 +13,10 @@ import (
 
 // Payload đón dữ liệu thô
 type AgentPayload struct {
-	LogType  string          `json:"log_type"`
-	HWID     string          `json:"hwid"`
-	Hostname string          `json:"hostname"`
-	Data     json.RawMessage `json:"data"`
+	LogType  string          `json:"log_type" binding:"required,max=50,alphanum"`
+	HWID     string          `json:"hwid" binding:"required,max=64,alphanum"`
+	Hostname string          `json:"hostname" binding:"required,min=1,max=255"`
+	Data     json.RawMessage `json:"data" binding:"required"`
 }
 
 // PushDataHandler: Cổng tiếp nhận duy nhất
@@ -54,11 +54,11 @@ func PushDataHandler(c *gin.Context) {
 func UpdateDepartment(c *gin.Context) {
 	hwid := c.Param("hwid")
 	var req struct {
-		DepartmentTag string `json:"department_tag" binding:"required"`
+		DepartmentTag string `json:"department_tag" binding:"required,min=1,max=50,alphanum-"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ: " + err.Error()})
 		return
 	}
 

@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"sent_agent/internal/config"
-	"sent_agent/internal/utils"
+	"SENT/internal/config"
+	"SENT/internal/utils"
 
 	"github.com/gorilla/websocket"
 )

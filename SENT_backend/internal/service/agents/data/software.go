@@ -1,6 +1,7 @@
 package data // SỬA: Đổi từ agent_data sang data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sent_backend/internal/database"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"gorm.io/gorm/clause"
 )
 
@@ -28,42 +31,33 @@ func ProcessSoftware(agent models.Agent, data interface{}) {
 	if err := json.Unmarshal(bytes, &records); err != nil {
 		return
 	}
+	if database.SoftwareCollection == nil {
+		return
+	}
 
 	incSvc := &incidents.IncidentService{}
 
 	// 1. TẠO MAP ĐỂ LƯU CÁC TIẾN TRÌNH ĐANG CHẠY (Dùng Tên + Hash làm khóa để tránh trùng)
 	incomingSoftwareMap := make(map[string]bool)
 
-	// 2. CHIỀU THÊM MỚI / CẬP NHẬT (UPSERT)
 	for _, rec := range records {
 		uniqueKey := rec.SoftwareName + "_" + rec.FileHash
 		incomingSoftwareMap[uniqueKey] = true
 
-		var existingItem models.SoftwareItem
-		result := database.DB.Where("agent_hw_id = ? AND software_name = ? AND file_hash = ?", agent.HWID, rec.SoftwareName, rec.FileHash).First(&existingItem)
+		filter := bson.M{"agent_hwid": agent.HWID, "software_name": rec.SoftwareName, "file_hash": rec.FileHash}
+		update := bson.M{"$set": bson.M{
+			"agent_hwid":       agent.HWID,
+			"software_name":    rec.SoftwareName,
+			"version":          rec.Version,
+			"publisher":        rec.Publisher,
+			"install_location": rec.InstallLocation,
+			"file_hash":        rec.FileHash,
+			"status":           rec.Status,
+			"is_running":       rec.IsRunning,
+			"updated_at":       time.Now(),
+		}}
 
-		if result.Error == nil {
-			// Đã tồn tại -> Cập nhật trạng thái và thời gian
-			database.DB.Model(&existingItem).Updates(map[string]interface{}{
-				"status":     rec.Status,
-				"is_running": rec.IsRunning,
-				"updated_at": time.Now(),
-			})
-			continue
-		}
-
-		// Tạo bản ghi mới
-		dbItem := models.SoftwareItem{
-			AgentHWID:       agent.HWID,
-			SoftwareName:    rec.SoftwareName,
-			Version:         rec.Version,
-			Publisher:       rec.Publisher,
-			InstallLocation: rec.InstallLocation,
-			FileHash:        rec.FileHash,
-			Status:          rec.Status,
-			IsRunning:       rec.IsRunning,
-		}
-		database.DB.Create(&dbItem)
+		_, _ = database.SoftwareCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true))
 
 		// --- CHỈ BÁO ĐỘNG KHI CÓ PHẦN MỀM MỚI ---
 		if rec.FileHash != "" && checkMaliciousHash(rec.FileHash) {
@@ -81,16 +75,17 @@ func ProcessSoftware(agent models.Agent, data interface{}) {
 	}
 
 	// 3. CHIỀU ĐÓNG (DIFFING): Tìm các phần mềm vừa bị tắt
+	cursor, err := database.SoftwareCollection.Find(context.TODO(), bson.M{"agent_hwid": agent.HWID, "is_running": true})
+	if err != nil {
+		return
+	}
 	var activeSoftwares []models.SoftwareItem
-	// Tìm các phần mềm của máy này đang được ghi nhận là Đang chạy
-	database.DB.Where("agent_hw_id = ? AND is_running = ?", agent.HWID, true).Find(&activeSoftwares)
+	cursor.All(context.TODO(), &activeSoftwares)
 
 	for _, dbSoft := range activeSoftwares {
 		uniqueKey := dbSoft.SoftwareName + "_" + dbSoft.FileHash
-		// Nếu phần mềm trong DB KHÔNG có mặt trong danh sách Agent gửi lên đợt này
 		if !incomingSoftwareMap[uniqueKey] {
-			// Cập nhật trạng thái là đã dừng (không xóa đi để giữ lịch sử)
-			database.DB.Model(&dbSoft).Update("is_running", false)
+			_, _ = database.SoftwareCollection.UpdateOne(context.TODO(), bson.M{"_id": dbSoft.ID}, bson.M{"$set": bson.M{"is_running": false}})
 		}
 	}
 }
@@ -103,9 +98,12 @@ func HandleSoftwareBaseline(agent models.Agent, data interface{}) {
 		return
 	}
 
-	tx := database.DB.Begin()
-	tx.Where("agent_hw_id = ?", agent.HWID).Delete(&models.SoftwareItem{})
+	if database.SoftwareCollection != nil {
+		_, _ = database.SoftwareCollection.DeleteMany(context.TODO(), bson.M{"agent_hwid": agent.HWID})
+	}
 
+	// Whitelist vẫn lưu ở Postgres
+	tx := database.DB.Begin()
 	for _, rec := range records {
 		tx.Create(&models.WhitelistItem{
 			OrgID: agent.OrgID, AgentHWID: agent.HWID, Type: "SOFTWARE_HASH", Value: rec.FileHash, Description: "Baseline: " + rec.SoftwareName,

@@ -35,8 +35,15 @@ func main() {
 
 	r := gin.Default()
 	r.GET("/ws", websocket.WsHandler)
+
+	// ===== BẢNG MÔNG BẢO MẬT TẦNG GLOBAL =====
+	// 1. Kiểm tra Content-Type, Body Size -> Chặn DoS attacks
+	r.Use(middleware.SecurityValidationMiddleware())
+	// 2. Rate limiting chung
 	limiter := middleware.RateLimitMiddleware(10, 20)
 	r.Use(limiter)
+	// 3. IP Blacklist check
+	r.Use(middleware.IPBlacklistMiddleware())
 
 	originsEnv := os.Getenv("ALLOWED_ORIGINS")
 	var allowOrigins []string
@@ -56,19 +63,26 @@ func main() {
 
 	v1Group := r.Group("/api/v1")
 	{
+		// ===== AUTH ENDPOINTS + SECURITY LAYERS =====
 		authGroup := v1Group.Group("/auth")
+		authGroup.Use(middleware.InputSanitizationMiddleware())
 		{
-			authGroup.POST("/login", auth.LoginHandler)
-			authGroup.POST("/register", auth.RegisterSMEHandler)
+			authGroup.POST("/login", middleware.UserLoginRateLimitMiddleware(), auth.LoginHandler)
+			authGroup.POST("/register", middleware.ValidateUserCreationMiddleware(), auth.RegisterSMEHandler)
 		}
+
+		// ===== AGENT PUBLIC ENDPOINTS + FLOOD PROTECTION =====
 		agentPublicGroup := v1Group.Group("/agents")
 		{
-			agentPublicGroup.POST("/push", agents.PushDataHandler)
-			agentPublicGroup.POST("/enroll", agents.EnrollAgent)
-			agentPublicGroup.GET("/sync-policies", policies.SyncPoliciesForAgent)
+			agentPublicGroup.POST("/push", middleware.AgentFloodProtectionMiddleware(), middleware.ValidateAgentPayloadMiddleware(), agents.PushDataHandler)
+			agentPublicGroup.POST("/enroll", middleware.AgentEnrollRateLimitMiddleware(), agents.EnrollAgent)
+			agentPublicGroup.GET("/sync-policies", agents.GetActiveEnrollmentToken, policies.SyncPoliciesForAgent)
 		}
+
+		// ===== PROTECTED ENDPOINTS (User must be authenticated) =====
 		protected := v1Group.Group("")
 		protected.Use(middleware.AuthRequired())
+		protected.Use(middleware.InputSanitizationMiddleware())
 		{
 			usersGroup := protected.Group("/users")
 			{

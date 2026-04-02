@@ -1,6 +1,7 @@
 package incidents
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,56 +11,41 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/ai"
+	incidentService "sent_backend/internal/service/incidents"
 	"sent_backend/internal/service/scoring"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 // GET /api/v1/incidents
 func GetIncidents(c *gin.Context) {
-	var incidents []models.Incident
-
-	// 1. In ra màn hình báo là có người gọi API
+	orgID := c.GetUint("org_id")
 	fmt.Println("\n--- [DEBUG API] Frontend đang gọi lấy danh sách Incident ---")
 
-	// 2. Thử Query cơ bản nhất (Bỏ Preload tạm thời để xem có phải lỗi quan hệ bảng không)
-	result := database.DB.Preload("Agent").Order("created_at desc").Find(&incidents)
-
-	if result.Error != nil {
-		fmt.Printf(">> LỖI DB: %v\n", result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu: " + result.Error.Error()})
+	svc := incidentService.NewIncidentService(database.DB)
+	incidents, err := svc.GetAllIncidents(orgID)
+	if err != nil {
+		fmt.Printf(">> LỖI DB: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu: " + err.Error()})
 		return
 	}
 
-	// 3. In ra số lượng tìm thấy
 	fmt.Printf(">> Tìm thấy: %d sự cố trong Database\n", len(incidents))
-
-	// 4. Nếu có dữ liệu, thử Preload lại Agent để trả về đầy đủ
-	if len(incidents) > 0 {
-		database.DB.Preload("Agent").Order("created_at desc").Find(&incidents)
-	}
-
 	c.JSON(http.StatusOK, gin.H{"data": incidents})
 }
 func GetIncidentDetail(c *gin.Context) {
 	id := c.Param("id")
-	var incident models.Incident
+	incidentID := parseUint(id)
+	if incidentID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID không hợp lệ"})
+		return
+	}
 
-	// [FIX QUAN TRỌNG] Phải Preload cả "Activities" và "Activities.User"
-	// Nếu thiếu dòng này, frontend sẽ nhận được mảng activities rỗng -> Không hiện chat/ảnh
-	err := database.DB.
-		Preload("Agent").           // Lấy thông tin máy trạm
-		Preload("Alerts").          // Lấy các cảnh báo gốc
-		Preload("Assignee").        // Lấy thông tin người được phân công (nếu có)
-		Preload("Activities.User"). // Lấy thông tin người chat (Avatar, tên)
-		Preload("Activities", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at asc") // Sắp xếp tin nhắn từ cũ đến mới
-		}).
-		First(&incident, id).Error
-
+	svc := incidentService.NewIncidentService(database.DB)
+	incident, err := svc.GetIncidentByID(incidentID)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "Không tìm thấy sự cố"})
 		return
@@ -126,8 +112,13 @@ func AddIncidentActivity(c *gin.Context) {
 		newStatus = "Resolved"
 		database.DB.Model(&incident).Update("status", newStatus)
 
-		// Đóng TẤT CẢ các cảnh báo (Alerts)
-		database.DB.Model(&models.SecurityAlert{}).Where("incident_id = ?", incident.ID).Update("is_resolved", true)
+		// Đóng TẤT CẢ các cảnh báo (Alerts) trên Mongo
+		if database.SecurityAlertCollection != nil {
+			_, err := database.SecurityAlertCollection.UpdateMany(context.TODO(), bson.M{"incident_id": incident.ID}, bson.M{"$set": bson.M{"is_resolved": true}})
+			if err != nil {
+				fmt.Printf("Warning: Failed to resolve associated alerts for incident %d: %v\n", incident.ID, err)
+			}
+		}
 
 		// HẠ ĐIỂM RỦI RO NGAY LẬP TỨC
 		scoring.RecalculateRiskScore(incident.AgentHWID)

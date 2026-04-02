@@ -2,6 +2,7 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"strings"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 var (
@@ -130,10 +133,22 @@ QUY TẮC ỨNG XỬ (TUÂN THỦ TUYỆT ĐỐI):
 func AnalyzeIncidentWithAI(incidentID string) (string, error) {
 	var incident models.Incident
 
-	// 1. Lấy dữ liệu Sự cố + Máy trạm + Cảnh báo
-	err := database.DB.Preload("Agent").Preload("Alerts").Where("id = ?", incidentID).First(&incident).Error
+	// 1. Lấy dữ liệu Sự cố và liên quan
+	err := database.DB.Where("id = ?", incidentID).First(&incident).Error
 	if err != nil {
 		return "", fmt.Errorf("không tìm thấy hồ sơ sự cố")
+	}
+
+	var agent models.Agent
+	if loadErr := database.DB.Where("hw_id = ?", incident.AgentHWID).First(&agent).Error; loadErr == nil {
+		incident.Agent = agent
+	}
+
+	if database.SecurityAlertCollection != nil {
+		cursor, _ := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"incident_id": incident.ID})
+		var alerts []models.SecurityAlert
+		cursor.All(context.TODO(), &alerts)
+		incident.Alerts = alerts
 	}
 
 	// 2. Đóng gói Alerts thành JSON

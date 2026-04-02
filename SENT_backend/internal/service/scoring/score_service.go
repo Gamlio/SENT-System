@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
@@ -9,6 +10,7 @@ import (
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"gorm.io/gorm"
 )
 
@@ -64,22 +66,45 @@ func RecalculateRiskScore(agentHWID string) {
 		return
 	}
 
-	var openIncidents []models.Incident
-	database.DB.Where("agent_hw_id = ? AND status IN ('Open', 'Investigating')", agentHWID).Find(&openIncidents)
-
-	n := len(openIncidents)
-
-	// Nếu máy sạch sự cố -> R_current = 0, nhưng TrustScore (Uy tín) vẫn giữ nguyên vết sẹo
-	if n == 0 {
-		database.DB.Model(&agent).Updates(map[string]interface{}{"risk_score": 0.0})
-		return
+	// 1. Lấy telemetry ở MongoDB
+	var alerts []models.SecurityAlert
+	if database.SecurityAlertCollection != nil {
+		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"hw_id": agentHWID, "is_resolved": false})
+		if err == nil {
+			cursor.All(context.TODO(), &alerts)
+		}
 	}
 
-	// 1. Tính tổng điểm gốc (Si)
-	var sumSi float64 = 0
+	var ioActivities []models.AgentIOActivity
+	if database.AgentIOActivityCollection != nil {
+		cursor, err := database.AgentIOActivityCollection.Find(context.TODO(), bson.M{"agent_hwid": agentHWID})
+		if err == nil {
+			cursor.All(context.TODO(), &ioActivities)
+		}
+	}
+
+	var openPorts []models.OpenPort
+	if database.OpenPortCollection != nil {
+		cursor, err := database.OpenPortCollection.Find(context.TODO(), bson.M{"agent_hwid": agentHWID, "status": "OPEN"})
+		if err == nil {
+			cursor.All(context.TODO(), &openPorts)
+		}
+	}
+
+	var usbLogs []models.USBLog
+	if database.USBCollection != nil {
+		cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"agent_hwid": agentHWID, "event_type": "CONNECTED"})
+		if err == nil {
+			cursor.All(context.TODO(), &usbLogs)
+		}
+	}
+
+	// 2. Tính điểm từ telemetry
+	n := len(alerts)
+	sumSi := 0.0
 	hasP1 := false
-	for _, inc := range openIncidents {
-		switch inc.Priority {
+	for _, alert := range alerts {
+		switch alert.Priority {
 		case "P1":
 			sumSi += 50.0
 			hasP1 = true
@@ -89,26 +114,48 @@ func RecalculateRiskScore(agentHWID string) {
 			sumSi += 10.0
 		case "P4":
 			sumSi += 5.0
+		default:
+			sumSi += 5.0
 		}
 	}
 
-	// 2. Công thức Tiệm Cận & Lũy Thừa
-	En := math.Pow(1.2, float64(n)) // Độ dốc E^n (Số sự cố càng nhiều, điểm dựng càng nhanh)
-	k := 50.0                       // Hằng số điều chỉnh độ nhạy
+	// Thêm điểm từ trạng thái open port nếu có
+	if len(openPorts) > 0 {
+		sumSi += float64(len(openPorts)) * 2.0
+	}
 
-	rawScore := (sumSi * En) / k
+	// Thêm điểm từ USB vi phạm (coi là mỗi USB mới là 3 điểm)
+	if len(usbLogs) > 0 {
+		sumSi += float64(len(usbLogs)) * 3.0
+	}
+
+	// Thêm điểm IO spike (nếu có bản ghi I/O recent)
+	if len(ioActivities) > 0 {
+		sumSi += float64(len(ioActivities)) * 5.0
+	}
+
+	if n == 0 && len(openPorts) == 0 && len(usbLogs) == 0 && len(ioActivities) == 0 {
+		database.DB.Model(&agent).Updates(map[string]interface{}{"risk_score": 0.0})
+		return
+	}
+
+	En := math.Pow(1.2, float64(n+len(openPorts)))
+	rawScore := (sumSi * En) / kFactor
 	currentRisk := 100.0 * (1.0 - math.Exp(-rawScore))
 
-	// 3. Phạt điểm Uy tín (Trust Score) nếu có sự cố P1
+	if currentRisk > 100.0 {
+		currentRisk = 100.0
+	}
+
+	// 3. Cập nhật thông số agent
 	now := time.Now()
 	updates := map[string]interface{}{
 		"risk_score":       currentRisk,
 		"last_incident_at": &now,
 	}
 
-	// Nếu có P1, trừ 15 điểm uy tín dài hạn
 	if hasP1 {
-		newTrust := agent.TrustScore - 15.0
+		newTrust := agent.TrustScore - trustScoreP1Deduction
 		if newTrust < 0 {
 			newTrust = 0
 		}
@@ -116,7 +163,7 @@ func RecalculateRiskScore(agentHWID string) {
 	}
 
 	database.DB.Model(&agent).Updates(updates)
-	log.Printf("📊 [Scoring v6] Agent %s: Đang mở=%d sự cố | Rủi ro=%.1f | Uy tín=%.1f", agent.Hostname, n, currentRisk, agent.TrustScore)
+	log.Printf("📊 [Scoring v6] Agent %s: Alerts=%d openPorts=%d usb=%d io=%d | Rủi ro=%.1f | Uy tín=%.1f", agent.Hostname, n, len(openPorts), len(usbLogs), len(ioActivities), currentRisk, agent.TrustScore)
 }
 
 // NewScoreService creates a new ScoreService instance

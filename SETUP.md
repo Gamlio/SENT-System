@@ -26,7 +26,7 @@
 3.  Khởi chạy: `npm start` (Giao diện sẽ chạy tại `http://localhost:3000`)
 
 ## 🛡️ Bước 4: Cài đặt Endpoint Agent
-1.  Di chuyển vào thư mục: `cd SENT_agent`
+1.  Di chuyển vào thư mục: `cd SENT`
 2.  Cấu hình `config.json` hoặc nhập **Company Code** khi khởi chạy lần đầu.
 3.  Build và chạy: `go run main.go`
     * *Lưu ý: Agent cần quyền Admin trên Windows để thu thập thông tin phần mềm và USB.*

@@ -32,39 +32,39 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
     if (tickets.length === 0) return <div className="p-20 text-center text-slate-600 italic">Không có yêu cầu nào cần xử lý.</div>;
 
     return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-                <thead>
-                    <tr className="bg-slate-900/50 border-b border-slate-800 text-[10px] uppercase text-slate-500 font-black">
-                        <th className="p-4">Phân loại</th>
-                        <th className="p-4">Chi tiết yêu cầu</th>
-                        <th className="p-4">Nguồn yêu cầu</th>
-                        <th className="p-4 text-center">Trạng thái</th>
-                        <th className="p-4 text-right">Thao tác</th>
+        <div className="overflow-x-auto custom-scrollbar flex-1 min-h-[450px] relative pb-20">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead className="sticky top-0 z-10 bg-[#111827]">
+                    <tr className="border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-500">
+                        <th className="p-3 font-black">Phân loại</th>
+                        <th className="p-3 font-black">Chi tiết yêu cầu</th>
+                        <th className="p-3 font-black">Nguồn yêu cầu</th>
+                        <th className="p-3 text-center font-black">Trạng thái</th>
+                        <th className="p-3 text-right font-black">Thao tác</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
                     {tickets.map((t) => {
                         const config = getModuleConfig(t.module_type);
                         return (
-                            <tr key={t.id} className="hover:bg-slate-800/30 transition group">
-                                <td className="p-4">
+                            <tr key={t.id} className="hover:bg-slate-800/30 transition-colors cursor-pointer group">
+                                <td className="p-3">
                                     <div className="flex items-center gap-2">
                                         {config.icon}
                                         <span className="text-xs font-bold text-slate-300">{config.label}</span>
                                     </div>
                                 </td>
-                                <td className="p-4">
+                                <td className="p-3">
                                     <div className="text-xs text-white font-medium">{renderContent(t)}</div>
                                     <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">ID: {t.id} | {new Date(t.created_at).toLocaleString()}</div>
                                 </td>
-                                <td className="p-4">
+                                <td className="p-3">
                                     <div className="flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
                                         <span className="text-xs text-slate-400 font-mono">{t.requested_by || config.requester}</span>
                                     </div>
                                 </td>
-                                <td className="p-4 text-center">
+                                <td className="p-3 text-center">
                                     <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${
                                         t.status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-500' :
                                         t.status === 'REJECTED' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'
@@ -72,11 +72,11 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
                                         {t.status}
                                     </span>
                                 </td>
-                                <td className="p-4 text-right">
+                                <td className="p-3 text-right">
                                     {t.status === 'PENDING' ? (
-                                        <div className="flex justify-end gap-2">
-                                            <button onClick={() => onReview(t.id, 'APPROVED')} title="Chấp nhận" className="p-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-600 hover:text-white rounded-lg transition border border-emerald-500/20"><Check size={14}/></button>
-                                            <button onClick={() => onReview(t.id, 'REJECTED')} title="Từ chối" className="p-2 bg-red-500/10 text-red-500 hover:bg-red-600 hover:text-white rounded-lg transition border border-red-500/20"><X size={14}/></button>
+                                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition">
+                                            <button onClick={() => onReview(t.id, 'APPROVED')} title="Chấp nhận" className="p-2 bg-slate-800 text-emerald-400 hover:text-white hover:bg-emerald-600 rounded-lg transition"><Check size={14}/></button>
+                                            <button onClick={() => onReview(t.id, 'REJECTED')} title="Từ chối" className="p-2 bg-slate-800 text-red-400 hover:text-white hover:bg-red-600 rounded-lg transition"><X size={14}/></button>
                                         </div>
                                     ) : (
                                         <span className="text-[10px] text-slate-500 italic">Xử lý bởi: {t.reviewed_by}</span>

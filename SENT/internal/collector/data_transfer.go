@@ -8,10 +8,10 @@ import (
 )
 
 // 1. Khai báo Struct cho Sensor
-type TelemetrySensor struct{}
+type DataTransferSensor struct{}
 
 // 2. Cấu trúc JSON chuẩn gửi về Backend
-type TelemetryRecord struct {
+type DataTransferRecord struct {
 	NetBytesSent     uint64 `json:"net_bytes_sent"`
 	NetBytesRecv     uint64 `json:"net_bytes_recv"`
 	DiskBytesWritten uint64 `json:"disk_bytes_written"`
@@ -19,12 +19,12 @@ type TelemetryRecord struct {
 }
 
 // 3. Khai báo tên định danh của Log
-func (s *TelemetrySensor) Name() string {
-	return "telemetry"
+func (s *DataTransferSensor) Name() string {
+	return "data_transfer"
 }
 
 // 4. Logic thu thập dữ liệu
-func (s *TelemetrySensor) Collect() (interface{}, error) {
+func (s *DataTransferSensor) Collect() (interface{}, error) {
 	var totalNetSent, totalNetRecv uint64
 	var totalDiskWrite, totalDiskRead uint64
 
@@ -52,7 +52,7 @@ func (s *TelemetrySensor) Collect() (interface{}, error) {
 		}
 	}
 
-	return TelemetryRecord{
+	return DataTransferRecord{
 		NetBytesSent:     totalNetSent,
 		NetBytesRecv:     totalNetRecv,
 		DiskBytesWritten: totalDiskWrite,

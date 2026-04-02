@@ -10,10 +10,10 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 
 	// Bổ sung import config và utils
-	"sent_agent/internal/collector"
-	"sent_agent/internal/config"
-	"sent_agent/internal/transport"
-	"sent_agent/internal/utils"
+	"SENT/internal/collector"
+	"SENT/internal/config"
+	"SENT/internal/transport"
+	"SENT/internal/utils"
 )
 
 func main() {

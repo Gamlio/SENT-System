@@ -70,11 +70,11 @@ type User struct {
 	ApprovedBy     string `json:"approved_by"`
 }
 type UserPayload struct {
-	Username           string `json:"username"`
-	Password           string `json:"password"`
-	FullName           string `json:"full_name"`
-	Phone              string `json:"phone"`
-	Email              string `json:"email"`
+	Username           string `json:"username" binding:"required,min=3,max=50,alphanum"`
+	Password           string `json:"password" binding:"required,min=8,max=128"`
+	FullName           string `json:"full_name" binding:"required,min=3,max=100"`
+	Phone              string `json:"phone" binding:"omitempty,len=10,numeric"`
+	Email              string `json:"email" binding:"required,email"`
 	PermAgentView      bool   `json:"perm_agent_view"`
 	PermAgentAction    bool   `json:"perm_agent_action"`
 	PermAgentDelete    bool   `json:"perm_agent_delete"`
@@ -105,19 +105,19 @@ type Agent struct {
 
 	Manager *User `gorm:"foreignKey:UserID" json:"manager"`
 	// Khai báo Relationship rõ ràng: 1 Agent có 1 Inventory, nhiều Alerts, nhiều Software...
-	// OnDelete:CASCADE -> Xóa Agent sẽ tự động xóa log, inventory của nó cho sạch DB.
-	Inventory AgentInventory  `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"inventory"`
-	Software  []SoftwareItem  `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"software"`
-	Alerts    []SecurityAlert `gorm:"foreignKey:HWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"alerts"`
-	OpenPorts []OpenPort      `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"open_ports"`
-	USBLogs   []USBLog        `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"usb_logs"`
-
-	RiskScore                  int        `json:"risk_score" gorm:"default:0"`
-	Status                     string     `json:"status" gorm:"default:'PENDING'"`
-	TrustScore                 float64    `gorm:"default:100"` // Long-term trust
-	DepartmentTag              string     // Explicit Department Tag (e.g., FINANCE, DEV, PROD)
-	LastIncidentAt             *time.Time // Timestamp of the last incident for this agent
-	LastTrustRecoveryAppliedAt *time.Time // Timestamp when trust score recovery was last applied
+	// Inventory đã chuyển qua MongoDB
+	Inventory                  AgentInventory    `gorm:"-" json:"inventory"`
+	Software                   []SoftwareItem    `gorm:"-" json:"software"`      // Virtual field, dữ liệu lấy từ MongoDB
+	Alerts                     []SecurityAlert   `gorm:"-" json:"alerts"`        // Virtual field, dữ liệu lấy từ MongoDB
+	OpenPorts                  []OpenPort        `gorm:"-" json:"open_ports"`    // Virtual field, dữ liệu lấy từ MongoDB
+	USBLogs                    []USBLog          `gorm:"-" json:"usb_logs"`      // Virtual field, dữ liệu lấy từ MongoDB
+	IOActivities               []AgentIOActivity `gorm:"-" json:"io_activities"` // Virtual field, dữ liệu lấy từ MongoDB
+	RiskScore                  int               `json:"risk_score" gorm:"default:0"`
+	Status                     string            `json:"status" gorm:"default:'PENDING'"`
+	TrustScore                 float64           `gorm:"default:100"` // Long-term trust
+	DepartmentTag              string            // Explicit Department Tag (e.g., FINANCE, DEV, PROD)
+	LastIncidentAt             *time.Time        // Timestamp of the last incident for this agent
+	LastTrustRecoveryAppliedAt *time.Time        // Timestamp when trust score recovery was last applied
 
 	DeviceType     string `json:"device_type" gorm:"default:'OFFICE'"`
 	IsZeroTrust    bool   `gorm:"default:false" json:"is_zero_trust"`
@@ -147,55 +147,12 @@ type EnrollmentToken struct {
 	CreatedBy string    `json:"created_by"` // Username của Admin đã tạo mã
 }
 type EnrollRequest struct {
-	HWID      string `json:"hwid"`
-	Hostname  string `json:"hostname"`
-	IPAddress string `json:"ip_address"`
-	Token     string `json:"token"` // Mã cài đặt (Enrollment Token)
-}
-type AgentInventory struct {
-	gorm.Model
-	AgentHWID  string `gorm:"column:agent_hw_id;uniqueIndex" json:"agent_hwid"`
-	CPUModel   string `json:"cpu_model"`
-	RAMTotalGB int    `json:"ram_total_gb"`
-	OSInfo     string `json:"os_info"`
+	HWID      string `json:"hwid" binding:"required,max=64,alphanum"`
+	Hostname  string `json:"hostname" binding:"required,min=1,max=255"`
+	IPAddress string `json:"ip_address" binding:"required,ip"`
+	Token     string `json:"token" binding:"required,min=20,max=255"` // Mã cài đặt (Enrollment Token)
 }
 
-type SoftwareItem struct {
-	gorm.Model
-	AgentHWID       string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
-	SoftwareName    string `json:"software_name"`
-	Version         string `json:"version"`
-	Publisher       string `json:"publisher"`
-	InstallLocation string `json:"install_location"`
-	FileHash        string `json:"file_hash" gorm:"index"` // Mã SHA-256 của file .exe. Index để tra cứu YARA cực nhanh.
-	Status          string `json:"status"`                 // INSTALLED, GHOST_REGISTRY
-	IsRunning       bool   `json:"is_running"`
-}
-
-type OpenPort struct {
-	gorm.Model
-	AgentHWID   string `gorm:"column:agent_hw_id;index" json:"agent_hwid"`
-	Port        int    `json:"port"`
-	ProcessName string `json:"process_name"`
-	Status      string `json:"status" gorm:"default:'OPEN'"`
-}
-
-type USBLog struct {
-	gorm.Model
-	AgentHWID  string `gorm:"column:agent_hw_id;index:idx_agent_usb_hash,unique" json:"agent_hwid"`
-	DeviceName string `json:"device_name"`
-	DeviceID   string `json:"device_id"`
-
-	VID          string `json:"vid"`                                                // Vendor ID (Nhà sản xuất)
-	PID          string `json:"pid"`                                                // Product ID (Mã sản phẩm)
-	SerialNumber string `json:"serial_number"`                                      // Số series độc nhất
-	DeviceHash   string `json:"device_hash" gorm:"index:idx_agent_usb_hash,unique"` // Vân tay độc nhất của USB = Hash(VID+PID+Serial)
-
-	IsWhitelisted bool   `json:"is_whitelisted"`
-	EventType     string `json:"event_type"`
-}
-
-// --- NHÓM 4: GIÁM SÁT AN NINH & SỰ CỐ (ĐÃ REFACTOR THEO PLAYBOOK) ---
 // --- NHÓM 5: QUẢN LÝ SỰ CỐ & AUTOMATION ---
 type Incident struct {
 	gorm.Model // ID, CreatedAt, UpdatedAt, DeletedAt
@@ -220,43 +177,11 @@ type Incident struct {
 	// [MỚI THÊM] Báo cáo sau khi đóng Case
 	ResolutionSummary string `json:"resolution_summary" gorm:"type:text"`
 	// Alerts liên quan
-	Alerts []SecurityAlert `gorm:"foreignKey:IncidentID" json:"alerts"`
+	Alerts []SecurityAlert `gorm:"-" json:"alerts"` // Virtual field, dữ liệu lấy từ MongoDB
 
 	// [MỚI] Link sang bảng hoạt động
-	Activities       []IncidentActivity `json:"activities" gorm:"foreignKey:IncidentID"`
+	Activities       []IncidentActivity `gorm:"-" json:"activities"` // Virtual field, dữ liệu lấy từ MongoDB
 	PlaybookProgress string             `json:"playbook_progress" gorm:"type:text"`
-}
-
-// [MỚI] Bảng lưu lịch sử xử lý (Timeline)
-type IncidentActivity struct {
-	ID        uint      `gorm:"primarykey" json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-
-	IncidentID uint  `json:"incident_id" gorm:"index"`
-	UserID     *uint `json:"user_id"` // Người thực hiện (0 nếu là System/AI)
-	User       User  `json:"user" gorm:"foreignKey:UserID"`
-
-	ActionType string `json:"action_type"` // COMMENT, STATUS_CHANGE, AI_ANALYSIS
-	Content    string `json:"content"`     // Nội dung chi tiết
-	OldStatus  string `json:"old_status"`  // Trạng thái cũ
-	NewStatus  string `json:"new_status"`  // Trạng thái mới
-	Images     string `json:"images"`
-}
-
-type SecurityAlert struct {
-	gorm.Model
-	OrgID      uint   `json:"org_id" gorm:"index"`
-	HWID       string `gorm:"column:hw_id;index" json:"hw_id"`
-	IncidentID *uint  `json:"incident_id" gorm:"index"` // Dùng pointer (*) vì Alert có thể chưa bị gom vào Incident
-
-	// [THÊM MỚI] - Để nhận diện cấp độ khẩn cấp ngay từ Agent gửi lên
-	Priority string `json:"priority"` // "P1", "P2", "P3"
-
-	AlertType   string `json:"alert_type"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Severity    string `json:"severity"`
-	IsResolved  bool   `json:"is_resolved" gorm:"default:false"`
 }
 
 // --- NHÓM 5: CHÍNH SÁCH TẬP TRUNG ---
@@ -299,31 +224,6 @@ type PolicyDocument struct {
 	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"`
 	UploadedBy     string `json:"uploaded_by"`
 	ApprovedBy     string `json:"approved_by"`
-}
-
-// --- NHÓM 6: AI CHAT HISTORY ---
-type AIChatSession struct {
-	// Thay gorm.Model bằng các trường cụ thể có tag json:"id"
-	ID        uint           `gorm:"primarykey" json:"id"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-
-	UserID uint   `json:"user_id" gorm:"index"`
-	Title  string `json:"title"`
-}
-
-type AIChatLog struct {
-	ID        uint           `gorm:"primarykey" json:"id"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-
-	SessionID uint   `json:"session_id" gorm:"index"`
-	UserID    uint   `json:"user_id" gorm:"index"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	Thought   string `json:"thought"`
 }
 
 // --- NHÓM 7: HỆ THỐNG PHÊ DUYỆT TẬP TRUNG (APPROVAL TICKETS) ---

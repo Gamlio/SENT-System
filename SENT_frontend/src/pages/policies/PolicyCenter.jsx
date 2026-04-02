@@ -105,8 +105,17 @@ const PolicyCenter = () => {
     };
 
     return (
-        <div className="flex flex-col h-full p-6 text-slate-200 overflow-hidden">
-            <header className="flex items-center gap-4 mb-6 shrink-0">
+        <div className="p-6 text-slate-200 h-[calc(100vh-60px)] flex flex-col bg-[#050B14] font-sans overflow-hidden">
+            <div className="mb-4 flex justify-between items-end shrink-0">
+                <div>
+                    <h1 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tight">
+                        <LayoutDashboard className="text-indigo-500" size={24}/> CHÍNH SÁCH BẢN QUYỀN
+                    </h1>
+                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Quản lý luật, chính sách và kiểm soát truy cập thiết bị.</p>
+                </div>
+            </div>
+
+            <div className="mb-4">
                 <div className="bg-[#1e293b] p-1.5 rounded-2xl border border-slate-800 flex shadow-lg">
                     {Object.keys(tabConfig).map(key => (
                         <button
@@ -118,30 +127,32 @@ const PolicyCenter = () => {
                         </button>
                     ))}
                 </div>
-            </header>
+            </div>
 
-            {activeTab === 'overview' ? (
-                <PolicyOverview policies={policies} handleTabChange={handleTabChange} />
-            ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 h-full min-h-0">
-                    <div className="xl:col-span-4 h-full overflow-y-auto pr-1">
-                        <PolicyForm 
-                            currentConfig={currentConfig} 
-                            agents={agents} 
-                            onAddPolicy={handleAddPolicy} 
-                            isLoading={loading} 
-                        />
+            <div className="flex-1 bg-[#0A101D] rounded-lg border border-slate-800 shadow-2xl overflow-hidden">
+                {activeTab === 'overview' ? (
+                    <PolicyOverview policies={policies} handleTabChange={handleTabChange} />
+                ) : (
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 h-full min-h-0 p-4">
+                        <div className="xl:col-span-4 h-full overflow-y-auto pr-1">
+                            <PolicyForm 
+                                currentConfig={currentConfig} 
+                                agents={agents} 
+                                onAddPolicy={handleAddPolicy} 
+                                isLoading={loading} 
+                            />
+                        </div>
+                        <div className="xl:col-span-8 h-full min-h-0 flex flex-col">
+                            <PolicyList 
+                                policies={filteredPolicies} // <--- Danh sách đã được lọc kỹ
+                                onDelete={handleDelete} 
+                                onBulkDelete={handleBulkDelete} 
+                                agents={agents} 
+                            />
+                        </div>
                     </div>
-                    <div className="xl:col-span-8 h-full min-h-0 flex flex-col">
-                        <PolicyList 
-                            policies={filteredPolicies} // <--- Danh sách đã được lọc kỹ
-                            onDelete={handleDelete} 
-                            onBulkDelete={handleBulkDelete} 
-                            agents={agents} 
-                        />
-                    </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 };

@@ -57,7 +57,7 @@ Khi một người dùng đã đăng nhập yêu cầu lấy danh sách các s�
 Đây là luồng quan trọng nhất, xử lý dữ liệu từ các agent được cài đặt trên máy người dùng.
 
 1.  **Agent Gửi Dữ Liệu:**
-    *   `SENT_agent` trên máy client thu thập dữ liệu (USB, phần mềm, firewall...).
+    *   `SENT` trên máy client thu thập dữ liệu (USB, phần mềm, firewall...).
     *   Nó gửi một request `POST` đến endpoint, ví dụ: `/api/v1/agents/data`. Request này chứa một token xác thực riêng của agent.
 
 2.  **Middleware (`internal/middleware/agent_auth.go`):**
@@ -97,7 +97,191 @@ Hệ thống áp dụng mô hình "Maker-Checker" để tăng cường bảo m�
     3.  **Thông báo:** Admin ("Checker") nhận được thông báo (có thể qua UI real-time).
     4.  **Phê duyệt/Từ chối:** Admin vào `Approval Center`, xem ticket và nhấn "Approve" hoặc "Reject". Request được gửi đến `approval_handlers.go`.
     5.  **Thực thi:** `approval_service` nhận yêu cầu. Nó sử dụng `Strategy Pattern` (`agent_strategy.go`, `user_strategy.go`...) để biết hành động cụ thể cần làm khi ticket được duyệt. Ví dụ, với `agent_strategy`, nó sẽ cập nhật trạng thái của agent từ `PENDING` thành `ACTIVE`.
-SENT_backend/
+
+---
+
+## 5. Chi Tiết Các Loại Dữ Liệu Giám Sát Cụ Thể
+
+Hệ thống thu thập và xử lý 8 loại dữ liệu giám sát chính từ agents, được lưu trữ trong MongoDB để xử lý dữ liệu lớn.
+
+### 5.1 Software Inventory (SoftwareItem)
+- **Mục đích:** Theo dõi phần mềm cài đặt trên máy agent
+- **Dữ liệu thu thập:** Tên phần mềm, phiên bản, nhà phát hành, đường dẫn cài đặt, hash file, trạng thái (INSTALLED/GHOST_REGISTRY), trạng thái running
+- **Luồng xử lý:** Agent gửi danh sách → `data_service` parse → Lưu MongoDB → Hiển thị trên dashboard agent
+- **File liên quan:** `internal/service/agents/data/software.go`, `mongo_models.go`
+
+### 5.2 Open Ports Monitoring (OpenPort)
+- **Mục đích:** Giám sát cổng mạng mở trên máy agent
+- **Dữ liệu thu thập:** Số port, tên process đang sử dụng, trạng thái (OPEN/CLOSED)
+- **Luồng xử lý:** Agent scan ports → Gửi dữ liệu → `data_service` validate → Lưu MongoDB → Hiển thị trên agent details
+- **File liên quan:** `internal/service/agents/data/port.go`, `mongo_models.go`
+
+### 5.3 USB Device Logging (USBLog)
+- **Mục đích:** Ghi log cắm/rút thiết bị USB
+- **Dữ liệu thu thập:** Tên thiết bị, device ID, VID/PID, serial number, device hash, event type (CONNECT/DISCONNECT), whitelist status
+- **Luồng xử lý:** Agent detect USB events → Gửi log → `data_service` check whitelist → Tạo incident nếu vi phạm → Lưu MongoDB
+- **File liên quan:** `internal/service/agents/data/usb.go`, `mongo_models.go`
+
+### 5.4 I/O Activity Monitoring (AgentIOActivity)
+- **Mục đích:** Theo dõi hoạt động truyền tải dữ liệu
+- **Dữ liệu thu thập:** Bytes sent/recv mạng, bytes written/read ổ đĩa, timestamp
+- **Luồng xử lý:** Agent thu thập metrics → Gửi định kỳ → `data_service` aggregate → Lưu MongoDB → Hiển thị charts trên dashboard
+- **File liên quan:** `internal/service/agents/data/network.go`, `mongo_models.go`
+
+### 5.5 Hardware Inventory (AgentInventory)
+- **Mục đích:** Thu thập thông tin phần cứng máy agent
+- **Dữ liệu thu thập:** Model CPU, RAM total, thông tin OS
+- **Luồng xử lý:** Agent thu thập lúc khởi động → Gửi enrollment → Lưu MongoDB → Hiển thị trên agent profile
+- **File liên quan:** `internal/service/agents/data/inventory.go`, `mongo_models.go`
+
+### 5.6 Security Alerts (SecurityAlert)
+- **Mục đích:** Cảnh báo bảo mật từ agent hoặc hệ thống
+- **Dữ liệu thu thập:** Priority (P1-P4), alert type, title, description, severity (Low-Critical), trạng thái resolved
+- **Luồng xử lý:** Event engine detect → Tạo alert → Link với incident → Lưu MongoDB → Push notification real-time
+- **File liên quan:** `internal/service/security/alerts.go`, `mongo_models.go`
+
+### 5.7 Incident Activities (IncidentActivity)
+- **Mục đích:** Timeline chi tiết quá trình xử lý incident
+- **Dữ liệu thu thập:** Action type (COMMENT, STATUS_CHANGE, AI_ANALYSIS), content, old/new status, images, user info
+- **Luồng xử lý:** User actions → Tạo activity log → Lưu MongoDB → Hiển thị timeline trong incident details
+- **File liên quan:** `internal/service/incidents/incident_service.go`, `mongo_models.go`
+
+### 5.8 AI Chat Logs (AIChatSession, AIChatLog)
+- **Mục đích:** Lưu trữ lịch sử trò chuyện với AI assistant
+- **Dữ liệu thu thập:** Session info, user messages, AI responses, thought process
+- **Luồng xử lý:** User chat → AI process → Lưu MongoDB → Hiển thị chat history
+- **File liên quan:** `internal/service/ai/chat_service.go`, `mongo_models.go`
+
+---
+
+## 6. Nghiệp Vụ Quản Lý Tổ Chức (Organization/Region)
+
+Hệ thống hỗ trợ quản lý đa tổ chức với cấu trúc phân cấp.
+
+- **Organization:** Đơn vị công ty cao nhất, chứa users, regions, policies
+- **Region:** Vùng địa lý trong tổ chức, chứa agents với enrollment token riêng
+- **Luồng hoạt động:**
+  1. Admin tạo organization với company code và enroll token prefix
+  2. Tạo regions với token riêng cho từng khu vực
+  3. Agents sử dụng token region để enroll
+  4. Policies và users được scope theo organization
+- **File liên quan:** `models.go` (Organization, Region), `internal/api/v1/users/`, `internal/service/agents/lifecycle_service.go`
+
+---
+
+## 7. Hệ Thống Permissions Chi Tiết Của User
+
+Hệ thống sử dụng role-based access control với 8 permissions cụ thể:
+
+- **PermAgentView/Action/Delete:** Xem/thao tác/xóa agents
+- **PermPolicyView/Action:** Xem/quản lý policies
+- **PermIncidentView/Action:** Xem/xử lý incidents
+- **PermDocView/Manage:** Xem/quản lý documents
+- **PermUserManage:** Quản lý users
+- **PermApprovalManage:** Phê duyệt requests
+
+- **Luồng xử lý:**
+  1. User login → JWT token chứa permissions
+  2. Middleware check permissions cho từng API
+  3. Service validate quyền trước khi thực thi
+  4. UI ẩn/hiện features theo permissions
+- **File liên quan:** `models.go` (User struct), `internal/middleware/auth.go`, `internal/auth/security.go`
+
+---
+
+## 8. Agent Lifecycle Management
+
+Quản lý vòng đời agent từ enrollment đến decommission.
+
+- **Trạng thái:** PENDING → APPROVED → ACTIVE → SUSPENDED
+- **Luồng enrollment:**
+  1. Agent gửi request với HWID, hostname, IP, token
+  2. Validate token region → Tạo record PENDING
+  3. Tạo approval ticket → Admin approve
+  4. Status chuyển ACTIVE → Gửi secret key
+- **Baseline & Trust Score:**
+  - Baseline: Snapshot ban đầu sau enrollment
+  - Trust Score: 0-100, giảm khi vi phạm, tự phục hồi theo thời gian
+- **File liên quan:** `internal/api/v1/agents/enrollment_handlers.go`, `internal/service/agents/lifecycle_service.go`, `models.go`
+
+---
+
+## 9. Incident Management Workflow
+
+Luồng xử lý sự cố end-to-end với AI support.
+
+- **Tạo incident:** Từ alerts, policy violations, hoặc manual
+- **Phân loại:** Type (Malware, DDoS), Severity (Low-Critical), Priority (P1-P4)
+- **Workflow:**
+  1. Tạo incident → Assign assignee
+  2. Investigation → AI analysis
+  3. Status updates: Open → Investigating → Resolved
+  4. Resolution summary khi đóng case
+- **Timeline:** Mọi action được log trong IncidentActivity
+- **File liên quan:** `internal/service/incidents/incident_service.go`, `internal/api/v1/incidents/`, `models.go`
+
+---
+
+## 10. Universal Policy System
+
+Hệ thống chính sách tập trung cho tất cả loại threats.
+
+- **Policy Types:** SOFTWARE, USB, NETWORK
+- **Policy Values:** BLACKLIST/WHITELIST
+- **Target Scope:** GLOBAL hoặc specific HWIDs
+- **Luồng thực thi:**
+  1. Admin tạo policy → Status PENDING
+  2. Approval workflow → Active
+  3. Event engine check violations
+  4. Tạo incident nếu match
+- **File liên quan:** `models.go` (UniversalPolicy), `internal/service/policies/`, `internal/api/v1/policies/`
+
+---
+
+## 11. Policy Documents Management
+
+Quản lý tài liệu chính sách và quy trình.
+
+- **Upload Process:** Word/PDF → Convert to PDF → Store files
+- **Approval:** Maker-Checker cho documents
+- **AI Processing:** Parse nội dung → Extract rules → Auto-create policies
+- **File liên quan:** `models.go` (PolicyDocument), `internal/api/v1/policies/policy_handlers.go`, `uploads/`
+
+---
+
+## 12. AI Chat Functionality
+
+Trợ lý AI tích hợp cho analysis và support.
+
+- **Features:** Chat về incidents, policy suggestions, security analysis
+- **Architecture:** Sessions + Logs, context-aware responses
+- **Integration:** Với incident management, policy engine
+- **File liên quan:** `internal/service/ai/chat_service.go`, `internal/api/v1/ai/`, `mongo_models.go`
+
+---
+
+## 13. WebSocket Real-time Notifications
+
+Hệ thống thông báo real-time cho dashboard.
+
+- **Hub Architecture:** Central hub quản lý connections
+- **Events:** Agent status changes, new incidents, approvals
+- **Broadcast:** To all connected clients theo permissions
+- **File liên quan:** `internal/websocket/hub.go`, `internal/service/incidents/incident_service.go`
+
+---
+
+## 14. Scoring/Risk Calculation Logic
+
+Hệ thống tính điểm rủi ro động.
+
+- **Risk Score:** Agent-level risk (0-100)
+- **Factors:** Software violations, USB events, alerts, trust score
+- **Calculation:** Weighted algorithm, real-time updates
+- **Recovery:** Trust score tự tăng theo thời gian không vi phạm
+- **File liên quan:** `internal/service/scoring/score_service.go`, `models.go` (Agent.RiskScore)
+
+---
 ├── cmd/
 │   └── server/
 │       └── main.go               # Khởi chạy router, kết nối DB, định tuyến /docs và /policies

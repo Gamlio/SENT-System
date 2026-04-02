@@ -1,4 +1,4 @@
-module sent_agent
+module SENT
 
 go 1.25.4
 

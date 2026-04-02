@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sent_backend/internal/database"
@@ -9,6 +10,7 @@ import (
 	"sent_backend/internal/websocket"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"gorm.io/gorm"
 )
 
@@ -89,4 +91,28 @@ func (s *AgentLifecycleService) AssignManager(hwid string, orgID uint, userID ui
 		Where("hw_id = ? AND org_id = ?", hwid, orgID).
 		Update("user_id", userID).Error
 
+}
+
+func (s *AgentLifecycleService) CleanupAgentTelemetry(hwids []string) {
+	ctx := context.TODO()
+	filter := bson.M{"agent_hwid": bson.M{"$in": hwids}}
+
+	if database.SoftwareCollection != nil {
+		_, _ = database.SoftwareCollection.DeleteMany(ctx, filter)
+	}
+	if database.USBCollection != nil {
+		_, _ = database.USBCollection.DeleteMany(ctx, filter)
+	}
+	if database.OpenPortCollection != nil {
+		_, _ = database.OpenPortCollection.DeleteMany(ctx, filter)
+	}
+	if database.AgentInventoryCollection != nil {
+		_, _ = database.AgentInventoryCollection.DeleteMany(ctx, filter)
+	}
+	if database.AgentIOActivityCollection != nil {
+		_, _ = database.AgentIOActivityCollection.DeleteMany(ctx, filter)
+	}
+	if database.SecurityAlertCollection != nil {
+		_, _ = database.SecurityAlertCollection.DeleteMany(ctx, bson.M{"hw_id": bson.M{"$in": hwids}})
+	}
 }

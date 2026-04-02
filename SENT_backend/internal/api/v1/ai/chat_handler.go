@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,7 +10,11 @@ import (
 	"sent_backend/internal/models"
 	service_ai "sent_backend/internal/service/ai"
 
+	"time"
+
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // [SỬA LỖI 401] Hàm này kiểm tra mọi trường hợp có thể của ID
@@ -88,7 +93,7 @@ func GetSessions(c *gin.Context) {
 // POST /api/v1/ai/chat/:session_id
 func ChatHandler(c *gin.Context) {
 	sessionIDStr := c.Param("session_id")
-	sessionID, err := strconv.ParseUint(sessionIDStr, 10, 64)
+	sessionObjectID, err := primitive.ObjectIDFromHex(sessionIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID phiên không hợp lệ"})
 		return
@@ -111,11 +116,13 @@ func ChatHandler(c *gin.Context) {
 	// Lưu User Message
 	userLog := models.AIChatLog{
 		UserID:    userID,
-		SessionID: uint(sessionID),
+		SessionID: sessionObjectID,
 		Role:      "user",
 		Content:   req.Message,
 	}
-	database.DB.Create(&userLog)
+	if database.AIChatLogCollection != nil {
+		_, _ = database.AIChatLogCollection.InsertOne(context.TODO(), userLog)
+	}
 
 	// Gọi AI
 	thought, answer, err := service_ai.ChatWithPolicy(req.Message)
@@ -127,16 +134,20 @@ func ChatHandler(c *gin.Context) {
 
 	// Lưu AI Message
 	aiLog := models.AIChatLog{
-		SessionID: uint(sessionID),
+		SessionID: sessionObjectID,
 		UserID:    userID,
 		Role:      "ai",
 		Content:   answer,
 		Thought:   thought,
 	}
-	database.DB.Create(&aiLog)
+	if database.AIChatLogCollection != nil {
+		_, _ = database.AIChatLogCollection.InsertOne(context.TODO(), aiLog)
+	}
 
 	// Update Session
-	database.DB.Model(&models.AIChatSession{}).Where("id = ?", sessionID).Update("updated_at", database.DB.NowFunc())
+	if database.AIChatSessionCollection != nil {
+		_, _ = database.AIChatSessionCollection.UpdateOne(context.TODO(), bson.M{"_id": sessionObjectID}, bson.M{"$set": bson.M{"updated_at": time.Now()}})
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"response": answer,

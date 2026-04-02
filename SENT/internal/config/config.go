@@ -26,7 +26,7 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	if err == nil {
 		json.Unmarshal(file, &Current)
 		// Nếu đã có SecretKey tức là đăng ký thành công rồi
-		if Current.SecretKey != "" {
+		if Current.SecretKey != "http://192.168.2.4:8000" {
 			return
 		}
 	}

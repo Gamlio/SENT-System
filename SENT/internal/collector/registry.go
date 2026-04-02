@@ -22,5 +22,5 @@ func InitCollectors() {
 	Register(&InventorySensor{})
 	Register(&FirewallSensor{})
 	Register(&AntivirusSensor{})
-	Register(&TelemetrySensor{})
+	Register(&DataTransferSensor{})
 }

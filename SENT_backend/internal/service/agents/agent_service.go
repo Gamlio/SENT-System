@@ -9,11 +9,11 @@ import (
 )
 
 type AgentPayload struct {
-	Type     string      `json:"type"` // "DATA" | "HEARTBEAT"
-	LogType  string      `json:"log_type"`
-	HWID     string      `json:"hwid"`
-	Hostname string      `json:"hostname"`
-	Data     interface{} `json:"data"`
+	Type     string      `json:"type" binding:"required,oneof=DATA HEARTBEAT"` // "DATA" | "HEARTBEAT"
+	LogType  string      `json:"log_type" binding:"required,max=50,alphanum"`
+	HWID     string      `json:"hwid" binding:"required,max=64,alphanum"`
+	Hostname string      `json:"hostname" binding:"required,min=1,max=255"`
+	Data     interface{} `json:"data" binding:"required"`
 }
 
 func ProcessAgentData(payload AgentPayload) {
@@ -51,6 +51,8 @@ func ProcessAgentData(payload AgentPayload) {
 		dataAgents.ProcessFirewall(agent, payload.Data)
 	case "antivirus":
 		dataAgents.ProcessAntivirus(agent, payload.Data)
+	case "data_transfer":
+		dataAgents.ProcessDataTransfer(agent, payload.Data)
 	}
 
 	// Frontend AgentDetail.jsx sẽ nhận tin này và tự fetchDetail() lại

@@ -1,10 +1,125 @@
 # Luồng Hoạt Động Chi Tiết - SENT Frontend
 
-Tài liệu này mô tả chi tiết kiến trúc và luồng hoạt động của ứng dụng frontend được xây dựng bằng React.
+Tài liệu này đã được cập nhật và làm mới để phản ánh đúng mã nguồn hiện tại của `SENT_frontend` (React + Vite).
+
+## TOÀN BỘ NỘI DUNG MỚI
+
+### 1. Kiến trúc thư mục
+
+SENT_frontend/
+- public/: static assets (index.html, image, favicon).
+- src/index.jsx: mount React app vào DOM.
+- src/App.jsx: route definitions (public + protected), layout chung (Sidebar, Navbar, GlobalCopilotDrawer).
+- src/api/axios.jsx: cấu hình axios với `baseURL` từ `VITE_API_URL`, `Content-Type`, interceptor `Authorization`.
+- src/context/AuthContext.jsx: `login`, `logout`, localStorage `sent_token`, `sent_user`.
+- src/context/WebSocketContext.jsx: quản lý WebSocket kết nối với `/ws`, dispatch event toàn cục.
+- src/pages/: module funcional (Agents, IncidentReport, Dashboard, policies, approvals, AIChat, KnowledgeBase, User, Auth).
+- src/components/: chung UI component (Sidebar, Navbar, AppDialog, SearchableList, GlobalCopilotDrawer).
+- src/styles/: CSS/Tailwind.
+
+### 2. Entry point + Routing
+
+- `src/index.jsx`: render App bên trong `AuthProvider`.
+- `App.jsx`:
+  - public: `/login`, `/login/:companyCode`, `/register`.
+  - protected: `/`, `/profile`, `/agents`, `/agents/:hwid`, `/incidents`, `/incidents/:id`, `/chat-ai`, `/approvals`, `/policy-center`, `/docs`, `/users`.
+  - `ProtectedRoute` kiểm tra `useAuth().user` và `requiredPermission`.
+
+### 3. Auth flow
+
+- `AuthContext.login` gọi `POST /api/v1/auth/login`.
+- lưu token vào localStorage key `sent_token`, thông tin user vào `sent_user`.
+- Axios interceptor tự thêm `Authorization: Bearer <token>`.
+- `logout` xóa localStorage.
+
+### 4. WebSocket
+
+- endpoint backend: `/ws`.
+- message loại: `AGENT_STATUS_CHANGED`, `REFRESH_AGENT_LIST`, `BASELINE_COMPLETED`, `INCIDENT_UPDATED`.
+- component dùng `useSocketSubscription` để listen & cập nhật.
+
+### 5. API mapping module
+
+Agents:
+- GET /api/v1/agents
+- GET /api/v1/agents/:hwid
+- GET /api/v1/agents/:hwid/logs
+- GET /api/v1/agents/stats
+- GET /api/v1/agents/active-token
+- POST /api/v1/agents/generate-token
+- PUT /api/v1/agents/:hwid/assign
+- POST /api/v1/agents/bulk-assign
+- PUT /api/v1/agents/:hwid/device-type
+- PUT /api/v1/agents/:hwid/department
+- POST /api/v1/agents/:hwid/request-delete
+- POST /api/v1/agents/bulk-request-delete
+- POST /api/v1/agents/:hwid/trigger-baseline
+
+Incidents:
+- GET /api/v1/incidents
+- GET /api/v1/incidents/:id
+- POST /api/v1/incidents/:id/activity
+- PUT /api/v1/incidents/:id/playbook
+- PUT /api/v1/incidents/:id/assign
+- POST /api/v1/incidents/:id/execute
+- POST /api/v1/incidents/:id/ai-analyze
+- GET /api/v1/files/incidents/:filename
+
+Approvals:
+- GET /api/v1/approvals
+- PUT /api/v1/approvals/:id/review
+
+Policies & Docs:
+- GET /api/v1/policies
+- POST /api/v1/policies
+- POST /api/v1/policies/bulk
+- DELETE /api/v1/policies/:id
+- POST /api/v1/policies/bulk-delete
+- GET /api/v1/docs
+- POST /api/v1/docs/upload
+- PUT /api/v1/docs/:id
+- DELETE /api/v1/docs/:id
+
+AI Chat:
+- POST /api/v1/ai/chat
+- POST /api/v1/ai/chat/:session_id
+- POST /api/v1/ai/sessions
+- GET /api/v1/ai/sessions
+- PUT /api/v1/ai/sessions/:id
+- DELETE /api/v1/ai/sessions/:id
+- GET /api/v1/ai/chat/:session_id
+
+Users:
+- GET /api/v1/users
+- POST /api/v1/users
+- PUT /api/v1/users/:id
+- DELETE /api/v1/users/:id
+
+Dashboard:
+- GET /api/v1/dashboard/stats
+
+### 6. Performance
+
+- useMemo, useCallback, tránh re-render khi hiển thị bảng lớn.
+- Polling 60s + WebSocket.
+
+### 7. Chạy và test
+
+- npm install
+- npm run dev
+- npm run build
+- Env: VITE_API_URL=http://localhost:8000/api/v1
+
+### 8. Lưu ý so với cũ
+
+- permissions logic `requiredPermission: agent_view/incident_view/policy_view/approval_manage/user_manage`.
+- login response token property là `token`, không phải `access_token`.
+- app có GlobalCopilotDrawer và profile route.
 
 ---
 
-## 1. Luồng Khởi Động và Cấu Trúc (Application Bootstrap)
+## 9. Nội dung cũ (giữ nguyên để tham khảo)
+
 
 1.  **Entry Point (`src/index.js`):**
     *   Đây là file đầu tiên được thực thi.

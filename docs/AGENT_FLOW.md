@@ -7,7 +7,7 @@ Tài liệu này mô tả kiến trúc của Agent sau quá trình tái cấu tr
 Dự án Agent được thiết kế theo chuẩn module hóa:
 
 ```text
-sent_agent/
+SENT/
 ├── cmd/
 │   └── main.go              // Điểm khởi chạy (Entry point)
 ├── internal/

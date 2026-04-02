@@ -1,12 +1,16 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type AgentUSBRecord struct {
@@ -25,42 +29,30 @@ func ProcessUSB(agent models.Agent, data interface{}) {
 	if err := json.Unmarshal(bytes, &records); err != nil {
 		return
 	}
+	if database.USBCollection == nil {
+		return
+	}
 
 	incSvc := &incidents.IncidentService{}
 
-	// 1. TẠO MAP CHỨA DANH SÁCH USB ĐANG CẮM
 	incomingUsbMap := make(map[string]bool)
 
-	// 2. CHIỀU THÊM MỚI / CẬP NHẬT (UPSERT)
 	for _, rec := range records {
 		incomingUsbMap[rec.DeviceHash] = true
+		filter := bson.M{"agent_hwid": agent.HWID, "device_hash": rec.DeviceHash}
+		update := bson.M{"$set": bson.M{
+			"agent_hwid":    agent.HWID,
+			"device_name":   rec.DeviceName,
+			"device_id":     rec.DeviceID,
+			"vid":           rec.VID,
+			"pid":           rec.PID,
+			"serial_number": rec.SerialNumber,
+			"device_hash":   rec.DeviceHash,
+			"event_type":    "CONNECTED",
+			"updated_at":    time.Now(),
+		}}
+		_, _ = database.USBCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true))
 
-		var existingUSB models.USBLog
-		result := database.DB.Where("agent_hw_id = ? AND device_hash = ?", agent.HWID, rec.DeviceHash).First(&existingUSB)
-
-		if result.Error == nil {
-			// USB đã từng cắm -> Cập nhật trạng thái thành CONNECTED và update thời gian
-			database.DB.Model(&existingUSB).Updates(map[string]interface{}{
-				"event_type": "CONNECTED",
-				"updated_at": time.Now(),
-			})
-			continue
-		}
-
-		// USB Mới Tinh -> Lưu vào DB
-		usb := models.USBLog{
-			AgentHWID:    agent.HWID,
-			DeviceName:   rec.DeviceName,
-			DeviceID:     rec.DeviceID,
-			VID:          rec.VID,
-			PID:          rec.PID,
-			SerialNumber: rec.SerialNumber,
-			DeviceHash:   rec.DeviceHash,
-			EventType:    "CONNECTED", // Ép trạng thái ban đầu là đang cắm
-		}
-		database.DB.Create(&usb)
-
-		// Phát cảnh báo do có USB mới
 		incSvc.TriggerSecurityEvent(agent,
 			"USB Violation",
 			"[P3] Thiết bị ngoại vi mới",
@@ -69,16 +61,16 @@ func ProcessUSB(agent models.Agent, data interface{}) {
 		)
 	}
 
-	// 3. CHIỀU RÚT RA (DIFFING): Tìm các USB vừa bị rút
+	cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"agent_hwid": agent.HWID, "event_type": "CONNECTED"})
+	if err != nil {
+		return
+	}
 	var connectedUSBs []models.USBLog
-	// Tìm các USB đang được ghi nhận là CONNECTED
-	database.DB.Where("agent_hw_id = ? AND event_type = ?", agent.HWID, "CONNECTED").Find(&connectedUSBs)
+	cursor.All(context.TODO(), &connectedUSBs)
 
 	for _, dbUsb := range connectedUSBs {
-		// Nếu USB trong DB KHÔNG có trong danh sách Agent gửi lên
 		if !incomingUsbMap[dbUsb.DeviceHash] {
-			// Đánh dấu là đã rút ra
-			database.DB.Model(&dbUsb).Update("event_type", "DISCONNECTED")
+			_, _ = database.USBCollection.UpdateOne(context.TODO(), bson.M{"_id": dbUsb.ID}, bson.M{"$set": bson.M{"event_type": "DISCONNECTED"}})
 		}
 	}
 }
