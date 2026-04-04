@@ -9,11 +9,11 @@ Khi nhận yêu cầu cập nhật Backend dựa trên file thu thập dữ li�
 
 ## 1. Phân loại Database (Database Classification)
 Dựa trên kiến trúc hiện tại, hãy chọn đúng nơi lưu trữ:
-* **PostgreSQL (GORM):** Dành cho các tính năng cấu hình, tổ chức, người dùng và phê duyệt (ví dụ: `Organization`, `User`, `Agent`, `ApprovalTicket`, `UniversalPolicy`).
-* **MongoDB (NoSQL):** Dành cho dữ liệu phát sinh liên tục, log giám sát, và dữ liệu không cấu hình (ví dụ: `SoftwareItem`, `USBLog`, `AgentIOActivity`, `AIChatLog`).
+* **PostgreSQL (GORM):** Dành cho các tính năng cấu hình, tổ chức, người dùng và phê duyệt (ví dụ: `Organization`, `User`, `asset`, `ApprovalTicket`, `UniversalPolicy`).
+* **MongoDB (NoSQL):** Dành cho dữ liệu phát sinh liên tục, log giám sát, và dữ liệu không cấu hình (ví dụ: `SoftwareItem`, `USBLog`, `assetIOActivity`, `AIChatLog`).
 
 ## 2. Strong Field Validation (Bắt buộc)
-Để tránh các lỗi bảo mật như Injection, Malformed Request hoặc DoS qua Agent Flooding, mọi struct nhận dữ liệu (Payload) phải:
+Để tránh các lỗi bảo mật như Injection, Malformed Request hoặc DoS qua asset Flooding, mọi struct nhận dữ liệu (Payload) phải:
 * Luôn thêm tag `binding:"required"` cho các trường bắt buộc để chặn dữ liệu rỗng ở tầng API layer.
 * Sử dụng các ràng buộc bổ sung như `min`, `max`, `email`, `alphanum` để kiểm soát chặt chẽ nội dung đầu vào.
 * **Ví dụ:** `Username string `json:"username" binding:"required,alphanum,min=3"``.

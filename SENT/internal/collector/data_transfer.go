@@ -57,5 +57,5 @@ func (s *DataTransferSensor) Collect() (interface{}, error) {
 		NetBytesRecv:     totalNetRecv,
 		DiskBytesWritten: totalDiskWrite,
 		DiskBytesRead:    totalDiskRead,
-	}, nil // Telemetry thường không nên trả về lỗi làm dừng agent, chỉ trả về giá trị 0 nếu không thu thập được
+	}, nil // Telemetry thường không nên trả về lỗi làm dừng asset, chỉ trả về giá trị 0 nếu không thu thập được
 }

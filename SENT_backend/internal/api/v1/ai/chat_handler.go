@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // [SỬA LỖI 401] Hàm này kiểm tra mọi trường hợp có thể của ID
@@ -66,14 +67,27 @@ func CreateSession(c *gin.Context) {
 	}
 
 	session := models.AIChatSession{
-		UserID: userID,
-		Title:  "Cuộc trò chuyện mới",
+		UserID:    userID,
+		Title:     "Cuộc trò chuyện mới",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
-	if err := database.DB.Create(&session).Error; err != nil {
+	if database.AIChatSessionCollection == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi kết nối MongoDB"})
+		return
+	}
+
+	res, err := database.AIChatSessionCollection.InsertOne(context.TODO(), session)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi Database"})
 		return
 	}
+
+	if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
+		session.ID = oid
+	}
+
 	c.JSON(http.StatusOK, session)
 }
 
@@ -85,8 +99,14 @@ func GetSessions(c *gin.Context) {
 		return
 	}
 
-	var sessions []models.AIChatSession
-	database.DB.Where("user_id = ?", userID).Order("updated_at desc").Find(&sessions)
+	sessions := make([]models.AIChatSession, 0) // Tránh trả về null
+	if database.AIChatSessionCollection != nil {
+		opts := options.Find().SetSort(bson.D{{Key: "updated_at", Value: -1}})
+		cursor, err := database.AIChatSessionCollection.Find(context.TODO(), bson.M{"user_id": userID}, opts)
+		if err == nil {
+			cursor.All(context.TODO(), &sessions)
+		}
+	}
 	c.JSON(http.StatusOK, sessions)
 }
 
@@ -119,6 +139,7 @@ func ChatHandler(c *gin.Context) {
 		SessionID: sessionObjectID,
 		Role:      "user",
 		Content:   req.Message,
+		CreatedAt: time.Now(),
 	}
 	if database.AIChatLogCollection != nil {
 		_, _ = database.AIChatLogCollection.InsertOne(context.TODO(), userLog)
@@ -139,6 +160,7 @@ func ChatHandler(c *gin.Context) {
 		Role:      "ai",
 		Content:   answer,
 		Thought:   thought,
+		CreatedAt: time.Now(),
 	}
 	if database.AIChatLogCollection != nil {
 		_, _ = database.AIChatLogCollection.InsertOne(context.TODO(), aiLog)
@@ -157,7 +179,13 @@ func ChatHandler(c *gin.Context) {
 
 // --- 1. API ĐỔI TÊN PHIÊN (PUT /api/v1/ai/sessions/:id) ---
 func RenameSession(c *gin.Context) {
-	sessionID := c.Param("id")
+	sessionIDStr := c.Param("id")
+	sessionObjectID, err := primitive.ObjectIDFromHex(sessionIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID phiên không hợp lệ"})
+		return
+	}
+
 	userID, ok := getUserID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -172,12 +200,18 @@ func RenameSession(c *gin.Context) {
 		return
 	}
 
-	// Chỉ đổi tên nếu session đó thuộc về User này
-	result := database.DB.Model(&models.AIChatSession{}).
-		Where("id = ? AND user_id = ?", sessionID, userID).
-		Update("title", req.Title)
+	if database.AIChatSessionCollection == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi kết nối MongoDB"})
+		return
+	}
 
-	if result.Error != nil || result.RowsAffected == 0 {
+	res, err := database.AIChatSessionCollection.UpdateOne(
+		context.TODO(),
+		bson.M{"_id": sessionObjectID, "user_id": userID},
+		bson.M{"$set": bson.M{"title": req.Title, "updated_at": time.Now()}},
+	)
+
+	if err != nil || res.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy phiên hoặc lỗi DB"})
 		return
 	}
@@ -187,53 +221,67 @@ func RenameSession(c *gin.Context) {
 
 // --- 2. API XÓA PHIÊN (DELETE /api/v1/ai/sessions/:id) ---
 func DeleteSession(c *gin.Context) {
-	sessionID := c.Param("id")
+	sessionIDStr := c.Param("id")
+	sessionObjectID, err := primitive.ObjectIDFromHex(sessionIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID phiên không hợp lệ"})
+		return
+	}
+
 	userID, ok := getUserID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	// Xóa Session (Gorm dùng Soft Delete nên an toàn)
-	// Cascade Delete: Cần cẩn thận, nhưng ở đây ta cứ xóa Session trước
-	// Các tin nhắn (AIChatLog) liên quan có thể xóa sau hoặc giữ lại tùy chính sách
-
-	// Cách 1: Xóa cả Session và Log (Sạch sẽ)
-	tx := database.DB.Begin()
-
-	// Xóa Log trước
-	if err := tx.Where("session_id = ? AND user_id = ?", sessionID, userID).Delete(&models.AIChatLog{}).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi xóa tin nhắn"})
+	if database.AIChatSessionCollection == nil || database.AIChatLogCollection == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi kết nối MongoDB"})
 		return
 	}
 
-	// Xóa Session sau
-	result := tx.Where("id = ? AND user_id = ?", sessionID, userID).Delete(&models.AIChatSession{})
-	if result.Error != nil || result.RowsAffected == 0 {
-		tx.Rollback()
+	// Xóa Log
+	_, _ = database.AIChatLogCollection.DeleteMany(
+		context.TODO(),
+		bson.M{"session_id": sessionObjectID, "user_id": userID},
+	)
+
+	// Xóa Session
+	res, err := database.AIChatSessionCollection.DeleteOne(
+		context.TODO(),
+		bson.M{"_id": sessionObjectID, "user_id": userID},
+	)
+
+	if err != nil || res.DeletedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy phiên để xóa"})
 		return
 	}
 
-	tx.Commit()
 	c.JSON(http.StatusOK, gin.H{"message": "Xóa phiên thành công"})
 }
 
 // GET /api/v1/ai/chat/:session_id
 func GetChatHistory(c *gin.Context) {
-	sessionID := c.Param("session_id")
+	sessionIDStr := c.Param("session_id")
+	sessionObjectID, err := primitive.ObjectIDFromHex(sessionIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID phiên không hợp lệ"})
+		return
+	}
+
 	userID, ok := getUserID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	var logs []models.AIChatLog
-	// Lấy tất cả tin nhắn thuộc session và user này, sắp xếp theo thời gian
-	database.DB.Where("session_id = ? AND user_id = ?", sessionID, userID).
-		Order("created_at asc").
-		Find(&logs)
+	logs := make([]models.AIChatLog, 0)
+	if database.AIChatLogCollection != nil {
+		opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}})
+		cursor, err := database.AIChatLogCollection.Find(context.TODO(), bson.M{"session_id": sessionObjectID, "user_id": userID}, opts)
+		if err == nil {
+			cursor.All(context.TODO(), &logs)
+		}
+	}
 
 	c.JSON(http.StatusOK, logs)
 }

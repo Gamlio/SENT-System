@@ -18,7 +18,7 @@ const Sidebar = () => {
 
     const menuItems = [
         { path: '/', icon: <LayoutDashboard size={18}/>, label: 'Tổng quan', show: true },
-        { path: '/agents', icon: <Monitor size={18}/>, label: 'Máy trạm', show: user.permissions?.agent_view },
+        { path: '/assets', icon: <Monitor size={18}/>, label: 'Máy trạm', show: user.permissions?.asset_view },
         { path: '/policy-center', icon: <ShieldCheck size={18}/>, label: 'Chính sách', show: user.permissions?.policy_view },
         { path: '/docs', icon: <FileText size={18}/>, label: 'Tài liệu', show: user.permissions?.doc_view },
         { path: '/users', icon: <User size={18}/>, label: 'Nhân sự', show: user.permissions?.user_manage },
@@ -38,7 +38,7 @@ const Sidebar = () => {
                 {isCollapsed ? <ChevronRight size={14}/> : <ChevronLeft size={14}/>}
             </button>
 
-            {/* LOGO SECTION - Typography giống Agents */}
+            {/* LOGO SECTION - Typography giống assets */}
             <div className={`p-6 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
                 <div className="p-2 bg-indigo-500/10 rounded border border-indigo-500/30 text-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.2)]">
                     <Cpu size={24} />

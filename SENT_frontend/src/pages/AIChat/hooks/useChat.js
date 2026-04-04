@@ -21,7 +21,7 @@ export const useChat = () => {
             const res = await axios.get(`/ai/chat/${sessionId}`);
             
             // Map dữ liệu từ DB (snake_case) sang Frontend (camelCase)
-            const history = res.data.map(log => ({
+            const history = (res.data || []).map(log => ({
                 sender: log.role,      // "user" hoặc "ai"
                 text: log.content,
                 thought: log.thought   // Suy luận (nếu có)
@@ -39,7 +39,7 @@ export const useChat = () => {
     // --- 2. LOGIC TẠO PHIÊN MỚI ---
     const createNewSession = async () => {
         try {
-            const res = await axios.post('/ai/sessions');
+            const res = await axios.post('/ai/sessions', {});
             const newSession = res.data;
             
             setSessions(prev => [newSession, ...prev]);
@@ -56,11 +56,12 @@ export const useChat = () => {
     const fetchSessions = useCallback(async () => {
         try {
             const res = await axios.get('/ai/sessions');
-            setSessions(res.data);
+            const data = res.data || [];
+            setSessions(data);
             
-            if (res.data.length > 0) {
+            if (data.length > 0) {
                 // Chọn phiên mới nhất mặc định
-                setCurrentSession(prev => prev || res.data[0]);
+                setCurrentSession(prev => prev || data[0]);
             } else {
                 await createNewSession();
             }

@@ -60,24 +60,24 @@ type ScoreService struct {
 	db *gorm.DB
 }
 
-func RecalculateRiskScore(agentHWID string) {
-	var agent models.Agent
-	if err := database.DB.Where("hw_id = ?", agentHWID).First(&agent).Error; err != nil {
+func RecalculateRiskScore(assetHWID string) {
+	var asset models.Asset
+	if err := database.DB.Where("hw_id = ?", assetHWID).First(&asset).Error; err != nil {
 		return
 	}
 
 	// 1. Lấy telemetry ở MongoDB
 	var alerts []models.SecurityAlert
 	if database.SecurityAlertCollection != nil {
-		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"hw_id": agentHWID, "is_resolved": false})
+		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"hw_id": assetHWID, "is_resolved": false})
 		if err == nil {
 			cursor.All(context.TODO(), &alerts)
 		}
 	}
 
-	var ioActivities []models.AgentIOActivity
-	if database.AgentIOActivityCollection != nil {
-		cursor, err := database.AgentIOActivityCollection.Find(context.TODO(), bson.M{"agent_hwid": agentHWID})
+	var ioActivities []models.AssetIOActivity
+	if database.AssetIOActivityCollection != nil {
+		cursor, err := database.AssetIOActivityCollection.Find(context.TODO(), bson.M{"asset_hwid": assetHWID})
 		if err == nil {
 			cursor.All(context.TODO(), &ioActivities)
 		}
@@ -85,7 +85,7 @@ func RecalculateRiskScore(agentHWID string) {
 
 	var openPorts []models.OpenPort
 	if database.OpenPortCollection != nil {
-		cursor, err := database.OpenPortCollection.Find(context.TODO(), bson.M{"agent_hwid": agentHWID, "status": "OPEN"})
+		cursor, err := database.OpenPortCollection.Find(context.TODO(), bson.M{"asset_hwid": assetHWID, "status": "OPEN"})
 		if err == nil {
 			cursor.All(context.TODO(), &openPorts)
 		}
@@ -93,7 +93,7 @@ func RecalculateRiskScore(agentHWID string) {
 
 	var usbLogs []models.USBLog
 	if database.USBCollection != nil {
-		cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"agent_hwid": agentHWID, "event_type": "CONNECTED"})
+		cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"asset_hwid": assetHWID, "event_type": "CONNECTED"})
 		if err == nil {
 			cursor.All(context.TODO(), &usbLogs)
 		}
@@ -135,7 +135,7 @@ func RecalculateRiskScore(agentHWID string) {
 	}
 
 	if n == 0 && len(openPorts) == 0 && len(usbLogs) == 0 && len(ioActivities) == 0 {
-		database.DB.Model(&agent).Updates(map[string]interface{}{"risk_score": 0.0})
+		database.DB.Model(&asset).Updates(map[string]interface{}{"risk_score": 0.0})
 		return
 	}
 
@@ -147,7 +147,7 @@ func RecalculateRiskScore(agentHWID string) {
 		currentRisk = 100.0
 	}
 
-	// 3. Cập nhật thông số agent
+	// 3. Cập nhật thông số asset
 	now := time.Now()
 	updates := map[string]interface{}{
 		"risk_score":       currentRisk,
@@ -155,15 +155,15 @@ func RecalculateRiskScore(agentHWID string) {
 	}
 
 	if hasP1 {
-		newTrust := agent.TrustScore - trustScoreP1Deduction
+		newTrust := asset.TrustScore - trustScoreP1Deduction
 		if newTrust < 0 {
 			newTrust = 0
 		}
 		updates["trust_score"] = newTrust
 	}
 
-	database.DB.Model(&agent).Updates(updates)
-	log.Printf("📊 [Scoring v6] Agent %s: Alerts=%d openPorts=%d usb=%d io=%d | Rủi ro=%.1f | Uy tín=%.1f", agent.Hostname, n, len(openPorts), len(usbLogs), len(ioActivities), currentRisk, agent.TrustScore)
+	database.DB.Model(&asset).Updates(updates)
+	log.Printf("📊 [Scoring v6] asset %s: Alerts=%d openPorts=%d usb=%d io=%d | Rủi ro=%.1f | Uy tín=%.1f", asset.Hostname, n, len(openPorts), len(usbLogs), len(ioActivities), currentRisk, asset.TrustScore)
 }
 
 // NewScoreService creates a new ScoreService instance
@@ -185,20 +185,20 @@ func (s *ScoreService) GetPriorityFromMatrix(sensorType, departmentTag string) (
 	return "P4", fmt.Errorf("sensor type '%s' not found in department matrix, defaulting to P4", sensorType)
 }
 
-// CalculateCurrentRiskScore calculates the instantaneous risk score (R_current) for an agent.
+// CalculateCurrentRiskScore calculates the instantaneous risk score (R_current) for an asset.
 // This score reflects the current active threats.
-func (s *ScoreService) CalculateCurrentRiskScore(agentID uint) (float64, error) {
+func (s *ScoreService) CalculateCurrentRiskScore(assetID uint) (float64, error) {
 	var incidents []models.Incident
-	// Fetch all OPEN incidents for the agent
-	if err := s.db.Where("agent_id = ? AND status = ?", agentID, "Open").Find(&incidents).Error; err != nil {
-		return 0, fmt.Errorf("failed to fetch open incidents for agent %d: %w", agentID, err)
+	// Fetch all OPEN incidents for the asset
+	if err := s.db.Where("asset_id = ? AND status = ?", assetID, "Open").Find(&incidents).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch open incidents for asset %d: %w", assetID, err)
 	}
 
 	if len(incidents) == 0 {
 		// No open incidents, current risk score is 0
-		// Ensure agent's risk_score is updated to 0 if it was previously higher
-		if err := s.db.Model(&models.Agent{}).Where("id = ?", agentID).Update("risk_score", 0.0).Error; err != nil {
-			return 0, fmt.Errorf("failed to reset risk score for agent %d: %w", agentID, err)
+		// Ensure asset's risk_score is updated to 0 if it was previously higher
+		if err := s.db.Model(&models.Asset{}).Where("id = ?", assetID).Update("risk_score", 0.0).Error; err != nil {
+			return 0, fmt.Errorf("failed to reset risk score for asset %d: %w", assetID, err)
 		}
 		return 0, nil
 	}
@@ -232,24 +232,24 @@ func (s *ScoreService) CalculateCurrentRiskScore(agentID uint) (float64, error) 
 		rCurrent = 100.0
 	}
 
-	// Update the agent's RiskScore in the database
-	if err := s.db.Model(&models.Agent{}).Where("id = ?", agentID).Update("risk_score", rCurrent).Error; err != nil {
-		return rCurrent, fmt.Errorf("failed to update risk score for agent %d: %w", agentID, err)
+	// Update the asset's RiskScore in the database
+	if err := s.db.Model(&models.Asset{}).Where("id = ?", assetID).Update("risk_score", rCurrent).Error; err != nil {
+		return rCurrent, fmt.Errorf("failed to update risk score for asset %d: %w", assetID, err)
 	}
 
 	return rCurrent, nil
 }
 
-// UpdateTrustScore updates the long-term trust score (D_debt) for an agent.
+// UpdateTrustScore updates the long-term trust score (D_debt) for an asset.
 // This function should be called periodically (e.g., daily via a cron job)
 // and also when an incident is created or resolved to ensure immediate reflection of changes.
-func (s *ScoreService) UpdateTrustScore(agentID uint) (float64, error) {
-	var agent models.Agent
-	if err := s.db.First(&agent, agentID).Error; err != nil {
-		return 0, fmt.Errorf("agent not found: %w", err)
+func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
+	var asset models.Asset
+	if err := s.db.First(&asset, assetID).Error; err != nil {
+		return 0, fmt.Errorf("asset not found: %w", err)
 	}
 
-	currentTrustScore := agent.TrustScore
+	currentTrustScore := asset.TrustScore
 	if currentTrustScore < trustScoreMin {
 		currentTrustScore = trustScoreMin // Cap at min before deductions
 	}
@@ -261,9 +261,9 @@ func (s *ScoreService) UpdateTrustScore(agentID uint) (float64, error) {
 	// Fetch incidents that occurred within the last 30 days and are P1 or P2.
 	// The document implies "lỗi P1 trong 30 ngày qua" (P1 errors in the past 30 days)
 	// should cause deduction, regardless of their current status (Open/Resolved).
-	if err := s.db.Where("agent_id = ? AND occurred_at >= ? AND (priority = ? OR priority = ?)",
-		agentID, thirtyDaysAgo, "P1", "P2").Find(&recentIncidents).Error; err != nil {
-		return 0, fmt.Errorf("failed to fetch recent incidents for trust score deduction for agent %d: %w", agentID, err)
+	if err := s.db.Where("asset_id = ? AND occurred_at >= ? AND (priority = ? OR priority = ?)",
+		assetID, thirtyDaysAgo, "P1", "P2").Find(&recentIncidents).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch recent incidents for trust score deduction for asset %d: %w", assetID, err)
 	}
 
 	// Calculate total deduction from recent incidents
@@ -279,17 +279,17 @@ func (s *ScoreService) UpdateTrustScore(agentID uint) (float64, error) {
 
 	// --- Trust Score Recovery: "Sau mỗi 7 ngày "sạch" (không có lỗi mới), máy được cộng lại 2đ uy tín." ---
 	isCleanForRecoveryPeriod := false
-	if agent.LastIncidentAt == nil {
-		isCleanForRecoveryPeriod = true // Agent has never had an incident
-	} else if time.Since(*agent.LastIncidentAt).Hours() >= float64(trustScoreRecoveryDays*24) {
+	if asset.LastIncidentAt == nil {
+		isCleanForRecoveryPeriod = true // asset has never had an incident
+	} else if time.Since(*asset.LastIncidentAt).Hours() >= float64(trustScoreRecoveryDays*24) {
 		isCleanForRecoveryPeriod = true // Last incident was more than 'trustScoreRecoveryDays' ago
 	}
 
 	shouldApplyRecovery := false
 	if isCleanForRecoveryPeriod {
-		if agent.LastTrustRecoveryAppliedAt == nil {
+		if asset.LastTrustRecoveryAppliedAt == nil {
 			shouldApplyRecovery = true // Never applied recovery, so apply it
-		} else if time.Since(*agent.LastTrustRecoveryAppliedAt).Hours() >= float64(trustScoreRecoveryDays*24) {
+		} else if time.Since(*asset.LastTrustRecoveryAppliedAt).Hours() >= float64(trustScoreRecoveryDays*24) {
 			shouldApplyRecovery = true // Last recovery was applied more than 'trustScoreRecoveryDays' ago, apply again
 		}
 	}
@@ -297,7 +297,7 @@ func (s *ScoreService) UpdateTrustScore(agentID uint) (float64, error) {
 	if shouldApplyRecovery {
 		currentTrustScore += trustScoreRecoveryAmount
 		now := time.Now()
-		agent.LastTrustRecoveryAppliedAt = &now // Update the timestamp of last recovery
+		asset.LastTrustRecoveryAppliedAt = &now // Update the timestamp of last recovery
 	}
 
 	// Ensure TrustScore stays within bounds [0, 100]
@@ -308,34 +308,34 @@ func (s *ScoreService) UpdateTrustScore(agentID uint) (float64, error) {
 		currentTrustScore = trustScoreMin
 	}
 
-	// Update the agent's TrustScore and LastTrustRecoveryAppliedAt in the database
+	// Update the asset's TrustScore and LastTrustRecoveryAppliedAt in the database
 	updates := map[string]interface{}{
 		"trust_score": currentTrustScore,
 	}
-	if agent.LastTrustRecoveryAppliedAt != nil {
-		updates["last_trust_recovery_applied_at"] = agent.LastTrustRecoveryAppliedAt
+	if asset.LastTrustRecoveryAppliedAt != nil {
+		updates["last_trust_recovery_applied_at"] = asset.LastTrustRecoveryAppliedAt
 	}
 
-	if err := s.db.Model(&models.Agent{}).Where("id = ?", agentID).Updates(updates).Error; err != nil {
-		return currentTrustScore, fmt.Errorf("failed to update trust score for agent %d: %w", agentID, err)
+	if err := s.db.Model(&models.Asset{}).Where("id = ?", assetID).Updates(updates).Error; err != nil {
+		return currentTrustScore, fmt.Errorf("failed to update trust score for asset %d: %w", assetID, err)
 	}
 
 	return currentTrustScore, nil
 }
 
-// UpdateAgentLastIncidentTime updates the LastIncidentAt field for an agent.
-// This should be called whenever a new incident is created for an agent.
-func (s *ScoreService) UpdateAgentLastIncidentTime(agentID uint, incidentTime time.Time) error {
-	var agent models.Agent
-	if err := s.db.First(&agent, agentID).Error; err != nil {
-		return fmt.Errorf("agent not found: %w", err)
+// UpdateassetLastIncidentTime updates the LastIncidentAt field for an asset.
+// This should be called whenever a new incident is created for an asset.
+func (s *ScoreService) UpdateassetLastIncidentTime(assetID uint, incidentTime time.Time) error {
+	var asset models.Asset
+	if err := s.db.First(&asset, assetID).Error; err != nil {
+		return fmt.Errorf("asset not found: %w", err)
 	}
 
 	// Only update if the new incident time is more recent than the current LastIncidentAt
 	// or if LastIncidentAt is nil.
-	if agent.LastIncidentAt == nil || incidentTime.After(*agent.LastIncidentAt) {
-		if err := s.db.Model(&models.Agent{}).Where("id = ?", agentID).Update("last_incident_at", incidentTime).Error; err != nil {
-			return fmt.Errorf("failed to update last incident time for agent %d: %w", agentID, err)
+	if asset.LastIncidentAt == nil || incidentTime.After(*asset.LastIncidentAt) {
+		if err := s.db.Model(&models.Asset{}).Where("id = ?", assetID).Update("last_incident_at", incidentTime).Error; err != nil {
+			return fmt.Errorf("failed to update last incident time for asset %d: %w", assetID, err)
 		}
 	}
 	return nil

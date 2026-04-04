@@ -25,7 +25,7 @@ const IncidentTable = ({ rawData, onViewDetail }) => {
     useEffect(() => setCurrentPage(1), [searchTerm, filterStatus]);
 
     const filteredData = (rawData || []).filter(inc => {
-        const matchesSearch = inc.Agent?.hostname?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        const matchesSearch = inc.asset?.hostname?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               inc.type?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = filterStatus === 'ALL' || inc.status === filterStatus;
         return matchesSearch && matchesStatus;
@@ -91,8 +91,8 @@ const IncidentTable = ({ rawData, onViewDetail }) => {
                                         <p className="text-[10px] text-slate-500 font-mono truncate max-w-[250px]">{inc.description}</p>
                                     </td>
                                     <td className="p-3">
-                                        <p className="text-xs font-bold text-slate-200 mb-0.5 group-hover:text-white">{inc.Agent?.hostname || 'Unknown'}</p>
-                                        <p className="text-[10px] text-slate-500 font-mono bg-[#050B14] inline-block px-1 rounded border border-slate-800">{inc.Agent?.ip_address || '0.0.0.0'}</p>
+                                        <p className="text-xs font-bold text-slate-200 mb-0.5 group-hover:text-white">{inc.asset?.hostname || 'Unknown'}</p>
+                                        <p className="text-[10px] text-slate-500 font-mono bg-[#050B14] inline-block px-1 rounded border border-slate-800">{inc.asset?.ip_address || '0.0.0.0'}</p>
                                     </td>
                                     <td className="p-3">
                                         <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${

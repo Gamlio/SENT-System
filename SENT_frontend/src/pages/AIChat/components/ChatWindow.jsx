@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 
-const ChatWindow = ({ messages, isLoading, onSend, messagesEndRef }) => {
+const ChatWindow = ({ messages = [], isLoading, onSend, messagesEndRef }) => {
     const [input, setInput] = useState('');
     const textareaRef = useRef(null);
 
@@ -45,7 +45,7 @@ const ChatWindow = ({ messages, isLoading, onSend, messagesEndRef }) => {
                         <div className="w-16 h-20 bg-slate-800 rounded-2xl flex items-center justify-center mb-4">
                             <Send size={24} />
                         </div>
-                        <p className="text-sm font-medium">Bắt đầu trò chuyện với AI Security Agent</p>
+                        <p className="text-sm font-medium">Bắt đầu trò chuyện với AI Security asset</p>
                     </div>
                 ) : (
                     messages.map((msg, idx) => (

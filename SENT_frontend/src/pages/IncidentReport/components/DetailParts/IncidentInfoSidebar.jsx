@@ -3,7 +3,7 @@ import { Monitor, Cpu, Network, ShieldAlert } from 'lucide-react';
 import IncidentPlaybook from './IncidentPlaybook';
 
 const IncidentInfoSidebar = ({ incident, onUpdate }) => {
-    const agent = incident.agent || incident.Agent || {};
+    const asset = incident.asset || incident.asset || {};
     const alerts = incident.alerts || incident.Alerts || [];
 
     return (
@@ -18,15 +18,15 @@ const IncidentInfoSidebar = ({ incident, onUpdate }) => {
                     <div className="col-span-2 flex justify-between items-start">
                         <div>
                             <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">Hostname</p>
-                            <p className="text-sm text-white font-bold truncate flex items-center gap-2" title={agent.hostname}>
-                                {agent.hostname || 'Unknown'}
-                                <span className={`w-1.5 h-1.5 rounded-full ${agent.status === 'online' ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-slate-600'}`}></span>
+                            <p className="text-sm text-white font-bold truncate flex items-center gap-2" title={asset.hostname}>
+                                {asset.hostname || 'Unknown'}
+                                <span className={`w-1.5 h-1.5 rounded-full ${asset.status === 'online' ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-slate-600'}`}></span>
                             </p>
                         </div>
                         <div className="text-right">
                             <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">Risk Score</p>
-                            <p className={`text-xs font-black px-1.5 py-0.5 rounded border ${agent.risk_score > 70 ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-orange-500/10 text-orange-400 border-orange-500/30'}`}>
-                                {agent.risk_score || 0}
+                            <p className={`text-xs font-black px-1.5 py-0.5 rounded border ${asset.risk_score > 70 ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-orange-500/10 text-orange-400 border-orange-500/30'}`}>
+                                {asset.risk_score || 0}
                             </p>
                         </div>
                     </div>
@@ -34,21 +34,21 @@ const IncidentInfoSidebar = ({ incident, onUpdate }) => {
                     <div>
                         <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">IP Address</p>
                         <p className="text-[11px] text-emerald-400 font-mono flex items-center gap-1 bg-[#050B14] px-1.5 py-0.5 rounded border border-slate-800 w-max">
-                            <Network size={10}/> {agent.ip_address || 'N/A'}
+                            <Network size={10}/> {asset.ip_address || 'N/A'}
                         </p>
                     </div>
                     <div>
                         <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">HWID</p>
-                        <p className="text-[10px] text-slate-400 font-mono truncate bg-[#050B14] px-1.5 py-0.5 rounded border border-slate-800 w-max" title={incident.agent_hw_id}>
-                            {incident.agent_hw_id?.substring(0, 12)}...
+                        <p className="text-[10px] text-slate-400 font-mono truncate bg-[#050B14] px-1.5 py-0.5 rounded border border-slate-800 w-max" title={incident.asset_hw_id}>
+                            {incident.asset_hw_id?.substring(0, 12)}...
                         </p>
                     </div>
                     
-                    {agent.Inventory && (
+                    {asset.Inventory && (
                         <div className="col-span-2 pt-3 border-t border-slate-800/50 flex flex-col gap-1">
                             <p className="text-[10px] text-slate-500 uppercase font-bold">Hardware Info</p>
                             <p className="text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
-                                <Cpu size={12} className="text-slate-500"/> {agent.Inventory.cpu_model}
+                                <Cpu size={12} className="text-slate-500"/> {asset.Inventory.cpu_model}
                             </p>
                         </div>
                     )}

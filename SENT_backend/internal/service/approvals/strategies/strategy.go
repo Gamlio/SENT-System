@@ -15,9 +15,9 @@ type ApprovalStrategy interface {
 // Registry: Nơi đăng ký tất cả các module.
 // Nếu sau này có thêm "DUYỆT NGHỈ PHÉP", chỉ cần thêm 1 dòng vào đây!
 var Registry = map[string]ApprovalStrategy{
-	"AGENT_ENROLL":      &AgentEnrollStrategy{},
-	"AGENT_DELETE":      &AgentDeleteStrategy{},
-	"AGENT_BULK_DELETE": &AgentBulkDeleteStrategy{},
+	"ASSET_ENROLL":      &assetEnrollStrategy{},
+	"ASSET_DELETE":      &assetDeleteStrategy{},
+	"ASSET_BULK_DELETE": &assetBulkDeleteStrategy{},
 
 	"POLICY_CREATE":      &PolicyCreateStrategy{},
 	"POLICY_DELETE":      &PolicyDeleteStrategy{},

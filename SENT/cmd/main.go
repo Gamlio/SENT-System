@@ -9,7 +9,7 @@ import (
 
 	"github.com/shirou/gopsutil/v3/host"
 
-	// Bổ sung import config và utils
+	// Bổ sung import config, utils, và transport
 	"SENT/internal/collector"
 	"SENT/internal/config"
 	"SENT/internal/transport"
@@ -28,7 +28,7 @@ func main() {
 
 	// [QUAN TRỌNG] Kiểm tra quyền Admin/Root trước khi làm bất cứ điều gì
 	if !utils.IsAdmin() {
-		log.Fatal("FATAL: Agent yêu cầu quyền Administrator/Root để hoạt động. Vui lòng chạy lại bằng 'Run as Administrator' hoặc 'sudo'.")
+		log.Fatal("FATAL: asset yêu cầu quyền Administrator/Root để hoạt động. Vui lòng chạy lại bằng 'Run as Administrator' hoặc 'sudo'.")
 	}
 
 	hInfo, _ := host.Info()
@@ -40,7 +40,7 @@ func main() {
 	hostname, _ := os.Hostname()
 	hostname = fmt.Sprintf("%s-Virtual", hostname)
 
-	fmt.Printf("\n 🛡️ SENT AGENT V4.0 (Ninja Thin-Client) | HOST: %s\n", hostname)
+	fmt.Printf("\n 🛡️ SENT asset V4.0 (Ninja Thin-Client) | HOST: %s\n", hostname)
 
 	// =========================================================================
 	// [QUAN TRỌNG] ĐÂY LÀ CHỖ BẠN BỊ THIẾU
@@ -50,7 +50,7 @@ func main() {
 	config.LoadOrBootstrap(hwid, hostname, ipAddress)
 
 	// Từ đoạn này trở xuống giữ nguyên...
-	client := transport.AgentClient
+	client := transport.GetAssetClient()
 
 	// [QUAN TRỌNG]: Bật kênh nhận lệnh WebSocket
 	client.StartHybridCommunication(hwid, func(cmdType string, data interface{}) {

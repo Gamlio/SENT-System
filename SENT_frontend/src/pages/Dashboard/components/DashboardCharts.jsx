@@ -82,8 +82,8 @@ const DashboardCharts = ({ stats }) => {
     const radarData = useMemo(() => [
         { subject: 'Zero Trust', A: stats.zero_trust_coverage, fullMark: 100 },
         { subject: 'Trust Score', A: stats.average_trust_score, fullMark: 100 },
-        { subject: 'Online Ratio', A: (stats.online_agents / (stats.total_agents || 1)) * 100, fullMark: 100 },
-        { subject: 'Risk Level', A: (stats.high_risk_agents / (stats.total_agents || 1)) * 100, fullMark: 100 },
+        { subject: 'Online Ratio', A: (stats.online_assets / (stats.total_assets || 1)) * 100, fullMark: 100 },
+        { subject: 'Risk Level', A: (stats.high_risk_assets / (stats.total_assets || 1)) * 100, fullMark: 100 },
         { subject: 'Resolve Rate', A: (stats.resolved_incidents / ((stats.open_incidents + stats.resolved_incidents) || 1)) * 100, fullMark: 100 }
     ], [stats]);
 

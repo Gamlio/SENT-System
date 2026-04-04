@@ -30,7 +30,7 @@ const IncidentManager = () => {
 
     const filteredIncidents = incidents.filter(inc => 
         inc.description?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        inc.Agent?.hostname?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inc.asset?.hostname?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         inc.type?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
@@ -45,7 +45,7 @@ const IncidentManager = () => {
                     <h1 className="text-xl font-black text-white flex items-center gap-2 tracking-tight">
                         <Activity className="text-indigo-500"/> THỐNG KÊ SỰ CỐ AN NINH
                     </h1>
-                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Danh sách liệt kê toàn bộ các cảnh báo từ Agent</p>
+                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Danh sách liệt kê toàn bộ các cảnh báo từ asset</p>
                 </div>
                 <div className="relative w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14}/>
@@ -103,8 +103,8 @@ const IncidentManager = () => {
                                             <div className="flex items-center gap-2">
                                                 <Monitor size={14} className="text-slate-600 group-hover:text-indigo-400 transition"/>
                                                 <div>
-                                                    <p className="text-xs font-bold text-slate-300 group-hover:text-white transition">{inc.Agent?.hostname || 'Unknown'}</p>
-                                                    <p className="text-[10px] text-slate-500 font-mono">{inc.Agent?.ip_address || 'N/A'}</p>
+                                                    <p className="text-xs font-bold text-slate-300 group-hover:text-white transition">{inc.asset?.hostname || 'Unknown'}</p>
+                                                    <p className="text-[10px] text-slate-500 font-mono">{inc.asset?.ip_address || 'N/A'}</p>
                                                 </div>
                                             </div>
                                         </td>

@@ -16,7 +16,7 @@ import (
 // SoftwareItem: Mỗi máy có thể có hàng trăm phần mềm.
 type SoftwareItem struct {
 	ID              primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	AgentHWID       string             `bson:"agent_hwid" json:"agent_hwid" binding:"required,max=64,alphanum"`
+	AssetHWID       string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64,alphanum"`
 	SoftwareName    string             `bson:"software_name" json:"software_name" binding:"required,min=1,max=255"`
 	Version         string             `bson:"version" json:"version" binding:"max=50"`
 	Publisher       string             `bson:"publisher" json:"publisher" binding:"max=255"`
@@ -30,7 +30,7 @@ type SoftwareItem struct {
 // OpenPort: Danh sách cổng mở thay đổi theo phiên làm việc.
 type OpenPort struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	AgentHWID   string             `bson:"agent_hwid" json:"agent_hwid" binding:"required,max=64,alphanum"`
+	AssetHWID   string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64,alphanum"`
 	Port        int                `bson:"port" json:"port" binding:"required,min=1,max=65535"`
 	ProcessName string             `bson:"process_name" json:"process_name" binding:"max=255"`
 	Status      string             `bson:"status" json:"status" binding:"required,oneof=OPEN CLOSED"` // Mặc định OPEN
@@ -40,7 +40,7 @@ type OpenPort struct {
 // USBLog: Lịch sử cắm/rút thiết bị ngoại vi.
 type USBLog struct {
 	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	AgentHWID     string             `bson:"agent_hwid" json:"agent_hwid" binding:"required,max=64,alphanum"`
+	AssetHWID     string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64,alphanum"`
 	DeviceName    string             `bson:"device_name" json:"device_name" binding:"required,min=1,max=255"`
 	DeviceID      string             `bson:"device_id" json:"device_id" binding:"max=255"`
 	VID           string             `bson:"vid" json:"vid" binding:"max=10,alphanum"`
@@ -52,10 +52,10 @@ type USBLog struct {
 	Timestamp     time.Time          `bson:"timestamp" json:"timestamp"`
 }
 
-// AgentIOActivity: Dữ liệu truyền tải mạng và ổ đĩa.
-type AgentIOActivity struct {
+// AssetIOActivity: Dữ liệu truyền tải mạng và ổ đĩa.
+type AssetIOActivity struct {
 	ID               primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	AgentHWID        string             `bson:"agent_hwid" json:"agent_hwid" binding:"required,max=64,alphanum"`
+	AssetHWID        string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64,alphanum"`
 	NetBytesSent     uint64             `bson:"net_bytes_sent" json:"net_bytes_sent" binding:"required,gte=0"`
 	NetBytesRecv     uint64             `bson:"net_bytes_recv" json:"net_bytes_recv" binding:"required,gte=0"`
 	DiskBytesWritten uint64             `bson:"disk_bytes_written" json:"disk_bytes_written" binding:"required,gte=0"`
@@ -63,10 +63,10 @@ type AgentIOActivity struct {
 	Timestamp        time.Time          `bson:"timestamp" json:"timestamp" binding:"required"`
 }
 
-// AgentInventory: Thông tin phần cứng của agent, lưu trên MongoDB.
-type AgentInventory struct {
+// AssetInventory: Thông tin phần cứng của asset, lưu trên MongoDB.
+type AssetInventory struct {
 	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	AgentHWID  string             `bson:"agent_hwid" json:"agent_hwid" binding:"required,max=64,alphanum"`
+	AssetHWID  string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64,alphanum"`
 	CPUModel   string             `bson:"cpu_model" json:"cpu_model" binding:"required,min=1,max=255"`
 	RAMTotalGB int                `bson:"ram_total_gb" json:"ram_total_gb" binding:"required,min=0,max=1000000"`
 	OSInfo     string             `bson:"os_info" json:"os_info" binding:"required,min=1,max=500"`
@@ -75,7 +75,7 @@ type AgentInventory struct {
 
 // --- NHÓM TELEMETRY & CHAT (PHI CẤU TRÚC) ---
 
-// SecurityAlert: Các cảnh báo bảo mật từ Agent.
+// SecurityAlert: Các cảnh báo bảo mật từ asset.
 type SecurityAlert struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	OrgID       uint               `bson:"org_id" json:"org_id" binding:"required"`

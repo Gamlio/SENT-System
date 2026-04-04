@@ -89,7 +89,7 @@ func (s *PolicyService) BulkCreatePolicyRequest(rows []ExcelRow, orgID uint) (in
 	return count, err
 }
 
-// GetEffectivePolicies: Engine tính toán luật hiệu dụng cho Agent
+// GetEffectivePolicies: Engine tính toán luật hiệu dụng cho asset
 func (s *PolicyService) GetEffectivePolicies(orgID uint, hwid string) ([]models.UniversalPolicy, error) {
 	var allPolicies []models.UniversalPolicy
 	// Chỉ lấy các luật đã được APPROVED

@@ -28,8 +28,8 @@ const ApprovalCenter = () => {
 
     const modules = [
         { key: '', label: 'Tất cả', icon: <Layers size={16}/> },
-        { key: 'AGENT_ENROLL', label: 'Máy mới', icon: <Laptop size={16}/> },
-        { key: 'AGENT_DELETE', label: 'Gỡ bỏ máy', icon: <Trash2 size={16}/> },
+        { key: 'asset_ENROLL', label: 'Máy mới', icon: <Laptop size={16}/> },
+        { key: 'asset_DELETE', label: 'Gỡ bỏ máy', icon: <Trash2 size={16}/> },
         { key: 'POLICY_CREATE', label: 'Chính sách', icon: <Shield size={16}/> },
         { key: 'DOCUMENT_UPLOAD', label: 'Tài liệu', icon: <FileText size={16}/> },
         { key: 'USER_CREATE', label: 'Nhân sự', icon: <UserPlus size={16}/> },

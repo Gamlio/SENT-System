@@ -1,17 +1,17 @@
 
-# SENT Agent Logic Flow (v4.0 - Ninja Agent & Multi-OS)
+# SENT asset Logic Flow (v4.0 - Ninja asset & Multi-OS)
 
-Tài liệu này mô tả kiến trúc của Agent sau quá trình tái cấu trúc (Refactor). Agent hiện tại hoạt động theo triết lý **"Ninja Sensor"**: Hoàn toàn im lặng, cực kỳ nhẹ, không tự đưa ra quyết định (Không tích hợp AI tại biên), chỉ làm nhiệm vụ thu thập, băm dữ liệu và gửi về Backend.
+Tài liệu này mô tả kiến trúc của asset sau quá trình tái cấu trúc (Refactor). asset hiện tại hoạt động theo triết lý **"Ninja Sensor"**: Hoàn toàn im lặng, cực kỳ nhẹ, không tự đưa ra quyết định (Không tích hợp AI tại biên), chỉ làm nhiệm vụ thu thập, băm dữ liệu và gửi về Backend.
 
 ## 1. Cấu trúc Source Code (Refactored Structure)
-Dự án Agent được thiết kế theo chuẩn module hóa:
+Dự án asset được thiết kế theo chuẩn module hóa:
 
 ```text
 SENT/
 ├── cmd/
 │   └── main.go              // Điểm khởi chạy (Entry point)
 ├── internal/
-│   ├── config/              // Quản lý agent_config.json, mã công ty
+│   ├── config/              // Quản lý asset_config.json, mã công ty
 │   ├── collector/           // Module Thu thập dữ liệu Đa nền tảng
 │   │   ├── system.go        // Lấy Inventory (CPU, RAM, OS, Hostname)
 │   │   ├── software.go      // Quét phần mềm, tính File Hash, check Ghost Registry
@@ -27,7 +27,7 @@ SENT/
 
 2. Luồng vận hành chính (The "Ninja" Flow)
 A. Khởi động & Định danh (Bootstrap)
-Load Config: Đọc agent_config.json. Nếu chưa có, yêu cầu nhập Company Code.
+Load Config: Đọc asset_config.json. Nếu chưa có, yêu cầu nhập Company Code.
 
 Identify Host: Sinh ra HWID (Hardware ID) độc nhất dựa trên Mainboard/MAC Address. Xác định IP LAN thực tế qua hàm GetOutboundIP().
 
@@ -43,7 +43,7 @@ USB Monitoring: Lấy chính xác VID, PID và tính Device Hash để định d
 Telemetry: Kiểm tra trạng thái OS Firewall và các Port đang mở rủi ro (VD: 3389, 22).
 
 C. Gửi dữ liệu thông minh (Differential Reporting)
-Để tối ưu 90% băng thông mạng cho Doanh nghiệp, Agent KHÔNG gửi toàn bộ log liên tục:
+Để tối ưu 90% băng thông mạng cho Doanh nghiệp, asset KHÔNG gửi toàn bộ log liên tục:
 
 Hashing: Băm toàn bộ cục dữ liệu vừa thu thập thành chuỗi SHA-256.
 
@@ -112,24 +112,24 @@ JSON
     ]
   }
 }
-4. Quản lý Vòng đời Agent (Lifecycle)
+4. Quản lý Vòng đời asset (Lifecycle)
 Enrollment: Cài đặt lần đầu -> Trạng thái PENDING trên SOC. (Zero-Trust: Mọi dữ liệu gửi lên lúc này đều bị Backend vứt bỏ).
 
 Active: Trưởng ca SOC bấm Duyệt -> Trạng thái ACTIVE. Bắt đầu phân tích log và tính Điểm Rủi ro.
 
-Response: Khi có lệnh từ SOC (Cách ly mạng, Kill Process), Agent sẽ thực thi thông qua cơ chế Polling (hoặc WebSocket/MQTT trong tương lai).
+Response: Khi có lệnh từ SOC (Cách ly mạng, Kill Process), asset sẽ thực thi thông qua cơ chế Polling (hoặc WebSocket/MQTT trong tương lai).
 
 **(Các lỗ hổng bảo mật cấp Enterprise còn tồn tại):**
 
-#### Lỗ hổng 1: Giả mạo Agent (Agent Spoofing)
-- **Tình trạng:** Hiện tại Agent gửi API lên Backend chỉ dựa vào `hwid` (Ví dụ: `WIN-ABC123XYZ`). HWID này là mã tĩnh dễ dàng bị lộ hoặc đoán được.
+#### Lỗ hổng 1: Giả mạo asset (asset Spoofing)
+- **Tình trạng:** Hiện tại asset gửi API lên Backend chỉ dựa vào `hwid` (Ví dụ: `WIN-ABC123XYZ`). HWID này là mã tĩnh dễ dàng bị lộ hoặc đoán được.
 - **Rủi ro:** Hacker (hoặc một nhân viên nội bộ) có thể dùng Postman giả mạo HWID của máy tính "Giám đốc", sau đó gửi một gói JSON Telemetry chứa `{"firewall_off": true}`. Lập tức máy Giám đốc bị nhảy điểm rủi ro và SOC phát báo động giả.
-- **Giải pháp khắc phục:** Tại bước Enrollment, sau khi Admin bấm duyệt, Backend phải cấp cho Agent một **JWT Token** (hoặc TLS Certificate). Từ đó trở đi, Agent gửi dữ liệu phải đính kèm Token này vào Header `Authorization: Bearer <Token>`.
+- **Giải pháp khắc phục:** Tại bước Enrollment, sau khi Admin bấm duyệt, Backend phải cấp cho asset một **JWT Token** (hoặc TLS Certificate). Từ đó trở đi, asset gửi dữ liệu phải đính kèm Token này vào Header `Authorization: Bearer <Token>`.
 
 #### Lỗ hổng 2: Thay đổi dữ liệu trên đường truyền (Man-in-the-Middle)
 - **Tình trạng:** Dữ liệu JSON `{"is_running": true}` đang được gửi trần trụi.
 - **Rủi ro:** Dù có dùng HTTPS, nếu máy tính bị dính mã độc ở mức proxy nội bộ, mã độc có thể đánh tráo gói tin, sửa `{"file_hash": "mã_độc"}` thành `{"file_hash": "mã_an_toàn"}` trước khi nó bay ra khỏi máy.
-- **Giải pháp khắc phục:** Cần áp dụng **HMAC (Hash-based Message Authentication Code)**. Agent dùng một Secret Key bí mật (chỉ Agent và Backend biết) để ký lên toàn bộ chuỗi JSON. Backend nhận được sẽ kiểm tra chữ ký, nếu sai 1 ký tự -> Vứt bỏ.
+- **Giải pháp khắc phục:** Cần áp dụng **HMAC (Hash-based Message Authentication Code)**. asset dùng một Secret Key bí mật (chỉ asset và Backend biết) để ký lên toàn bộ chuỗi JSON. Backend nhận được sẽ kiểm tra chữ ký, nếu sai 1 ký tự -> Vứt bỏ.
 
 #### Lỗ hổng 3: Bảo mật chức năng Upload File (Post-Mortem)
 - **Tình trạng:** Trong hàm `AddIncidentActivity`, Backend đang lưu BẤT KỲ file nào có trong FormData vào thư mục `uploads/incidents/`.

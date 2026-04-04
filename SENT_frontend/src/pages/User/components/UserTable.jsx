@@ -46,10 +46,10 @@ const UserTable = ({ users, onEdit, onDelete, canManageUsers }) => {
                                 <div className="flex flex-col gap-2">
                                     <div className="flex flex-wrap gap-1.5 items-center">
                                         <Monitor size={12} className="text-slate-500 mr-1"/>
-                                        {!!u.perm_agent_view && <Badge text="XEM MÁY" color="emerald"/>}
-                                        {!!u.perm_agent_action && <Badge text="SỬA MÁY" color="emerald"/>}
-                                        {!!u.perm_agent_delete && <Badge text="XÓA MÁY" color="red"/>}
-                                        {!(u.perm_agent_view || u.perm_agent_action || u.perm_agent_delete) && <span className="text-[10px] text-slate-600 italic">Không có quyền</span>}
+                                        {!!u.perm_asset_view && <Badge text="XEM MÁY" color="emerald"/>}
+                                        {!!u.perm_asset_action && <Badge text="SỬA MÁY" color="emerald"/>}
+                                        {!!u.perm_asset_delete && <Badge text="XÓA MÁY" color="red"/>}
+                                        {!(u.perm_asset_view || u.perm_asset_action || u.perm_asset_delete) && <span className="text-[10px] text-slate-600 italic">Không có quyền</span>}
                                     </div>
                                     <div className="flex flex-wrap gap-1.5 items-center">
                                         <AlertTriangle size={12} className="text-slate-500 mr-1"/>

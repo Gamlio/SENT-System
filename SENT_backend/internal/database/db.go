@@ -19,8 +19,8 @@ var IOCollection *mongo.Collection // Collection riêng cho log truyền tải d
 var SoftwareCollection *mongo.Collection
 var USBCollection *mongo.Collection
 var OpenPortCollection *mongo.Collection
-var AgentInventoryCollection *mongo.Collection
-var AgentIOActivityCollection *mongo.Collection
+var AssetInventoryCollection *mongo.Collection
+var AssetIOActivityCollection *mongo.Collection
 var SecurityAlertCollection *mongo.Collection
 var AIChatSessionCollection *mongo.Collection
 var AIChatLogCollection *mongo.Collection
@@ -35,10 +35,8 @@ func InitDB() {
 	}
 
 	// --- KẾT NỐI MONGODB ---
-	mongoURI := os.Getenv("MONGODB_URI") // Thêm vào .env
-	if mongoURI == "" {
-		mongoURI = "mongodb://localhost:27017"
-	}
+	mongoURI := os.Getenv("MONGODB_URI")
+
 	clientOptions := options.Client().ApplyURI(mongoURI)
 	MongoClient, err = mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
@@ -49,8 +47,8 @@ func InitDB() {
 		SoftwareCollection = db.Collection("software_items")
 		USBCollection = db.Collection("usb_logs")
 		OpenPortCollection = db.Collection("open_ports")
-		AgentInventoryCollection = db.Collection("agent_inventory")
-		AgentIOActivityCollection = db.Collection("agent_io_activities")
+		AssetInventoryCollection = db.Collection("asset_inventory")
+		AssetIOActivityCollection = db.Collection("asset_io_activities")
 		SecurityAlertCollection = db.Collection("security_alerts")
 		AIChatSessionCollection = db.Collection("ai_chat_sessions")
 		AIChatLogCollection = db.Collection("ai_chat_logs")
@@ -62,11 +60,14 @@ func InitDB() {
 	DB.AutoMigrate(
 		&models.Organization{},
 		&models.User{},
-		&models.Agent{},
+		&models.Asset{},
 		&models.Incident{},
 		&models.ApprovalTicket{},
 		&models.Region{},
 		&models.UniversalPolicy{},
 		&models.PolicyDocument{},
+		&models.EnrollmentToken{},
+		&models.UserPermission{},
+		&models.WhitelistItem{},
 	)
 }

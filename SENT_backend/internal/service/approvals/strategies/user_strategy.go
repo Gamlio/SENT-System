@@ -62,9 +62,9 @@ type userUpdatePayload struct {
 	FullName           string `json:"full_name"`
 	Phone              string `json:"phone"`
 	Email              string `json:"email"`
-	PermAgentView      bool   `json:"perm_agent_view"`
-	PermAgentAction    bool   `json:"perm_agent_action"`
-	PermAgentDelete    bool   `json:"perm_agent_delete"`
+	PermAssetView      bool   `json:"perm_asset_view"`
+	PermAssetAction    bool   `json:"perm_asset_action"`
+	PermAssetDelete    bool   `json:"perm_asset_delete"`
 	PermPolicyView     bool   `json:"perm_policy_view"`
 	PermPolicyAction   bool   `json:"perm_policy_action"`
 	PermIncidentView   bool   `json:"perm_incident_view"`
@@ -87,9 +87,9 @@ func (s *UserUpdateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicke
 		"full_name":            payload.FullName,
 		"phone":                payload.Phone,
 		"email":                payload.Email,
-		"perm_agent_view":      payload.PermAgentView,
-		"perm_agent_action":    payload.PermAgentAction,
-		"perm_agent_delete":    payload.PermAgentDelete,
+		"perm_asset_view":      payload.PermAssetView,
+		"perm_asset_action":    payload.PermAssetAction,
+		"perm_asset_delete":    payload.PermAssetDelete,
 		"perm_policy_view":     payload.PermPolicyView,
 		"perm_policy_action":   payload.PermPolicyAction,
 		"perm_incident_view":   payload.PermIncidentView,

@@ -3,10 +3,10 @@
 ## 1. ƯU ĐIỂM VƯỢT TRỘI (The Good)
 Hệ thống của bạn có nền tảng rất vững chắc so với nhiều dự án mã nguồn mở khác:
 
-- **Kiến trúc lõi hiệu năng cao:** Sử dụng Go (Golang) cho cả Backend và Agent là một lựa chọn xuất sắc. Nó giúp Agent (Ninja Thin-Client) tiêu tốn rất ít RAM/CPU, trong khi Backend có thể xử lý hàng nghìn luồng (Goroutines) đồng thời.
+- **Kiến trúc lõi hiệu năng cao:** Sử dụng Go (Golang) cho cả Backend và asset là một lựa chọn xuất sắc. Nó giúp asset (Ninja Thin-Client) tiêu tốn rất ít RAM/CPU, trong khi Backend có thể xử lý hàng nghìn luồng (Goroutines) đồng thời.
 - **Đồng bộ Trạng thái Thực (Real-time State Diffing) [MỚI]:** Hệ thống không chỉ ghi nhận log tĩnh (Stateless) mà đã sở hữu thuật toán Diffing để theo dõi vòng đời thực của thiết bị (Cắm/Rút USB, Bật/Tắt tiến trình, Mở/Đóng Port). Điều này giúp triệt tiêu hoàn toàn vấn nạn Spam Alert và phản ánh đúng thực trạng máy trạm (Digital Twin).
 - **Mô hình Chấm điểm Tiên tiến (Sentinex v6.0):** Áp dụng cơ chế Trust Score (Uy tín dài hạn), Contextual Matrix (Ngữ cảnh phòng ban) và Hàm tiệm cận (Asymptotic) đưa hệ thống này tiệm cận với logic của các giải pháp Enterprise (như CrowdStrike hay SentinelOne).
-- **Thiết kế Cảm biến Mô-đun (Plug-and-Play):** Cấu trúc `collector.Registry` ở Agent cho phép viết thêm tính năng giám sát mới (như Giám sát Network I/O, quét RAM) cực kỳ dễ dàng.
+- **Thiết kế Cảm biến Mô-đun (Plug-and-Play):** Cấu trúc `collector.Registry` ở asset cho phép viết thêm tính năng giám sát mới (như Giám sát Network I/O, quét RAM) cực kỳ dễ dàng.
 - **Giao thức Kết hợp (Hybrid Protocol):** Dùng HTTP REST để đẩy log lớn và WebSocket để truyền lệnh Real-time (Zero Trust Baseline, Isolate) là một thiết kế thông minh, tối ưu băng thông.
 
 ## 2. NHƯỢC ĐIỂM & ĐỘ KHÓ BẢO TRÌ (The Bad)
@@ -18,7 +18,7 @@ Hệ thống hiện tại là một khối Monolithic (Nguyên khối) khá ch�
 ## 3. LỖ HỔNG BẢO MẬT HIỆN TẠI (Security Vulnerabilities)
 Là một giải pháp an ninh, Sentinex đang có 3 rủi ro kỹ thuật cần vá:
 
-- **Lộ lọt SecretKey qua URL:** Agent gọi WebSocket bằng `ws://.../ws?token=SECRET_KEY`. Tham số này dễ bị ghi lại dạng rõ (plaintext) trong log proxy. -> *Cách sửa: Đưa SecretKey vào HTTP Header.*
+- **Lộ lọt SecretKey qua URL:** asset gọi WebSocket bằng `ws://.../ws?token=SECRET_KEY`. Tham số này dễ bị ghi lại dạng rõ (plaintext) trong log proxy. -> *Cách sửa: Đưa SecretKey vào HTTP Header.*
 - **Tấn công phát lại (Replay Attack):** Hàm tạo chữ ký HMAC-SHA256 thiếu Timestamp (Thời gian) hoặc Nonce. Hacker có thể "nghe lén" gói tin hợp lệ và gửi lại (Replay) liên tục. -> *Cách sửa: Thêm Timestamp vào Payload, chỉ nhận gói tin lệch không quá 5 phút.*
 - **Lưu SecretKey dạng rõ:** File `sent_config.json` ở máy trạm đang lưu dạng Text. -> *Cách sửa: Mã hóa bằng DPAPI (Windows) hoặc dùng Credential Manager.*
 
@@ -33,5 +33,5 @@ Là một giải pháp an ninh, Sentinex đang có 3 rủi ro kỹ thuật cần
 - **Tách cơ sở dữ liệu (Database Split):** Dữ liệu nghiệp vụ giữ ở SQL. Dữ liệu Viễn trắc (Telemetry, Diffing logs) chuyển sang Time-series Database (Elasticsearch, ClickHouse).
 - **Redis Pub/Sub:** Thay thế bộ nhớ RAM của `hub.go` bằng Redis để hỗ trợ Load Balancing cho WebSocket.
 
-### Giai đoạn 3 (Tối ưu Agent)
-- **Cơ chế Phản ứng Chủ động (Active Response):** Agent có khả năng tự động "Kill Process" hoặc "Isolate Network" ngay khi nhận lệnh từ WebSocket.
+### Giai đoạn 3 (Tối ưu asset)
+- **Cơ chế Phản ứng Chủ động (Active Response):** asset có khả năng tự động "Kill Process" hoặc "Isolate Network" ngay khi nhận lệnh từ WebSocket.

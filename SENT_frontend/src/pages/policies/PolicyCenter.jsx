@@ -26,7 +26,7 @@ const PolicyCenter = () => {
         fetchPolicies();
     });
 
-    const [agents] = useState([]); 
+    const [assets] = useState([]); 
 
     // Cấu hình Tabs
     const tabConfig = {
@@ -137,7 +137,7 @@ const PolicyCenter = () => {
                         <div className="xl:col-span-4 h-full overflow-y-auto pr-1">
                             <PolicyForm 
                                 currentConfig={currentConfig} 
-                                agents={agents} 
+                                assets={assets} 
                                 onAddPolicy={handleAddPolicy} 
                                 isLoading={loading} 
                             />
@@ -147,7 +147,7 @@ const PolicyCenter = () => {
                                 policies={filteredPolicies} // <--- Danh sách đã được lọc kỹ
                                 onDelete={handleDelete} 
                                 onBulkDelete={handleBulkDelete} 
-                                agents={agents} 
+                                assets={assets} 
                             />
                         </div>
                     </div>

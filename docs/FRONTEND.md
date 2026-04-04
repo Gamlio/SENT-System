@@ -13,7 +13,7 @@ SENT_frontend/
 - src/api/axios.jsx: cấu hình axios với `baseURL` từ `VITE_API_URL`, `Content-Type`, interceptor `Authorization`.
 - src/context/AuthContext.jsx: `login`, `logout`, localStorage `sent_token`, `sent_user`.
 - src/context/WebSocketContext.jsx: quản lý WebSocket kết nối với `/ws`, dispatch event toàn cục.
-- src/pages/: module funcional (Agents, IncidentReport, Dashboard, policies, approvals, AIChat, KnowledgeBase, User, Auth).
+- src/pages/: module funcional (assets, IncidentReport, Dashboard, policies, approvals, AIChat, KnowledgeBase, User, Auth).
 - src/components/: chung UI component (Sidebar, Navbar, AppDialog, SearchableList, GlobalCopilotDrawer).
 - src/styles/: CSS/Tailwind.
 
@@ -22,7 +22,7 @@ SENT_frontend/
 - `src/index.jsx`: render App bên trong `AuthProvider`.
 - `App.jsx`:
   - public: `/login`, `/login/:companyCode`, `/register`.
-  - protected: `/`, `/profile`, `/agents`, `/agents/:hwid`, `/incidents`, `/incidents/:id`, `/chat-ai`, `/approvals`, `/policy-center`, `/docs`, `/users`.
+  - protected: `/`, `/profile`, `/assets`, `/assets/:hwid`, `/incidents`, `/incidents/:id`, `/chat-ai`, `/approvals`, `/policy-center`, `/docs`, `/users`.
   - `ProtectedRoute` kiểm tra `useAuth().user` và `requiredPermission`.
 
 ### 3. Auth flow
@@ -35,25 +35,25 @@ SENT_frontend/
 ### 4. WebSocket
 
 - endpoint backend: `/ws`.
-- message loại: `AGENT_STATUS_CHANGED`, `REFRESH_AGENT_LIST`, `BASELINE_COMPLETED`, `INCIDENT_UPDATED`.
+- message loại: `asset_STATUS_CHANGED`, `REFRESH_asset_LIST`, `BASELINE_COMPLETED`, `INCIDENT_UPDATED`.
 - component dùng `useSocketSubscription` để listen & cập nhật.
 
 ### 5. API mapping module
 
-Agents:
-- GET /api/v1/agents
-- GET /api/v1/agents/:hwid
-- GET /api/v1/agents/:hwid/logs
-- GET /api/v1/agents/stats
-- GET /api/v1/agents/active-token
-- POST /api/v1/agents/generate-token
-- PUT /api/v1/agents/:hwid/assign
-- POST /api/v1/agents/bulk-assign
-- PUT /api/v1/agents/:hwid/device-type
-- PUT /api/v1/agents/:hwid/department
-- POST /api/v1/agents/:hwid/request-delete
-- POST /api/v1/agents/bulk-request-delete
-- POST /api/v1/agents/:hwid/trigger-baseline
+assets:
+- GET /api/v1/assets
+- GET /api/v1/assets/:hwid
+- GET /api/v1/assets/:hwid/logs
+- GET /api/v1/assets/stats
+- GET /api/v1/assets/active-token
+- POST /api/v1/assets/generate-token
+- PUT /api/v1/assets/:hwid/assign
+- POST /api/v1/assets/bulk-assign
+- PUT /api/v1/assets/:hwid/device-type
+- PUT /api/v1/assets/:hwid/department
+- POST /api/v1/assets/:hwid/request-delete
+- POST /api/v1/assets/bulk-request-delete
+- POST /api/v1/assets/:hwid/trigger-baseline
 
 Incidents:
 - GET /api/v1/incidents
@@ -112,7 +112,7 @@ Dashboard:
 
 ### 8. Lưu ý so với cũ
 
-- permissions logic `requiredPermission: agent_view/incident_view/policy_view/approval_manage/user_manage`.
+- permissions logic `requiredPermission: asset_view/incident_view/policy_view/approval_manage/user_manage`.
 - login response token property là `token`, không phải `access_token`.
 - app có GlobalCopilotDrawer và profile route.
 
@@ -159,19 +159,19 @@ Dashboard:
 
 ## 3. Luồng Hiển Thị Dữ Liệu (Data Fetching & Display)
 
-Ví dụ: Hiển thị danh sách Agents tại trang `src/pages/Agents/Agents.jsx`.
+Ví dụ: Hiển thị danh sách assets tại trang `src/pages/assets/assets.jsx`.
 
 1.  **Component Tải Dữ Liệu:**
-    *   Khi component `Agents.jsx` được mount (hiển thị lần đầu), nó sẽ gọi một custom hook, ví dụ `useAgents()` (định nghĩa trong `src/pages/Agents/hooks/`).
+    *   Khi component `assets.jsx` được mount (hiển thị lần đầu), nó sẽ gọi một custom hook, ví dụ `useassets()` (định nghĩa trong `src/pages/assets/hooks/`).
 
-2.  **Custom Hook (`src/pages/Agents/hooks/useAgents.js`):**
-    *   Hook này chịu trách nhiệm cho toàn bộ logic liên quan đến agents: state (loading, error, data), và các hàm để fetch/thêm/xóa.
-    *   Nó sử dụng `useEffect` để gọi hàm `fetchAgents` khi component được mount.
-    *   Hàm `fetchAgents` sẽ dùng `axios` để gửi request `GET` đến `/api/v1/agents`.
+2.  **Custom Hook (`src/pages/assets/hooks/useassets.js`):**
+    *   Hook này chịu trách nhiệm cho toàn bộ logic liên quan đến assets: state (loading, error, data), và các hàm để fetch/thêm/xóa.
+    *   Nó sử dụng `useEffect` để gọi hàm `fetchassets` khi component được mount.
+    *   Hàm `fetchassets` sẽ dùng `axios` để gửi request `GET` đến `/api/v1/assets`.
     *   Trong khi chờ dữ liệu, hook sẽ trả về `isLoading: true`. Khi có dữ liệu, `isLoading: false` và `data: [...]`. Nếu lỗi, `error: ...`.
 
 3.  **Hiển Thị Giao Diện:**
-    *   Component `Agents.jsx` nhận về state (`isLoading`, `data`, `error`) từ hook `useAgents`.
+    *   Component `assets.jsx` nhận về state (`isLoading`, `data`, `error`) từ hook `useassets`.
     *   Nó hiển thị một spinner nếu `isLoading` là `true`.
     *   Hiển thị thông báo lỗi nếu `error` tồn tại.
     *   Nếu có `data`, nó sẽ truyền dữ liệu này xuống các component con như `SearchableList.jsx` hoặc một table để render ra danh sách.
@@ -180,22 +180,22 @@ Ví dụ: Hiển thị danh sách Agents tại trang `src/pages/Agents/Agents.js
 
 ## 4. Luồng Cập Nhật Real-time (WebSocket Flow)
 
-Ví dụ: Một agent chuyển từ `online` sang `offline`.
+Ví dụ: Một asset chuyển từ `online` sang `offline`.
 
-1.  **Backend Phát Sự Kiện:** Backend phát hiện agent `offline` và gửi một thông điệp qua WebSocket đến tất cả các client đang kết nối. Ví dụ: `{ event: 'AGENT_STATUS_CHANGED', payload: { agentId: 'xyz', status: 'offline' } }`.
+1.  **Backend Phát Sự Kiện:** Backend phát hiện asset `offline` và gửi một thông điệp qua WebSocket đến tất cả các client đang kết nối. Ví dụ: `{ event: 'asset_STATUS_CHANGED', payload: { assetId: 'xyz', status: 'offline' } }`.
 
 2.  **Frontend Nhận Sự Kiện (`src/context/WebSocketContext.jsx`):**
     *   Provider này lắng nghe tất cả các message từ WebSocket server.
     *   Khi nhận được một message, nó sẽ phát một `CustomEvent` trên đối tượng `window` hoặc gọi một callback function đã được đăng ký.
 
-3.  **Component Lắng Nghe (`src/pages/Agents/Agents.jsx`):**
-    *   Trong component `Agents.jsx`, một hook `useSocketSubscription('AGENT_STATUS_CHANGED', callback)` được sử dụng.
+3.  **Component Lắng Nghe (`src/pages/assets/assets.jsx`):**
+    *   Trong component `assets.jsx`, một hook `useSocketSubscription('asset_STATUS_CHANGED', callback)` được sử dụng.
     *   Hook này đăng ký `callback` function với `WebSocketContext`.
-    *   Khi `WebSocketContext` nhận được sự kiện `AGENT_STATUS_CHANGED`, `callback` function này sẽ được gọi với `payload` của sự kiện.
+    *   Khi `WebSocketContext` nhận được sự kiện `asset_STATUS_CHANGED`, `callback` function này sẽ được gọi với `payload` của sự kiện.
 
 4.  **Cập Nhật UI:**
-    *   `callback` function sẽ tìm agent có `agentId: 'xyz'` trong state dữ liệu hiện tại và cập nhật trạng thái của nó thành `offline`.
-    *   Vì state thay đổi, React sẽ tự động render lại component `Agents.jsx`, và người dùng sẽ thấy trạng thái của agent thay đổi ngay lập tức mà không cần làm gì cả.
+    *   `callback` function sẽ tìm asset có `assetId: 'xyz'` trong state dữ liệu hiện tại và cập nhật trạng thái của nó thành `offline`.
+    *   Vì state thay đổi, React sẽ tự động render lại component `assets.jsx`, và người dùng sẽ thấy trạng thái của asset thay đổi ngay lập tức mà không cần làm gì cả.
 SENT_frontend/
 ├── public/
 ├── src/
@@ -205,7 +205,7 @@ SENT_frontend/
 │   │   ├── common/                 # Component UI tái sử dụng
 │   │   │    └── Pagination.jsx   
 │   │   ├── GlobalCopilotDrawer.jsx
-│   │   ├── Navbar.jsx              # Thanh điều hướng chính (Chứa menu Agents, Docs, Policy Center)
+│   │   ├── Navbar.jsx              # Thanh điều hướng chính (Chứa menu assets, Docs, Policy Center)
 │   │   ├── SearchableList.jsx     
 │   │   ├── AppDialog.jsx     
 │   │   └── Sidebar.jsx             
@@ -214,21 +214,21 @@ SENT_frontend/
 │   ├── hooks/
 │   │   └── useWebSocket.js         # Hook quản lý kết nối WebSocket Real-time tập trung
 │   ├── pages/
-│   │   ├── Agents/                 # Quản lý Thiết bị
-│   │   │   ├── AgentDetail.jsx     # Xem chi tiết thông số
-│   │   │   ├── Agents.jsx          # Danh sách máy trạm
+│   │   ├── assets/                 # Quản lý Thiết bị
+│   │   │   ├── assetDetail.jsx     # Xem chi tiết thông số
+│   │   │   ├── assets.jsx          # Danh sách máy trạm
 │   │   │   │── hook/
-│   │   │   │    ├── useAgentBulkActions.js    
-│   │   │   │    ├── useAgents.js    
+│   │   │   │    ├── useassetBulkActions.js    
+│   │   │   │    ├── useassets.js    
 │   │   │   │    └── useWebSocket.js    
 │   │   │   └── components/
-│   │   │       ├── AgentBulkActions.jsx  
+│   │   │       ├── assetBulkActions.jsx  
 │   │   │       ├── GenerateTokenButton.jsx      
-│   │   │       ├── AgentPort.jsx 
-│   │   │       ├── AgentActions.jsx  
-│   │   │       ├── AgentUSB.jsx      
-│   │   │       ├── AgentLogs.jsx     
-│   │   │       └── AgentSoftware.jsx     
+│   │   │       ├── assetPort.jsx 
+│   │   │       ├── assetActions.jsx  
+│   │   │       ├── assetUSB.jsx      
+│   │   │       ├── assetLogs.jsx     
+│   │   │       └── assetSoftware.jsx     
 │   │   ├── approvals/   
 │   │   │   ├── components/
 │   │   │   │   └── ApprovalList.jsx

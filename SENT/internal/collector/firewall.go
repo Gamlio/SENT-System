@@ -37,7 +37,7 @@ func (s *FirewallSensor) Collect() (interface{}, error) {
 	}
 
 	out, err := cmd.Output()
-	// Tương tự Antivirus, lỗi command không tồn tại không nên làm dừng agent.
+	// Tương tự Antivirus, lỗi command không tồn tại không nên làm dừng asset.
 	// Sẽ log trong tương lai, hiện tại chỉ kiểm tra output nếu không có lỗi.
 	if err == nil {
 		output := strings.ToLower(string(out))

@@ -28,7 +28,7 @@ const Dashboard = () => {
 
     useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
 
-    useSocketSubscription(['NEW_INCIDENT', 'AGENT_STATUS_CHANGED', 'INCIDENT_RESOLVED'], () => {
+    useSocketSubscription(['NEW_INCIDENT', 'asset_STATUS_CHANGED', 'INCIDENT_RESOLVED'], () => {
         fetchDashboardData();
     });
 
@@ -51,7 +51,7 @@ const Dashboard = () => {
     const recentAlertColumns = [
         { key: 'alert_type', label: 'Detection', render: (row) => <span className="font-bold text-slate-200">{row.alert_type}</span> },
         { key: 'severity', label: 'Level', render: (row) => <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${row.severity === 'Critical' ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-orange-500/10 text-orange-400 border-orange-500/30'}`}>{row.severity}</span> },
-        { key: 'agent_name', label: 'Target', render: (row) => <span className="font-mono text-slate-400">{row.agent_name.substring(0,8)}...</span> },
+        { key: 'asset_name', label: 'Target', render: (row) => <span className="font-mono text-slate-400">{row.asset_name.substring(0,8)}...</span> },
         { key: 'created_at', label: 'Time', render: (row) => <span className="font-mono text-slate-500">{new Date(row.created_at).toLocaleTimeString('vi-VN')}</span> }
     ];
 
@@ -73,8 +73,8 @@ const Dashboard = () => {
 
             {/* TIER 1: KPI CỐT LÕI (MẬT ĐỘ DÀY) */}
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
-                <KpiCard icon={<Monitor size={18}/>} title="Total Assets" value={stats.total_agents} subValue={`${stats.online_agents} Online`} color="blue" />
-                <KpiCard icon={<Flame size={18}/>} title="High Risk" value={stats.high_risk_agents} subValue={`${((stats.high_risk_agents/stats.total_agents)*100).toFixed(1)}% Fleet`} color="red" isAlert={stats.high_risk_agents > 0}/>
+                <KpiCard icon={<Monitor size={18}/>} title="Total Assets" value={stats.total_assets} subValue={`${stats.online_assets} Online`} color="blue" />
+                <KpiCard icon={<Flame size={18}/>} title="High Risk" value={stats.high_risk_assets} subValue={`${((stats.high_risk_assets/stats.total_assets)*100).toFixed(1)}% Fleet`} color="red" isAlert={stats.high_risk_assets > 0}/>
                 <KpiCard icon={<ShieldAlert size={18}/>} title="Raw Alerts" value={stats.total_alerts} subValue="Last 24h" color="orange" />
                 <KpiCard icon={<AlertTriangle size={18}/>} title="Open Cases" value={stats.open_incidents} subValue={`${stats.resolved_incidents} Resolved`} color="purple" />
                 <KpiCard icon={<Lock size={18}/>} title="Zero Trust" value={`${stats.zero_trust_coverage.toFixed(1)}%`} subValue="Enforcement" color="emerald" />
@@ -89,12 +89,12 @@ const Dashboard = () => {
             {/* TIER 3: BẢNG DỮ LIỆU ACTIONABLE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <DashboardTable 
-                    title="Top Risk Agents" 
+                    title="Top Risk assets" 
                     icon={Flame} 
-                    data={stats.top_risk_agents} 
+                    data={stats.top_risk_assets} 
                     columns={topRiskColumns} 
                     colorClass="text-red-400"
-                    onRowClick={(row) => navigate(`/agents/${row.hwid}`)}
+                    onRowClick={(row) => navigate(`/assets/${row.hwid}`)}
                 />
                 <DashboardTable 
                     title="Live Threat Feed" 

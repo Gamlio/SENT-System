@@ -40,9 +40,9 @@ func (s *UserService) CreateUserRequest(req models.UserPayload, orgID uint, requ
 			OrgID:          &orgID,
 			ApprovalStatus: "PENDING",
 			// Gán các quyền từ request
-			PermAgentView:      req.PermAgentView,
-			PermAgentAction:    req.PermAgentAction,
-			PermAgentDelete:    req.PermAgentDelete,
+			PermAssetView:      req.PermAssetView,
+			PermAssetAction:    req.PermAssetAction,
+			PermAssetDelete:    req.PermAssetDelete,
 			PermPolicyView:     req.PermPolicyView,
 			PermPolicyAction:   req.PermPolicyAction,
 			PermIncidentView:   req.PermIncidentView,

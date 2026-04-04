@@ -10,8 +10,8 @@ import Login from './pages/Auth/Login.jsx';
 import Register from './pages/Auth/Register.jsx';
 import Dashboard from './pages/Dashboard/Dashboard.jsx';
 
-import AgentList from './pages/Agents/Agents.jsx';
-import AgentDetail from './pages/Agents/AgentDetail.jsx'; 
+import AssetList from './pages/Assets/Assets.jsx';
+import AssetDetail from './pages/Assets/AssetsDetail.jsx'; 
 import IncidentList from './pages/IncidentReport/IncidentManager.jsx';
 import AIChatPage from './pages/AIChat/AIChatPage.jsx';
 import ApprovalCenter from './pages/approvals/ApprovalCenter.jsx';
@@ -79,8 +79,9 @@ function App() {
                     <Route path="/chat-ai" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     
-                    <Route path="/agents" element={<ProtectedRoute requiredPermission="agent_view"><AgentList /></ProtectedRoute>} />
-                    <Route path="/agents/:hwid" element={<ProtectedRoute requiredPermission="agent_view"><AgentDetail /></ProtectedRoute>} />
+                    
+                    <Route path="/assets" element={<ProtectedRoute requiredPermission="asset_view"><AssetList /></ProtectedRoute>} />
+                    <Route path="/assets/:hwid" element={<ProtectedRoute requiredPermission="asset_view"><AssetDetail /></ProtectedRoute>} /> 
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/incidents" element={<ProtectedRoute requiredPermission="incident_view"><IncidentList /></ProtectedRoute>} />
                     <Route path="/incidents/:id" element={<IncidentDetail />} />

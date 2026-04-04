@@ -40,7 +40,7 @@ func (s *ApprovalService) ProcessReview(ticketID uint, status string, note strin
 			return err
 		}
 
-		// Gọi Strategy tương ứng để thực hiện nghiệp vụ đích (VD: Đổi trạng thái Agent, tạo User...)
+		// Gọi Strategy tương ứng để thực hiện nghiệp vụ đích (VD: Đổi trạng thái asset, tạo User...)
 		var processErr error
 		if status == "APPROVED" {
 			processErr = strategy.OnApprove(tx, &ticket)

@@ -25,8 +25,8 @@ func generateCompanyCode() string {
 func RegisterSMEHandler(c *gin.Context) {
 	var req struct {
 		CompanyName string `json:"company_name" binding:"required,min=3,max=100"`
-		Email       string `json:"email" binding:"required,email"` // [MỚI] Bắt buộc có Email để gửi link
-		Username    string `json:"username" binding:"required,min=3,max=50,alphanum"`
+		Email       string `json:"email" binding:"required,email"`
+		Username    string `json:"username" binding:"required,min=3,max=50"`
 		Password    string `json:"password" binding:"required,min=8,max=128"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -64,9 +64,9 @@ func RegisterSMEHandler(c *gin.Context) {
 		PasswordHash:       string(hashed),
 		Email:              req.Email,
 		OrgID:              &org.ID,
-		PermAgentView:      true,
-		PermAgentAction:    true,
-		PermAgentDelete:    true,
+		PermAssetView:      true,
+		PermAssetAction:    true,
+		PermAssetDelete:    true,
 		PermPolicyView:     true,
 		PermPolicyAction:   true,
 		PermIncidentView:   true,
@@ -115,7 +115,7 @@ func RegisterSMEHandler(c *gin.Context) {
 
 func LoginHandler(c *gin.Context) {
 	var req struct {
-		CompanyCode string `json:"company_code" binding:"required,min=7,max=20,alphanum-"` // [BẢO MẬT] BẮT BUỘC PHẢI CÓ
+		CompanyCode string `json:"company_code" binding:"required,min=7,max=20"` // [BẢO MẬT] BẮT BUỘC PHẢI CÓ
 		Username    string `json:"username" binding:"required,min=3,max=50"`
 		Password    string `json:"password" binding:"required,min=1,max=128"`
 	}
@@ -159,9 +159,9 @@ func LoginHandler(c *gin.Context) {
 		"username":     user.Username,
 		"company_code": org.CompanyCode,
 		"permissions": map[string]bool{
-			"agent_view":      user.PermAgentView,
-			"agent_action":    user.PermAgentAction,
-			"agent_delete":    user.PermAgentDelete,
+			"asset_view":      user.PermAssetView,
+			"asset_action":    user.PermAssetAction,
+			"asset_delete":    user.PermAssetDelete,
 			"policy_view":     user.PermPolicyView,
 			"policy_action":   user.PermPolicyAction,
 			"incident_view":   user.PermIncidentView,

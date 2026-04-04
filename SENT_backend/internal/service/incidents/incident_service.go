@@ -25,8 +25,8 @@ func NewIncidentService(db *gorm.DB) *IncidentService {
 	}
 }
 
-// CreateIncidentFromAlert processes a security alert and creates an incident, updating agent scores.
-func (s *IncidentService) CreateIncidentFromAlert(alert *models.SecurityAlert, agent *models.Agent) (*models.Incident, error) {
+// CreateIncidentFromAlert processes a security alert and creates an incident, updating asset scores.
+func (s *IncidentService) CreateIncidentFromAlert(alert *models.SecurityAlert, asset *models.Asset) (*models.Incident, error) {
 	// Dùng logic phân loại trực tiếp nếu không có Matrix Service riêng
 	priority := "P4" // Mặc định
 	if alert.Priority != "" {
@@ -36,7 +36,7 @@ func (s *IncidentService) CreateIncidentFromAlert(alert *models.SecurityAlert, a
 	// 1. Create the Incident
 	incident := models.Incident{
 		OrgID:       alert.OrgID,
-		AgentHWID:   alert.HWID, // SỬA: Dùng HWID thay vì ID
+		AssetHWID:   alert.HWID, // SỬA: Dùng HWID thay vì ID
 		Type:        alert.AlertType,
 		Severity:    alert.Severity,
 		Priority:    priority,
@@ -59,18 +59,18 @@ func (s *IncidentService) CreateIncidentFromAlert(alert *models.SecurityAlert, a
 
 	// 2. Cập nhật LastIncidentAt trực tiếp bằng GORM thông qua HWID
 	now := time.Now()
-	if err := s.db.Model(&models.Agent{}).Where("hw_id = ?", agent.HWID).Update("last_incident_at", &now).Error; err != nil {
-		fmt.Printf("Warning: Failed to update LastIncidentAt for agent %s: %v\n", agent.HWID, err)
+	if err := s.db.Model(&models.Asset{}).Where("hw_id = ?", asset.HWID).Update("last_incident_at", &now).Error; err != nil {
+		fmt.Printf("Warning: Failed to update LastIncidentAt for asset %s: %v\n", asset.HWID, err)
 	}
 
 	// 3. SỬA: Gọi trực tiếp hàm tính điểm toàn cục trong score_service.go
-	scoring.RecalculateRiskScore(agent.HWID)
+	scoring.RecalculateRiskScore(asset.HWID)
 
 	return &incident, nil
 }
 
-// ResolveIncident handles resolving an incident and updating agent scores.
-func (s *IncidentService) ResolveIncident(incidentID uint, agentHWID string, resolutionSummary string) error {
+// ResolveIncident handles resolving an incident and updating asset scores.
+func (s *IncidentService) ResolveIncident(incidentID uint, assetHWID string, resolutionSummary string) error {
 	var incident models.Incident
 	if err := s.db.First(&incident, incidentID).Error; err != nil {
 		return fmt.Errorf("incident not found: %w", err)
@@ -93,12 +93,12 @@ func (s *IncidentService) ResolveIncident(incidentID uint, agentHWID string, res
 	}
 
 	// SỬA: Gọi tính lại điểm rủi ro bằng hàm toàn cục
-	scoring.RecalculateRiskScore(agentHWID)
+	scoring.RecalculateRiskScore(assetHWID)
 
 	return nil
 }
 
-// GetAllIncidents fetches all incidents with preloaded agent information.
+// GetAllIncidents fetches all incidents with preloaded asset information.
 func (s *IncidentService) GetAllIncidents(orgID uint) ([]models.Incident, error) {
 	var incidents []models.Incident
 	err := s.db.Where("org_id = ?", orgID).Order("created_at desc").Find(&incidents).Error
@@ -107,10 +107,10 @@ func (s *IncidentService) GetAllIncidents(orgID uint) ([]models.Incident, error)
 	}
 
 	for idx := range incidents {
-		var agent models.Agent
-		loaderErr := s.db.Where("hw_id = ?", incidents[idx].AgentHWID).First(&agent).Error
+		var asset models.Asset
+		loaderErr := s.db.Where("hw_id = ?", incidents[idx].AssetHWID).First(&asset).Error
 		if loaderErr == nil {
-			incidents[idx].Agent = agent
+			incidents[idx].Asset = asset
 		}
 
 		if database.SecurityAlertCollection != nil {
@@ -132,9 +132,9 @@ func (s *IncidentService) GetIncidentByID(incidentID uint) (*models.Incident, er
 		return nil, fmt.Errorf("incident not found: %w", err)
 	}
 
-	var agent models.Agent
-	if loadErr := s.db.Where("hw_id = ?", incident.AgentHWID).First(&agent).Error; loadErr == nil {
-		incident.Agent = agent
+	var asset models.Asset
+	if loadErr := s.db.Where("hw_id = ?", incident.AssetHWID).First(&asset).Error; loadErr == nil {
+		incident.Asset = asset
 	}
 
 	if database.SecurityAlertCollection != nil {

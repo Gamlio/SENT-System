@@ -55,18 +55,18 @@ func RateLimitMiddleware(r rate.Limit, b int) gin.HandlerFunc {
 	}
 }
 
-// ============================= AGENT FLOODING PROTECTION =============================
+// ============================= asset FLOODING PROTECTION =============================
 
-// AgentFloodTracker: Theo dõi flooding từ agent
-type AgentFloodTracker struct {
+// assetFloodTracker: Theo dõi flooding từ asset
+type assetFloodTracker struct {
 	mu            sync.RWMutex
-	agents        map[string]*AgentRequestStats
+	assets        map[string]*assetRequestStats
 	blockList     map[string]time.Time // HWID -> BlockedUntil
 	cleanupTicker *time.Ticker
 }
 
-// AgentRequestStats: Thống kê request của mỗi agent
-type AgentRequestStats struct {
+// assetRequestStats: Thống kê request của mỗi asset
+type assetRequestStats struct {
 	RequestCount     int
 	BytesSent        int64
 	LastRequestTime  time.Time
@@ -74,10 +74,10 @@ type AgentRequestStats struct {
 	LastResetTime    time.Time
 }
 
-// NewAgentFloodTracker: Khởi tạo tracker
-func NewAgentFloodTracker() *AgentFloodTracker {
-	tracker := &AgentFloodTracker{
-		agents:    make(map[string]*AgentRequestStats),
+// NewassetFloodTracker: Khởi tạo tracker
+func NewassetFloodTracker() *assetFloodTracker {
+	tracker := &assetFloodTracker{
+		assets:    make(map[string]*assetRequestStats),
 		blockList: make(map[string]time.Time),
 	}
 
@@ -92,8 +92,8 @@ func NewAgentFloodTracker() *AgentFloodTracker {
 	return tracker
 }
 
-// RecordRequest: Ghi nhận request từ agent
-func (aft *AgentFloodTracker) RecordRequest(hwid string, bodySize int64) bool {
+// RecordRequest: Ghi nhận request từ asset
+func (aft *assetFloodTracker) RecordRequest(hwid string, bodySize int64) bool {
 	aft.mu.Lock()
 	defer aft.mu.Unlock()
 
@@ -107,10 +107,10 @@ func (aft *AgentFloodTracker) RecordRequest(hwid string, bodySize int64) bool {
 		delete(aft.blockList, hwid) // Bỏ block
 	}
 
-	// Lấy stats của agent
-	stats, exists := aft.agents[hwid]
+	// Lấy stats của asset
+	stats, exists := aft.assets[hwid]
 	if !exists {
-		aft.agents[hwid] = &AgentRequestStats{
+		aft.assets[hwid] = &assetRequestStats{
 			RequestCount:    1,
 			BytesSent:       bodySize,
 			LastRequestTime: now,
@@ -138,7 +138,7 @@ func (aft *AgentFloodTracker) RecordRequest(hwid string, bodySize int64) bool {
 	// Detect flooding
 	timeSinceLastRequest := now.Sub(stats.LastRequestTime)
 	if timeSinceLastRequest < 10*time.Millisecond && stats.RequestCount > 5 {
-		// Agent gửi >5 request trong <10ms = flooding
+		// asset gửi >5 request trong <10ms = flooding
 		stats.SuspiciousEvents++
 	}
 
@@ -161,16 +161,16 @@ func (aft *AgentFloodTracker) RecordRequest(hwid string, bodySize int64) bool {
 	return true
 }
 
-// cleanup: Xóa agent records cũ
-func (aft *AgentFloodTracker) cleanup() {
+// cleanup: Xóa asset records cũ
+func (aft *assetFloodTracker) cleanup() {
 	aft.mu.Lock()
 	defer aft.mu.Unlock()
 
 	now := time.Now()
-	for hwid, stats := range aft.agents {
-		// Xóa agent nếu không gửi request trong 1 giờ
+	for hwid, stats := range aft.assets {
+		// Xóa asset nếu không gửi request trong 1 giờ
 		if now.Sub(stats.LastRequestTime) > 1*time.Hour {
-			delete(aft.agents, hwid)
+			delete(aft.assets, hwid)
 		}
 	}
 
@@ -183,15 +183,15 @@ func (aft *AgentFloodTracker) cleanup() {
 }
 
 // Stop: Dừng tracker
-func (aft *AgentFloodTracker) Stop() {
+func (aft *assetFloodTracker) Stop() {
 	aft.cleanupTicker.Stop()
 }
 
 // Global tracker instance
-var agentFloodTracker = NewAgentFloodTracker()
+var assetFloodTrackerInstance = NewassetFloodTracker()
 
-// AgentFloodProtectionMiddleware: Middleware chặn agent flooding
-func AgentFloodProtectionMiddleware() gin.HandlerFunc {
+// AssetFloodProtectionMiddleware: Middleware chặn asset flooding
+func AssetFloodProtectionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Lấy HWID từ request
 		var req struct {
@@ -215,9 +215,9 @@ func AgentFloodProtectionMiddleware() gin.HandlerFunc {
 			bodySize = 0
 		}
 
-		if !agentFloodTracker.RecordRequest(req.HWID, bodySize) {
+		if !assetFloodTrackerInstance.RecordRequest(req.HWID, bodySize) {
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": fmt.Sprintf("Agent %s detected suspicious activity. Temporarily blocked", req.HWID),
+				"error": fmt.Sprintf("asset %s detected suspicious activity. Temporarily blocked", req.HWID),
 			})
 			c.Abort()
 			return
@@ -247,14 +247,14 @@ func UserLoginRateLimitMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AgentEnrollRateLimiter: Rate limiting cho enrollment (strict)
-var agentEnrollRateLimiter = NewIPRateLimiter(0.2, 5) // 0.2 req/sec = 1 req/5sec, burst 5
+// assetEnrollRateLimiter: Rate limiting cho enrollment (strict)
+var assetEnrollRateLimiter = NewIPRateLimiter(0.2, 5) // 0.2 req/sec = 1 req/5sec, burst 5
 
-// AgentEnrollRateLimitMiddleware: Rate limiter cho enrollment
-func AgentEnrollRateLimitMiddleware() gin.HandlerFunc {
+// AssetEnrollRateLimitMiddleware: Rate limiter cho enrollment
+func AssetEnrollRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
-		if !agentEnrollRateLimiter.GetLimiter(ip).Allow() {
+		if !assetEnrollRateLimiter.GetLimiter(ip).Allow() {
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many enrollment attempts. Please try again after 5 minutes",
 			})

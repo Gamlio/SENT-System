@@ -5,7 +5,7 @@ node_modules/
 *.pyc
 uploads/
 pkg/
-agent_history.log
+asset_history.log
 *.json
 package-lock.json
 /bin/

@@ -48,12 +48,12 @@ Dựa trên chỉ số Trust Score (Lịch sử 1 năm) lưu trong DB.
 - **Phút 03:** Cảm biến Viễn trắc (Telemetry) ghi nhận Disk Write tăng vọt > 1GB/phút (`DISK_HOARDING`).
   - Correlation Engine (Động cơ tương quan) kích hoạt: Gộp sự kiện `USB_PLUG` + `DISK_HOARDING` thành Siêu sự cố: **"Nghi ngờ Ransomware lây lan qua USB"**.
   - Hệ số lũy thừa $E^n$ kích hoạt. Điểm rủi ro vọt lên 98đ.
-- **Phản ứng tự động:** Kênh WebSocket tự động bắn lệnh `ISOLATE` xuống Agent để ngắt mạng LAN, khóa đứng máy trạm trước khi mã độc lây sang máy tính Giám đốc.
+- **Phản ứng tự động:** Kênh WebSocket tự động bắn lệnh `ISOLATE` xuống asset để ngắt mạng LAN, khóa đứng máy trạm trước khi mã độc lây sang máy tính Giám đốc.
 - **Kết quả:** Sau khi Admin diệt virus và mở khóa, điểm $R_{current}$ về 0. Nhưng TrustScore giảm còn 70đ. Lần sau máy này chỉ cần cắm USB là điểm tự động nhảy thẳng lên mức báo động.
 
 ## PHẦN 5: KHẢ NĂNG MỞ RỘNG (EXPANDABILITY)
 
-Thuật toán được thiết kế dưới dạng Framework mở. Khi thêm các Cảm biến (Sensors) mới ở phía Agent như:
+Thuật toán được thiết kế dưới dạng Framework mở. Khi thêm các Cảm biến (Sensors) mới ở phía asset như:
 - **Telemetry Monitoring:** Đo đếm Network Bytes Sent và Disk Bytes Written.
 - **Registry Monitoring:** Định nghĩa `REG_CHANGE` vào Ma trận rủi ro.
 

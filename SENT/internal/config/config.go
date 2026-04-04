@@ -59,7 +59,7 @@ func enrollToServer(token, hwid, hostname, ipAddress string) bool {
 	}
 
 	jsonData, _ := json.Marshal(payload)
-	resp, err := http.Post(Current.BackendURL+"/api/v1/agents/enroll", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post(Current.BackendURL+"/api/v1/assets/enroll", "application/json", bytes.NewBuffer(jsonData))
 
 	if err != nil || resp.StatusCode != 200 {
 		fmt.Println("❌ Lỗi: Mã cài đặt không đúng, đã hết hạn hoặc server không phản hồi!")

@@ -4,7 +4,7 @@ import Pagination from '../../../components/common/Pagination';
 // IMPORT HÀM XỬ LÝ FILE
 import { parseExcel, parseWord } from '../../../utils/fileParsers';
 
-const PolicyForm = ({ currentConfig, agents, onAddPolicy, isLoading }) => {
+const PolicyForm = ({ currentConfig, assets, onAddPolicy, isLoading }) => {
     // --- STATE FORM CƠ BẢN ---
     const [newTitle, setNewTitle] = useState('');
     const [policyType, setPolicyType] = useState('BLACKLIST');
@@ -22,17 +22,17 @@ const PolicyForm = ({ currentConfig, agents, onAddPolicy, isLoading }) => {
     const fileInputRef = useRef(null);
 
     // --- STATE TÌM KIẾM MÁY ---
-    const [agentSearch, setAgentSearch] = useState('');
+    const [assetSearch, setassetSearch] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 5;
 
     // Logic lọc và phân trang máy trạm
-    const filteredAgents = agents.filter(a => 
-        a.hostname?.toLowerCase().includes(agentSearch.toLowerCase()) || 
-        a.ip_address?.includes(agentSearch)
+    const filteredassets = assets.filter(a => 
+        a.hostname?.toLowerCase().includes(assetSearch.toLowerCase()) || 
+        a.ip_address?.includes(assetSearch)
     );
-    const totalPages = Math.ceil(filteredAgents.length / itemsPerPage);
-    const displayedAgents = filteredAgents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const totalPages = Math.ceil(filteredassets.length / itemsPerPage);
+    const displayedassets = filteredassets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     // --- HÀM XỬ LÝ IMPORT FILE ---
     const handleFileImport = async (e) => {
@@ -234,22 +234,22 @@ const PolicyForm = ({ currentConfig, agents, onAddPolicy, isLoading }) => {
                         <div className="p-3 border-b border-slate-800 bg-slate-900">
                             <div className="relative">
                                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" size={14}/>
-                                <input type="text" placeholder="Tìm tên máy hoặc IP..." value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)} className="w-full pl-8 pr-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white outline-none focus:border-purple-500 transition" />
+                                <input type="text" placeholder="Tìm tên máy hoặc IP..." value={assetSearch} onChange={(e) => setassetSearch(e.target.value)} className="w-full pl-8 pr-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white outline-none focus:border-purple-500 transition" />
                             </div>
                         </div>
                         <div className="p-2 space-y-1 min-h-[150px]">
-                            {displayedAgents.length === 0 ? (
+                            {displayedassets.length === 0 ? (
                                 <div className="text-center py-4 text-slate-500 text-xs italic">Không tìm thấy máy phù hợp</div>
                             ) : (
-                                displayedAgents.map(agent => (
-                                    <label key={agent.hwid} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition border border-transparent ${selectedHWIDs.includes(agent.hwid) ? 'bg-purple-500/20 border-purple-500/30' : 'hover:bg-slate-800'}`}>
-                                        <input type="checkbox" checked={selectedHWIDs.includes(agent.hwid)} onChange={() => {
-                                            if (selectedHWIDs.includes(agent.hwid)) setSelectedHWIDs(prev => prev.filter(id => id !== agent.hwid));
-                                            else setSelectedHWIDs(prev => [...prev, agent.hwid]);
+                                displayedassets.map(asset => (
+                                    <label key={asset.hwid} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition border border-transparent ${selectedHWIDs.includes(asset.hwid) ? 'bg-purple-500/20 border-purple-500/30' : 'hover:bg-slate-800'}`}>
+                                        <input type="checkbox" checked={selectedHWIDs.includes(asset.hwid)} onChange={() => {
+                                            if (selectedHWIDs.includes(asset.hwid)) setSelectedHWIDs(prev => prev.filter(id => id !== asset.hwid));
+                                            else setSelectedHWIDs(prev => [...prev, asset.hwid]);
                                         }} className="accent-purple-500 w-4 h-4 rounded" />
                                         <div className="min-w-0">
-                                            <p className={`text-xs font-bold truncate ${selectedHWIDs.includes(agent.hwid) ? 'text-white' : 'text-slate-300'}`}>{agent.hostname}</p>
-                                            <p className="text-[9px] text-slate-500 font-mono truncate">{agent.ip_address}</p>
+                                            <p className={`text-xs font-bold truncate ${selectedHWIDs.includes(asset.hwid) ? 'text-white' : 'text-slate-300'}`}>{asset.hostname}</p>
+                                            <p className="text-[9px] text-slate-500 font-mono truncate">{asset.ip_address}</p>
                                         </div>
                                     </label>
                                 ))

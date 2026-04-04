@@ -52,13 +52,13 @@ func (s *IncidentService) applyContextualMatrix(alertType, basePriority, departm
 }
 
 // TriggerSecurityEvent: Nhận tín hiệu từ Sensor và đưa vào quy trình Triage (Phân loại)
-func (s *IncidentService) TriggerSecurityEvent(agent models.Agent, alertType, title, description, priority string) {
+func (s *IncidentService) TriggerSecurityEvent(asset models.Asset, alertType, title, description, priority string) {
 	// 1. Lọc qua Ma trận Ngữ cảnh để lấy Priority chuẩn
-	finalPriority := s.applyContextualMatrix(alertType, priority, agent.DepartmentTag)
+	finalPriority := s.applyContextualMatrix(alertType, priority, asset.DepartmentTag)
 
 	alert := models.SecurityAlert{
-		OrgID:       agent.OrgID,
-		HWID:        agent.HWID,
+		OrgID:       asset.OrgID,
+		HWID:        asset.HWID,
 		AlertType:   alertType,
 		Title:       title,
 		Description: description,
@@ -78,13 +78,13 @@ func (s *IncidentService) TriggerSecurityEvent(agent models.Agent, alertType, ti
 	var correlatedIncident models.Incident
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		timeWindow := time.Now().Add(-DefaultCorrelationWindow)
-		err := tx.Where("agent_hw_id = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
-			agent.HWID, alertType, timeWindow).First(&correlatedIncident).Error
+		err := tx.Where("asset_hw_id = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
+			asset.HWID, alertType, timeWindow).First(&correlatedIncident).Error
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			correlatedIncident = models.Incident{
-				OrgID:       agent.OrgID,
-				AgentHWID:   agent.HWID,
+				OrgID:       asset.OrgID,
+				AssetHWID:   asset.HWID,
 				Type:        alertType,
 				Priority:    finalPriority,
 				Severity:    s.getSeverityByPriority(finalPriority),
@@ -115,14 +115,14 @@ func (s *IncidentService) TriggerSecurityEvent(agent models.Agent, alertType, ti
 
 	// 4. Gọi Engine tính điểm v6.0
 	if err == nil {
-		scoring.RecalculateRiskScore(agent.HWID)
+		scoring.RecalculateRiskScore(asset.HWID)
 	}
 }
 
-// AutoResolveIncident: Tự động đóng Case nếu Agent báo cáo trạng thái đã an toàn
+// AutoResolveIncident: Tự động đóng Case nếu asset báo cáo trạng thái đã an toàn
 func (s *IncidentService) AutoResolveIncident(hwid string, alertType string) {
 	var incident models.Incident
-	err := database.DB.Where("agent_hw_id = ? AND type = ? AND status != ?", hwid, alertType, "Resolved").First(&incident).Error
+	err := database.DB.Where("asset_hw_id = ? AND type = ? AND status != ?", hwid, alertType, "Resolved").First(&incident).Error
 
 	if err == nil {
 		database.DB.Transaction(func(tx *gorm.DB) error {

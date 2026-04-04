@@ -121,7 +121,7 @@ func AddIncidentActivity(c *gin.Context) {
 		}
 
 		// HẠ ĐIỂM RỦI RO NGAY LẬP TỨC
-		scoring.RecalculateRiskScore(incident.AgentHWID)
+		scoring.RecalculateRiskScore(incident.AssetHWID)
 	}
 
 	// --- LOGIC LƯU FILE ẢNH VÀO Ổ CỨNG ---
@@ -357,13 +357,13 @@ func ExecuteLiveAction(c *gin.Context) {
 	}
 
 	var incident models.Incident
-	if err := database.DB.Preload("Agent").First(&incident, id).Error; err != nil {
+	if err := database.DB.Preload("Asset").First(&incident, id).Error; err != nil {
 		c.JSON(404, gin.H{"error": "Không tìm thấy sự cố"})
 		return
 	}
 
 	// Tạo System Log lưu vào DB để truy vết (Ai làm gì, ở đâu)
-	logContent := fmt.Sprintf("⚡ LỆNH THỰC THI TỪ XA: [%s]\n> Mục tiêu: %s (%s)\n> Phản hồi: Đã đưa lệnh vào hàng đợi, chờ Agent thực thi...", req.Command, incident.Agent.Hostname, incident.Agent.IPAddress)
+	logContent := fmt.Sprintf("⚡ LỆNH THỰC THI TỪ XA: [%s]\n> Mục tiêu: %s (%s)\n> Phản hồi: Đã đưa lệnh vào hàng đợi, chờ Asset thực thi...", req.Command, incident.Asset.Hostname, incident.Asset.IPAddress)
 
 	activity := models.IncidentActivity{
 		IncidentID: incident.ID,
@@ -374,7 +374,7 @@ func ExecuteLiveAction(c *gin.Context) {
 	}
 	database.DB.Create(&activity)
 
-	// TODO: Tương lai sẽ gọi MQTT/WebSocket push xuống Agent tại đây.
+	// TODO: Tương lai sẽ gọi MQTT/WebSocket push xuống asset tại đây.
 
 	c.JSON(200, gin.H{
 		"message":  "Đã bắn lệnh xuống thiết bị",

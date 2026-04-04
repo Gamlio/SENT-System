@@ -1,6 +1,7 @@
 import React from 'react';
 
-const DashboardTable = ({ title, icon: Icon, data = [], columns = [], colorClass, onRowClick }) => {
+const DashboardTable = ({ title, icon: Icon, data, columns = [], colorClass, onRowClick }) => {
+    const safeData = data || [];
     
     return (
         <div className="bg-[#0A101D] rounded-xl border border-slate-800 shadow-lg flex flex-col overflow-hidden h-[300px]">
@@ -10,7 +11,7 @@ const DashboardTable = ({ title, icon: Icon, data = [], columns = [], colorClass
                     {Icon && <Icon size={14} className={colorClass} />} {title}
                 </h3>
                 <span className="bg-[#050B14] border border-slate-700 px-2 py-0.5 rounded text-[9px] font-mono text-slate-500">
-                    {data.length} RECORDS
+                    {safeData.length} RECORDS
                 </span>
             </div>
 
@@ -27,14 +28,14 @@ const DashboardTable = ({ title, icon: Icon, data = [], columns = [], colorClass
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
-                        {data.length === 0 ? (
+                        {safeData.length === 0 ? (
                             <tr>
                                 <td colSpan={columns.length} className="px-4 py-8 text-center text-[10px] font-mono font-bold text-slate-600 uppercase tracking-widest">
                                     NO DATA DETECTED
                                 </td>
                             </tr>
                         ) : (
-                            data.map((row, idx) => (
+                            safeData.map((row, idx) => (
                                 <tr 
                                     key={idx} 
                                     onClick={() => onRowClick && onRowClick(row)}

@@ -3,7 +3,7 @@ import { Laptop, Globe} from 'lucide-react';
 import { PolicyItem } from './PolicyShared';
 import Pagination from '../../../components/common/Pagination'; // Import
 
-const PolicyList = ({ policies, onDelete, agents, currentConfig }) => {
+const PolicyList = ({ policies, onDelete, assets, currentConfig }) => {
     // Thêm State phân trang cho phần Specific
     const [specPage, setSpecPage] = useState(1);
     const itemsPerPage = 5;
@@ -29,7 +29,7 @@ const PolicyList = ({ policies, onDelete, agents, currentConfig }) => {
                     </div>
                     <div className="divide-y divide-slate-800">
                         {displaySpecific.map(p => (
-                            <PolicyItem key={p.ID} policy={p} onDelete={onDelete} agents={agents} currentConfig={currentConfig} />
+                            <PolicyItem key={p.ID} policy={p} onDelete={onDelete} assets={assets} currentConfig={currentConfig} />
                         ))}
                     </div>
                     
@@ -58,7 +58,7 @@ const PolicyList = ({ policies, onDelete, agents, currentConfig }) => {
                         <div className="p-10 text-center text-slate-500 text-sm italic">Chưa có luật chung nào.</div>
                     ) : (
                         globalPolicies.map(p => (
-                            <PolicyItem key={p.ID} policy={p} onDelete={onDelete} agents={agents} currentConfig={currentConfig} />
+                            <PolicyItem key={p.ID} policy={p} onDelete={onDelete} assets={assets} currentConfig={currentConfig} />
                         ))
                     )}
                 </div>

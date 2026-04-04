@@ -154,7 +154,7 @@ database.DB.Model(&AIChatSession{}).
 **Endpoint:** `POST /api/v1/incidents/:id/ai-analyze`
 
 **Flow:**
-1. Lấy incident với preload Agent và Alerts
+1. Lấy incident với preload asset và Alerts
 2. Tạo prompt cố vấn (không cho phép hành động)
 3. Gọi Ollama với model khác (nếu cần)
 4. Parse và trả về phân tích

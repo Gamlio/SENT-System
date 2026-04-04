@@ -189,8 +189,8 @@ func InputSanitizationMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AgentAuthSecurityMiddleware: Kiểm tra security riêng biệt cho Agent endpoints
-func AgentAuthSecurityMiddleware() gin.HandlerFunc {
+// assetAuthSecurityMiddleware: Kiểm tra security riêng biệt cho asset endpoints
+func assetAuthSecurityMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hwid := c.Param("hwid")
 
@@ -254,12 +254,12 @@ func ValidateUserCreationMiddleware() gin.HandlerFunc {
 	}
 }
 
-// ValidateAgentPayloadMiddleware: Middleware riêng cho Agent telemetry endpoints
-func ValidateAgentPayloadMiddleware() gin.HandlerFunc {
+// ValidateAssetPayloadMiddleware: Middleware riêng cho asset telemetry endpoints
+func ValidateAssetPayloadMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req map[string]interface{}
 		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid agent payload format"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid asset payload format"})
 			c.Abort()
 			return
 		}

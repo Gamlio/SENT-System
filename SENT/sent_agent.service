@@ -1,22 +1,22 @@
 [Unit]
-Description=SENT Agent Service
+Description=SENT asset Service
 Documentation=https://your-docs-url.com
 After=network.target
 
 [Service]
-# Đường dẫn tới file thực thi của Agent sau khi build
+# Đường dẫn tới file thực thi của asset sau khi build
 ExecStart=/usr/local/bin/SENT
 
-# Thư mục làm việc của Agent (nơi chứa file config và log)
+# Thư mục làm việc của asset (nơi chứa file config và log)
 WorkingDirectory=/opt/SENT/
 
-# Tự động khởi động lại nếu Agent bị tắt hoặc crash
+# Tự động khởi động lại nếu asset bị tắt hoặc crash
 Restart=always
 RestartSec=5s
 
-# Chạy Agent dưới một user riêng (tạo user này trước) để bảo mật
-User=sentagent
-Group=sentagent
+# Chạy asset dưới một user riêng (tạo user này trước) để bảo mật
+User=sentasset
+Group=sentasset
 
 # Giảm quyền root, chỉ cấp các quyền cần thiết thay vì chạy với full root
 # CAP_NET_ADMIN: Cần cho một số thao tác mạng sâu

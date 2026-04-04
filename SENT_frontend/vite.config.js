@@ -1,15 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    tailwindcss(),
+    react()
+  ],
   server: {
-    port: 3000, // Giữ port 3000 cho quen thuộc
+    port: 3000,
   },
   build: {
     outDir: 'build',
+    minify: 'terser',
   },
-  server: {
-    port: 3000,
-  }
 })

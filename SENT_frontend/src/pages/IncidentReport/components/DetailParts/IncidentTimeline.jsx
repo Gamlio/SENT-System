@@ -15,7 +15,7 @@ const IncidentTimeline = ({ incident }) => {
                 type: 'CREATED',
                 created_at: incident.CreatedAt || incident.created_at,
                 content: `Hệ thống tự động ghi nhận cảnh báo vi phạm.`,
-                user: { username: 'SENT Agent Sensor', is_system: true }
+                user: { username: 'SENT asset Sensor', is_system: true }
             },
             ...(incident.activities || incident.Activities || []).map(act => {
                 let parsedImages = [];

@@ -52,24 +52,24 @@ Khi một người dùng đã đăng nhập yêu cầu lấy danh sách các s�
 
 ---
 
-## 3. Luồng Dữ Liệu từ Agent (Agent Data Ingestion)
+## 3. Luồng Dữ Liệu từ asset (asset Data Ingestion)
 
-Đây là luồng quan trọng nhất, xử lý dữ liệu từ các agent được cài đặt trên máy người dùng.
+Đây là luồng quan trọng nhất, xử lý dữ liệu từ các asset được cài đặt trên máy người dùng.
 
-1.  **Agent Gửi Dữ Liệu:**
+1.  **asset Gửi Dữ Liệu:**
     *   `SENT` trên máy client thu thập dữ liệu (USB, phần mềm, firewall...).
-    *   Nó gửi một request `POST` đến endpoint, ví dụ: `/api/v1/agents/data`. Request này chứa một token xác thực riêng của agent.
+    *   Nó gửi một request `POST` đến endpoint, ví dụ: `/api/v1/assets/data`. Request này chứa một token xác thực riêng của asset.
 
-2.  **Middleware (`internal/middleware/agent_auth.go`):**
-    *   Middleware này được áp dụng riêng cho các route của agent.
-    *   Nó xác thực token của agent, đảm bảo chỉ các agent hợp lệ mới được gửi dữ liệu.
+2.  **Middleware (`internal/middleware/asset_auth.go`):**
+    *   Middleware này được áp dụng riêng cho các route của asset.
+    *   Nó xác thực token của asset, đảm bảo chỉ các asset hợp lệ mới được gửi dữ liệu.
 
-3.  **Handler (`internal/api/v1/agents/receiver_handler.go`):**
-    *   Nhận dữ liệu JSON thô từ agent.
-    *   Gọi `data_service` để xử lý. Phản hồi cho agent ngay lập tức để giảm độ trễ. Việc xử lý sâu hơn được thực hiện bất đồng bộ.
+3.  **Handler (`internal/api/v1/assets/receiver_handler.go`):**
+    *   Nhận dữ liệu JSON thô từ asset.
+    *   Gọi `data_service` để xử lý. Phản hồi cho asset ngay lập tức để giảm độ trễ. Việc xử lý sâu hơn được thực hiện bất đồng bộ.
 
-4.  **Service (`internal/service/agents/data_service.go`):**
-    *   Nhận dữ liệu và sử dụng các hàm helper trong `internal/service/agents/data/` (ví dụ: `antivirus.go`, `software.go`) để parse và chuẩn hóa dữ liệu theo từng loại.
+4.  **Service (`internal/service/assets/data_service.go`):**
+    *   Nhận dữ liệu và sử dụng các hàm helper trong `internal/service/assets/data/` (ví dụ: `antivirus.go`, `software.go`) để parse và chuẩn hóa dữ liệu theo từng loại.
     *   Lưu dữ liệu đã được xử lý vào database.
 
 5.  **Event Engine (`internal/service/incidents/event_engine.go`):**
@@ -92,50 +92,50 @@ Hệ thống áp dụng mô hình "Maker-Checker" để tăng cường bảo m�
 
 - **File chính:** `internal/service/approvals/approval_service.go` và các `strategies` trong cùng thư mục.
 - **Luồng hoạt động:**
-    1.  **Tạo yêu cầu:** Một "Maker" (ví dụ: user, hoặc agent tự động) thực hiện một hành động cần phê duyệt (ví dụ: đăng ký agent mới). Một request được gửi đến handler tương ứng.
+    1.  **Tạo yêu cầu:** Một "Maker" (ví dụ: user, hoặc asset tự động) thực hiện một hành động cần phê duyệt (ví dụ: đăng ký asset mới). Một request được gửi đến handler tương ứng.
     2.  **Tạo Ticket:** Thay vì thực hiện ngay, service sẽ tạo một bản ghi trong DB với trạng thái `PENDING` và tạo một `ApprovalTicket` liên kết với nó.
     3.  **Thông báo:** Admin ("Checker") nhận được thông báo (có thể qua UI real-time).
     4.  **Phê duyệt/Từ chối:** Admin vào `Approval Center`, xem ticket và nhấn "Approve" hoặc "Reject". Request được gửi đến `approval_handlers.go`.
-    5.  **Thực thi:** `approval_service` nhận yêu cầu. Nó sử dụng `Strategy Pattern` (`agent_strategy.go`, `user_strategy.go`...) để biết hành động cụ thể cần làm khi ticket được duyệt. Ví dụ, với `agent_strategy`, nó sẽ cập nhật trạng thái của agent từ `PENDING` thành `ACTIVE`.
+    5.  **Thực thi:** `approval_service` nhận yêu cầu. Nó sử dụng `Strategy Pattern` (`asset_strategy.go`, `user_strategy.go`...) để biết hành động cụ thể cần làm khi ticket được duyệt. Ví dụ, với `asset_strategy`, nó sẽ cập nhật trạng thái của asset từ `PENDING` thành `ACTIVE`.
 
 ---
 
 ## 5. Chi Tiết Các Loại Dữ Liệu Giám Sát Cụ Thể
 
-Hệ thống thu thập và xử lý 8 loại dữ liệu giám sát chính từ agents, được lưu trữ trong MongoDB để xử lý dữ liệu lớn.
+Hệ thống thu thập và xử lý 8 loại dữ liệu giám sát chính từ assets, được lưu trữ trong MongoDB để xử lý dữ liệu lớn.
 
 ### 5.1 Software Inventory (SoftwareItem)
-- **Mục đích:** Theo dõi phần mềm cài đặt trên máy agent
+- **Mục đích:** Theo dõi phần mềm cài đặt trên máy asset
 - **Dữ liệu thu thập:** Tên phần mềm, phiên bản, nhà phát hành, đường dẫn cài đặt, hash file, trạng thái (INSTALLED/GHOST_REGISTRY), trạng thái running
-- **Luồng xử lý:** Agent gửi danh sách → `data_service` parse → Lưu MongoDB → Hiển thị trên dashboard agent
-- **File liên quan:** `internal/service/agents/data/software.go`, `mongo_models.go`
+- **Luồng xử lý:** asset gửi danh sách → `data_service` parse → Lưu MongoDB → Hiển thị trên dashboard asset
+- **File liên quan:** `internal/service/assets/data/software.go`, `mongo_models.go`
 
 ### 5.2 Open Ports Monitoring (OpenPort)
-- **Mục đích:** Giám sát cổng mạng mở trên máy agent
+- **Mục đích:** Giám sát cổng mạng mở trên máy asset
 - **Dữ liệu thu thập:** Số port, tên process đang sử dụng, trạng thái (OPEN/CLOSED)
-- **Luồng xử lý:** Agent scan ports → Gửi dữ liệu → `data_service` validate → Lưu MongoDB → Hiển thị trên agent details
-- **File liên quan:** `internal/service/agents/data/port.go`, `mongo_models.go`
+- **Luồng xử lý:** asset scan ports → Gửi dữ liệu → `data_service` validate → Lưu MongoDB → Hiển thị trên asset details
+- **File liên quan:** `internal/service/assets/data/port.go`, `mongo_models.go`
 
 ### 5.3 USB Device Logging (USBLog)
 - **Mục đích:** Ghi log cắm/rút thiết bị USB
 - **Dữ liệu thu thập:** Tên thiết bị, device ID, VID/PID, serial number, device hash, event type (CONNECT/DISCONNECT), whitelist status
-- **Luồng xử lý:** Agent detect USB events → Gửi log → `data_service` check whitelist → Tạo incident nếu vi phạm → Lưu MongoDB
-- **File liên quan:** `internal/service/agents/data/usb.go`, `mongo_models.go`
+- **Luồng xử lý:** asset detect USB events → Gửi log → `data_service` check whitelist → Tạo incident nếu vi phạm → Lưu MongoDB
+- **File liên quan:** `internal/service/assets/data/usb.go`, `mongo_models.go`
 
-### 5.4 I/O Activity Monitoring (AgentIOActivity)
+### 5.4 I/O Activity Monitoring (assetIOActivity)
 - **Mục đích:** Theo dõi hoạt động truyền tải dữ liệu
 - **Dữ liệu thu thập:** Bytes sent/recv mạng, bytes written/read ổ đĩa, timestamp
-- **Luồng xử lý:** Agent thu thập metrics → Gửi định kỳ → `data_service` aggregate → Lưu MongoDB → Hiển thị charts trên dashboard
-- **File liên quan:** `internal/service/agents/data/network.go`, `mongo_models.go`
+- **Luồng xử lý:** asset thu thập metrics → Gửi định kỳ → `data_service` aggregate → Lưu MongoDB → Hiển thị charts trên dashboard
+- **File liên quan:** `internal/service/assets/data/network.go`, `mongo_models.go`
 
-### 5.5 Hardware Inventory (AgentInventory)
-- **Mục đích:** Thu thập thông tin phần cứng máy agent
+### 5.5 Hardware Inventory (assetInventory)
+- **Mục đích:** Thu thập thông tin phần cứng máy asset
 - **Dữ liệu thu thập:** Model CPU, RAM total, thông tin OS
-- **Luồng xử lý:** Agent thu thập lúc khởi động → Gửi enrollment → Lưu MongoDB → Hiển thị trên agent profile
-- **File liên quan:** `internal/service/agents/data/inventory.go`, `mongo_models.go`
+- **Luồng xử lý:** asset thu thập lúc khởi động → Gửi enrollment → Lưu MongoDB → Hiển thị trên asset profile
+- **File liên quan:** `internal/service/assets/data/inventory.go`, `mongo_models.go`
 
 ### 5.6 Security Alerts (SecurityAlert)
-- **Mục đích:** Cảnh báo bảo mật từ agent hoặc hệ thống
+- **Mục đích:** Cảnh báo bảo mật từ asset hoặc hệ thống
 - **Dữ liệu thu thập:** Priority (P1-P4), alert type, title, description, severity (Low-Critical), trạng thái resolved
 - **Luồng xử lý:** Event engine detect → Tạo alert → Link với incident → Lưu MongoDB → Push notification real-time
 - **File liên quan:** `internal/service/security/alerts.go`, `mongo_models.go`
@@ -159,13 +159,13 @@ Hệ thống thu thập và xử lý 8 loại dữ liệu giám sát chính từ
 Hệ thống hỗ trợ quản lý đa tổ chức với cấu trúc phân cấp.
 
 - **Organization:** Đơn vị công ty cao nhất, chứa users, regions, policies
-- **Region:** Vùng địa lý trong tổ chức, chứa agents với enrollment token riêng
+- **Region:** Vùng địa lý trong tổ chức, chứa assets với enrollment token riêng
 - **Luồng hoạt động:**
   1. Admin tạo organization với company code và enroll token prefix
   2. Tạo regions với token riêng cho từng khu vực
-  3. Agents sử dụng token region để enroll
+  3. assets sử dụng token region để enroll
   4. Policies và users được scope theo organization
-- **File liên quan:** `models.go` (Organization, Region), `internal/api/v1/users/`, `internal/service/agents/lifecycle_service.go`
+- **File liên quan:** `models.go` (Organization, Region), `internal/api/v1/users/`, `internal/service/assets/lifecycle_service.go`
 
 ---
 
@@ -173,7 +173,7 @@ Hệ thống hỗ trợ quản lý đa tổ chức với cấu trúc phân cấp
 
 Hệ thống sử dụng role-based access control với 8 permissions cụ thể:
 
-- **PermAgentView/Action/Delete:** Xem/thao tác/xóa agents
+- **PermassetView/Action/Delete:** Xem/thao tác/xóa assets
 - **PermPolicyView/Action:** Xem/quản lý policies
 - **PermIncidentView/Action:** Xem/xử lý incidents
 - **PermDocView/Manage:** Xem/quản lý documents
@@ -189,20 +189,20 @@ Hệ thống sử dụng role-based access control với 8 permissions cụ th�
 
 ---
 
-## 8. Agent Lifecycle Management
+## 8. asset Lifecycle Management
 
-Quản lý vòng đời agent từ enrollment đến decommission.
+Quản lý vòng đời asset từ enrollment đến decommission.
 
 - **Trạng thái:** PENDING → APPROVED → ACTIVE → SUSPENDED
 - **Luồng enrollment:**
-  1. Agent gửi request với HWID, hostname, IP, token
+  1. asset gửi request với HWID, hostname, IP, token
   2. Validate token region → Tạo record PENDING
   3. Tạo approval ticket → Admin approve
   4. Status chuyển ACTIVE → Gửi secret key
 - **Baseline & Trust Score:**
   - Baseline: Snapshot ban đầu sau enrollment
   - Trust Score: 0-100, giảm khi vi phạm, tự phục hồi theo thời gian
-- **File liên quan:** `internal/api/v1/agents/enrollment_handlers.go`, `internal/service/agents/lifecycle_service.go`, `models.go`
+- **File liên quan:** `internal/api/v1/assets/enrollment_handlers.go`, `internal/service/assets/lifecycle_service.go`, `models.go`
 
 ---
 
@@ -265,7 +265,7 @@ Trợ lý AI tích hợp cho analysis và support.
 Hệ thống thông báo real-time cho dashboard.
 
 - **Hub Architecture:** Central hub quản lý connections
-- **Events:** Agent status changes, new incidents, approvals
+- **Events:** asset status changes, new incidents, approvals
 - **Broadcast:** To all connected clients theo permissions
 - **File liên quan:** `internal/websocket/hub.go`, `internal/service/incidents/incident_service.go`
 
@@ -275,11 +275,11 @@ Hệ thống thông báo real-time cho dashboard.
 
 Hệ thống tính điểm rủi ro động.
 
-- **Risk Score:** Agent-level risk (0-100)
+- **Risk Score:** asset-level risk (0-100)
 - **Factors:** Software violations, USB events, alerts, trust score
 - **Calculation:** Weighted algorithm, real-time updates
 - **Recovery:** Trust score tự tăng theo thời gian không vi phạm
-- **File liên quan:** `internal/service/scoring/score_service.go`, `models.go` (Agent.RiskScore)
+- **File liên quan:** `internal/service/scoring/score_service.go`, `models.go` (asset.RiskScore)
 
 ---
 ├── cmd/
@@ -293,13 +293,13 @@ Hệ thống tính điểm rủi ro động.
 │   │   │   └── user_handlers.go     (Đổi tên từ admin_handlers.go, chứa CreateUser, GetUsers...)
 │   │   ├── approvals/
 │   │   │   ├── strategies/
-│   │   │   │     ├── agent_strategy.go      
+│   │   │   │     ├── asset_strategy.go      
 │   │   │   │     ├── document_strategy.go   
 │   │   │   │     ├── policy_strategy.go 
 │   │   │   │     ├── strategy.go  
 │   │   │   │     └── user_strategy.go
 │   │   │   └── approval_handlers.go
-│   │   ├── agents/
+│   │   ├── assets/
 │   │   │   ├── enrollment_handlers.go   
 │   │   │   ├── receiver_handler.go   
 │   │   │   ├── dashboard_handler.go   
@@ -318,7 +318,7 @@ Hệ thống tính điểm rủi ro động.
 │   ├── middleware/           
 │   │   └── auth.go               # Check JWT và Role Level
 │   ├── models/               
-│   │   └── models.go             # Struct DB (Agent, UniversalPolicy, PolicyDocument...)
+│   │   └── models.go             # Struct DB (asset, UniversalPolicy, PolicyDocument...)
 │   ├── repository/               # REPOSITORY: Truy vấn DB 
 │   │   └── policy_repo.go        
 │   ├── utils/               # REPOSITORY: Truy vấn DB 
@@ -330,7 +330,7 @@ Hệ thống tính điểm rủi ro động.
 │       │    └── chat_service.go 
 │       ├── scoring/           
 │       │    └── score_service.go 
-│       ├── agent_data/     
+│       ├── asset_data/     
 │       │    ├── inventory.go      # Xử lý thông tin phần cứng
 │       │    ├── software.go       # Xử lý danh sách phần mềm
 │       │    ├── network.go            # Xử lý log USB      

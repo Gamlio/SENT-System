@@ -9,9 +9,9 @@ import (
 	"sent_backend/internal/websocket"
 
 	// IMPORT CÁC PACKAGE ĐÃ CHIA NHỎ
-	"sent_backend/internal/api/v1/agents"
 	"sent_backend/internal/api/v1/ai"
 	"sent_backend/internal/api/v1/approvals"
+	"sent_backend/internal/api/v1/assets"
 	"sent_backend/internal/api/v1/auth"
 	"sent_backend/internal/api/v1/dashboard"
 	"sent_backend/internal/api/v1/docs"
@@ -71,12 +71,12 @@ func main() {
 			authGroup.POST("/register", middleware.ValidateUserCreationMiddleware(), auth.RegisterSMEHandler)
 		}
 
-		// ===== AGENT PUBLIC ENDPOINTS + FLOOD PROTECTION =====
-		agentPublicGroup := v1Group.Group("/agents")
+		// ===== asset PUBLIC ENDPOINTS + FLOOD PROTECTION =====
+		assetPublicGroup := v1Group.Group("/assets")
 		{
-			agentPublicGroup.POST("/push", middleware.AgentFloodProtectionMiddleware(), middleware.ValidateAgentPayloadMiddleware(), agents.PushDataHandler)
-			agentPublicGroup.POST("/enroll", middleware.AgentEnrollRateLimitMiddleware(), agents.EnrollAgent)
-			agentPublicGroup.GET("/sync-policies", agents.GetActiveEnrollmentToken, policies.SyncPoliciesForAgent)
+			assetPublicGroup.POST("/push", middleware.AssetFloodProtectionMiddleware(), middleware.ValidateAssetPayloadMiddleware(), assets.PushDataHandler)
+			assetPublicGroup.POST("/enroll", middleware.AssetEnrollRateLimitMiddleware(), assets.Enrollasset)
+			assetPublicGroup.GET("/sync-policies", assets.GetActiveEnrollmentToken, policies.SyncPoliciesForAsset)
 		}
 
 		// ===== PROTECTED ENDPOINTS (User must be authenticated) =====
@@ -92,20 +92,20 @@ func main() {
 				usersGroup.DELETE("/:id", users.DeleteUser)
 			}
 
-			agentsGroup := protected.Group("/agents")
+			assetsGroup := protected.Group("/assets")
 			{
-				agentsGroup.GET("/stats", agents.GetStats)
-				agentsGroup.GET("", agents.GetAgents)
-				agentsGroup.GET("/:hwid", agents.GetAgentDetail)
-				agentsGroup.GET("/:hwid/logs", agents.GetAgentLogs)
-				agentsGroup.GET("/active-token", agents.GetActiveEnrollmentToken)
-				agentsGroup.POST("/generate-token", agents.GenerateEnrollmentToken)
-				agentsGroup.POST("/:hwid/trigger-baseline", agents.TriggerBaseline)
-				agentsGroup.PUT("/:hwid/assign", agents.AssignManager)
-				agentsGroup.PUT("/:hwid/device-type", agents.UpdateDeviceType)
-				agentsGroup.PUT("/:hwid/department", agents.UpdateDepartment)
-				agentsGroup.POST("/:hwid/request-delete", agents.RequestDeleteAgent)
-				agentsGroup.POST("/bulk-request-delete", agents.RequestBulkDeleteAgents)
+				assetsGroup.GET("/stats", assets.GetStats)
+				assetsGroup.GET("", assets.Getassets)
+				assetsGroup.GET("/:hwid", assets.GetassetDetail)
+				assetsGroup.GET("/:hwid/logs", assets.GetassetLogs)
+				assetsGroup.GET("/active-token", assets.GetActiveEnrollmentToken)
+				assetsGroup.POST("/generate-token", assets.GenerateEnrollmentToken)
+				assetsGroup.POST("/:hwid/trigger-baseline", assets.TriggerBaseline)
+				assetsGroup.PUT("/:hwid/assign", assets.AssignManager)
+				assetsGroup.PUT("/:hwid/device-type", assets.UpdateDeviceType)
+				assetsGroup.PUT("/:hwid/department", assets.UpdateDepartment)
+				assetsGroup.POST("/:hwid/request-delete", assets.RequestDeleteasset)
+				assetsGroup.POST("/bulk-request-delete", assets.RequestBulkDeleteassets)
 			}
 
 			aiDocs := protected.Group("/docs")
@@ -116,7 +116,7 @@ func main() {
 				aiDocs.PUT("/:id", docs.UpdateDocument)     // Sửa tên tài liệu
 			}
 
-			// 2. GROUP POLICIES (CHÍNH SÁCH KỸ THUẬT CHO AGENT)
+			// 2. GROUP POLICIES (CHÍNH SÁCH KỸ THUẬT CHO asset)
 			policiesGroup := protected.Group("/policies")
 			{
 				policiesGroup.GET("", policies.GetPoliciesByCategory)           // Lấy luật JSON

@@ -126,7 +126,7 @@ const Profile = () => {
                         </h3>
                         <div className="grid grid-cols-3 gap-3">
                             <StatBox icon={<AlertTriangle/>} title="Incidents Handled" value="128" sub="Closed cases" color="red" />
-                            <StatBox icon={<Monitor/>} title="Agents Assigned" value="45" sub="Managed endpoints" color="blue" />
+                            <StatBox icon={<Monitor/>} title="assets Assigned" value="45" sub="Managed endpoints" color="blue" />
                             <StatBox icon={<Zap/>} title="Avg. Triage Time" value="7.2m" sub="Response SLA" color="amber" />
                             <StatBox icon={<Lock/>} title="Policy Approvals" value="19" sub="Makers process" color="purple" />
                             <StatBox icon={<FileText/>} title="Open Tickets" value="3" sub="Awaiting response" color="emerald" />

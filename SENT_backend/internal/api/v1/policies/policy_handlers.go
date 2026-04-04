@@ -101,8 +101,8 @@ func DeleteBulkPolicies(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Đã gửi yêu cầu xóa %d chính sách.", len(req.IDs))})
 }
 
-// SyncPoliciesForAgent (GATE): Cổng đồng bộ cho Agent
-func SyncPoliciesForAgent(c *gin.Context) {
+// SyncPoliciesForAsset (GATE): Cổng đồng bộ cho asset
+func SyncPoliciesForAsset(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 	hwid := c.Query("hwid")
 	if hwid == "" {

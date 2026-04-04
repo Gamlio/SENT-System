@@ -16,7 +16,7 @@ type Organization struct {
 	Users           []User            `gorm:"foreignKey:OrgID" json:"-"`
 	Regions         []Region          `gorm:"foreignKey:OrgID" json:"-"`
 	Policies        []UniversalPolicy `gorm:"foreignKey:OrgID" json:"-"`
-	Agents          []Agent           `gorm:"foreignKey:OrgID" json:"-"`
+	assets          []Asset           `gorm:"foreignKey:OrgID" json:"-"`
 	ApprovalTickets []ApprovalTicket  `gorm:"foreignKey:OrgID" json:"-"`
 	PolicyDocuments []PolicyDocument  `gorm:"foreignKey:OrgID" json:"-"`
 }
@@ -27,7 +27,7 @@ type Region struct {
 	Name        string `json:"name"`
 	EnrollToken string `gorm:"unique" json:"enroll_token"`
 	// Relationships
-	Agents []Agent `gorm:"foreignKey:RegionID" json:"-"`
+	assets []Asset `gorm:"foreignKey:RegionID" json:"-"`
 }
 
 // --- NHÓM 2: NGƯỜI DÙNG ---
@@ -48,10 +48,10 @@ type User struct {
 	// THAY ĐỔI 1: Thay RoleLevel bằng RoleName rõ ràng
 
 	RiskScore int `json:"risk_score" gorm:"default:0"`
-	// Nhóm Agents
-	PermAgentView   bool `json:"perm_agent_view" gorm:"default:false"`
-	PermAgentAction bool `json:"perm_agent_action" gorm:"default:false"`
-	PermAgentDelete bool `json:"perm_agent_delete" gorm:"default:false"`
+	// Nhóm Assets
+	PermAssetView   bool `json:"perm_asset_view" gorm:"default:false"`
+	PermAssetAction bool `json:"perm_asset_action" gorm:"default:false"`
+	PermAssetDelete bool `json:"perm_asset_delete" gorm:"default:false"`
 
 	PermPolicyView   bool `json:"perm_policy_view" gorm:"default:false"`
 	PermPolicyAction bool `json:"perm_policy_action" gorm:"default:false"`
@@ -75,9 +75,9 @@ type UserPayload struct {
 	FullName           string `json:"full_name" binding:"required,min=3,max=100"`
 	Phone              string `json:"phone" binding:"omitempty,len=10,numeric"`
 	Email              string `json:"email" binding:"required,email"`
-	PermAgentView      bool   `json:"perm_agent_view"`
-	PermAgentAction    bool   `json:"perm_agent_action"`
-	PermAgentDelete    bool   `json:"perm_agent_delete"`
+	PermAssetView      bool   `json:"perm_asset_view"`
+	PermAssetAction    bool   `json:"perm_asset_action"`
+	PermAssetDelete    bool   `json:"perm_asset_delete"`
 	PermPolicyView     bool   `json:"perm_policy_view"`
 	PermPolicyAction   bool   `json:"perm_policy_action"`
 	PermIncidentView   bool   `json:"perm_incident_view"`
@@ -93,8 +93,8 @@ type UserPermission struct {
 	Permission string `json:"permission"`
 }
 
-// --- NHÓM 3: THIẾT BỊ (AGENTS) ---
-type Agent struct {
+// --- NHÓM 3: THIẾT BỊ (assetS) ---
+type Asset struct {
 	HWID      string    `gorm:"primaryKey;column:hw_id" json:"hwid"`
 	OrgID     uint      `gorm:"column:org_id" json:"org_id"`
 	RegionID  *uint     `gorm:"column:region_id" json:"region_id"`
@@ -104,19 +104,19 @@ type Agent struct {
 	LastSeen  time.Time `gorm:"column:last_seen" json:"last_seen"`
 
 	Manager *User `gorm:"foreignKey:UserID" json:"manager"`
-	// Khai báo Relationship rõ ràng: 1 Agent có 1 Inventory, nhiều Alerts, nhiều Software...
+	// Khai báo Relationship rõ ràng: 1 asset có 1 Inventory, nhiều Alerts, nhiều Software...
 	// Inventory đã chuyển qua MongoDB
-	Inventory                  AgentInventory    `gorm:"-" json:"inventory"`
+	Inventory                  AssetInventory    `gorm:"-" json:"inventory"`
 	Software                   []SoftwareItem    `gorm:"-" json:"software"`      // Virtual field, dữ liệu lấy từ MongoDB
 	Alerts                     []SecurityAlert   `gorm:"-" json:"alerts"`        // Virtual field, dữ liệu lấy từ MongoDB
 	OpenPorts                  []OpenPort        `gorm:"-" json:"open_ports"`    // Virtual field, dữ liệu lấy từ MongoDB
 	USBLogs                    []USBLog          `gorm:"-" json:"usb_logs"`      // Virtual field, dữ liệu lấy từ MongoDB
-	IOActivities               []AgentIOActivity `gorm:"-" json:"io_activities"` // Virtual field, dữ liệu lấy từ MongoDB
+	IOActivities               []AssetIOActivity `gorm:"-" json:"io_activities"` // Virtual field, dữ liệu lấy từ MongoDB
 	RiskScore                  int               `json:"risk_score" gorm:"default:0"`
 	Status                     string            `json:"status" gorm:"default:'PENDING'"`
 	TrustScore                 float64           `gorm:"default:100"` // Long-term trust
 	DepartmentTag              string            // Explicit Department Tag (e.g., FINANCE, DEV, PROD)
-	LastIncidentAt             *time.Time        // Timestamp of the last incident for this agent
+	LastIncidentAt             *time.Time        // Timestamp of the last incident for this asset
 	LastTrustRecoveryAppliedAt *time.Time        // Timestamp when trust score recovery was last applied
 
 	DeviceType     string `json:"device_type" gorm:"default:'OFFICE'"`
@@ -127,14 +127,14 @@ type Agent struct {
 	// [MỚI] ĐỒNG BỘ: Lưu người đã cấp phép máy trạm này
 	ApprovedBy string `json:"approved_by"`
 
-	Incidents []Incident `gorm:"foreignKey:AgentHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"incidents"`
+	Incidents []Incident `gorm:"foreignKey:assetHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"incidents"`
 }
 type WhitelistItem struct {
 	gorm.Model
 	OrgID       uint   `gorm:"index"`
-	AgentHWID   string `gorm:"index"` // Nếu để trống thì là Global Whitelist
-	Type        string `json:"type"`  // "USB", "SOFTWARE_HASH", "PUBLISHER"
-	Value       string `json:"value"` // Mã Hash hoặc Tên nhà phát hành (Microsoft...)
+	AssetHWID   string `gorm:"index" json:"asset_hwid"` // Nếu để trống thì là Global Whitelist
+	Type        string `json:"type"`                    // "USB", "SOFTWARE_HASH", "PUBLISHER"
+	Value       string `json:"value"`                   // Mã Hash hoặc Tên nhà phát hành (Microsoft...)
 	Description string `json:"description"`
 }
 type EnrollmentToken struct {
@@ -159,9 +159,9 @@ type Incident struct {
 	// Lưu ý: ID ở đây là uint
 
 	OrgID     uint   `json:"org_id"`
-	AgentHWID string `json:"agent_hw_id"`
+	AssetHWID string `gorm:"column:asset_hw_id" json:"asset_hw_id"`
 	// Relationship
-	Agent Agent `gorm:"foreignKey:AgentHWID;references:HWID" json:"agent"`
+	Asset Asset `gorm:"foreignKey:AssetHWID;references:HWID" json:"asset"`
 
 	Type         string `json:"type"`          // Loại sự cố (VD: Malware, DDoS)
 	Severity     string `json:"severity"`      // Low, Medium, High, Critical
@@ -233,14 +233,14 @@ type ApprovalTicket struct {
 	UpdatedAt time.Time `json:"updated_at"`
 
 	OrgID      uint   `json:"org_id" gorm:"index"`
-	ModuleType string `json:"module_type" gorm:"index"` // Loại đơn: "AGENT", "POLICY", "DOCUMENT", "USER"
+	ModuleType string `json:"module_type" gorm:"index"` // Loại đơn: "asset", "POLICY", "DOCUMENT", "USER"
 	ActionType string `json:"action_type"`              // Hành động: "ENROLL" (đăng ký mới), "CREATE", "DELETE"
-	TargetID   uint   `json:"target_id"`                // ID của bản ghi tương ứng (VD: ID của Agent hoặc Policy)
+	TargetID   uint   `json:"target_id"`                // ID của bản ghi tương ứng (VD: ID của asset hoặc Policy)
 	TargetName string `json:"target_name"`              // Tên để hiển thị cho dễ nhìn (VD: "PC-KETOAN-01" hoặc "Cấm USB")
 
 	Status string `json:"status" gorm:"default:'PENDING';index"` // PENDING, APPROVED, REJECTED
 
-	RequestedBy string `json:"requested_by"` // Tên người gửi đơn (hoặc "SYSTEM" nếu là Agent tự gửi)
+	RequestedBy string `json:"requested_by"` // Tên người gửi đơn (hoặc "SYSTEM" nếu là asset tự gửi)
 	ReviewedBy  string `json:"reviewed_by"`  // Tên Admin đã duyệt
 	ReviewNote  string `json:"review_note"`  // Lý do từ chối (nếu có)
 

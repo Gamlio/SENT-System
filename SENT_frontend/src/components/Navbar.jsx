@@ -67,7 +67,7 @@ const Navbar = ({ onOpenCopilot }) => {
         setNotifications(prev => [newNotif, ...prev.slice(0, 19)]); // Giữ tối đa 20 cái
     }, []);
 
-    useSocketSubscription(['NEW_INCIDENT', 'AGENT_STATUS_CHANGED'], handleNewLiveEvent);
+    useSocketSubscription(['NEW_INCIDENT', 'asset_STATUS_CHANGED'], handleNewLiveEvent);
     // -----------------------------------------------------------------
 
     const handleLogout = () => {

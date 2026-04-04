@@ -66,7 +66,7 @@ const Documents = () => {
                     <h1 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tight">
                         <FileText className="text-indigo-500"/> QUẢN LÝ CHÍNH SÁCH & TÀI LIỆU
                     </h1>
-                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Nạp dữ liệu pháp lý và quy định nội bộ cho AI Security Agent.</p>
+                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Nạp dữ liệu pháp lý và quy định nội bộ cho AI Security asset.</p>
                 </div>
             </div>
 

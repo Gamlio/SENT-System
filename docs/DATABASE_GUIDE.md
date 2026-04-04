@@ -15,7 +15,7 @@
 **Các Model:**
 - Organization, Region
 - User, UserPermission
-- Agent (chỉ thông tin định danh như HWID, hostname, IP)
+- asset (chỉ thông tin định danh như HWID, hostname, IP)
 - Incident, ApprovalTicket
 - UniversalPolicy, PolicyDocument
 - EnrollmentToken, WhitelistItem
@@ -32,8 +32,8 @@
 - SoftwareItem (phần mềm cài đặt)
 - USBLog (lịch sử USB)
 - OpenPort (cổng mở)
-- AgentInventory (thông tin phần cứng)
-- AgentIOActivity (dữ liệu I/O)
+- assetInventory (thông tin phần cứng)
+- assetIOActivity (dữ liệu I/O)
 - SecurityAlert (cảnh báo bảo mật)
 - IncidentActivity (nhật ký sự cố)
 - AIChatSession, AIChatLog (lịch sử chat AI)
@@ -49,20 +49,20 @@
 Vì MongoDB không hỗ trợ JOIN với PostgreSQL, chúng ta sử dụng **virtual foreign keys** dựa trên string fields:
 
 ```
-PostgreSQL Agent (HWID: "A1B2C3D4E5F6") 
+PostgreSQL asset (HWID: "A1B2C3D4E5F6") 
     ↓ (linking by HWID)
-MongoDB Collections (bson field: "agent_hwid")
-    ├─ SoftwareItem { agent_hwid: "A1B2C3D4E5F6", ... }
-    ├─ USBLog { agent_hwid: "A1B2C3D4E5F6", ... }
-    ├─ OpenPort { agent_hwid: "A1B2C3D4E5F6", ... }
-    ├─ AgentInventory { agent_hwid: "A1B2C3D4E5F6", ... }
+MongoDB Collections (bson field: "asset_hwid")
+    ├─ SoftwareItem { asset_hwid: "A1B2C3D4E5F6", ... }
+    ├─ USBLog { asset_hwid: "A1B2C3D4E5F6", ... }
+    ├─ OpenPort { asset_hwid: "A1B2C3D4E5F6", ... }
+    ├─ assetInventory { asset_hwid: "A1B2C3D4E5F6", ... }
     └─ SecurityAlert { hw_id: "A1B2C3D4E5F6", ... }
 ```
 
 **Nguyên tắc:** 
-- Mỗi MongoDB document chứa `agent_hwid` hoặc `hw_id` (string)
+- Mỗi MongoDB document chứa `asset_hwid` hoặc `hw_id` (string)
 - Service layer tự động JOIN dữ liệu từ 2 DB khi cần trả về API
-- Frontend nhận dữ liệu đã được compose (Agent + telemetry) từ một endpoint duy nhất
+- Frontend nhận dữ liệu đã được compose (asset + telemetry) từ một endpoint duy nhất
 
 ---
 
@@ -73,45 +73,45 @@ MongoDB Collections (bson field: "agent_hwid")
 
 **Status:** ✅ **PARTIALLY IMPLEMENTED** via Service Layer
 
-Thay vì gọi trực tiếp `database.DB.Find()`, các service (agents, incidents, scoring, approvals) đã được refactored để:
+Thay vì gọi trực tiếp `database.DB.Find()`, các service (assets, incidents, scoring, approvals) đã được refactored để:
 - Tách biệt logic query khỏi business logic
 - Manual attach telemetry từ MongoDB vào models trước khi trả về handler
 - Xử lý cross-DB consistency
 
 **Ví dụ thực tế:**
 ```go
-// internal/service/agents/data_service.go
-func (s *AgentDataService) GetAgentList(orgID uint) ([]models.Agent, error) {
-    // Bước 1: Query agents từ PostgreSQL
-    var agents []models.Agent
-    if err := database.DB.Where("org_id = ?", orgID).Find(&agents).Error; err != nil {
+// internal/service/assets/data_service.go
+func (s *assetDataService) GetassetList(orgID uint) ([]models.asset, error) {
+    // Bước 1: Query assets từ PostgreSQL
+    var assets []models.asset
+    if err := database.DB.Where("org_id = ?", orgID).Find(&assets).Error; err != nil {
         return nil, err
     }
     
-    // Bước 2: Manual attach telemetry từ MongoDB cho mỗi agent
-    for i := range agents {
-        s.attachAgentTelemetry(&agents[i])
+    // Bước 2: Manual attach telemetry từ MongoDB cho mỗi asset
+    for i := range assets {
+        s.attachassetTelemetry(&assets[i])
     }
     
-    return agents, nil
+    return assets, nil
 }
 
-func (s *AgentDataService) attachAgentTelemetry(agent *models.Agent) {
+func (s *assetDataService) attachassetTelemetry(asset *models.asset) {
     ctx := context.TODO()
     
-    // Fetch từ Mongo collections bằng agent_hwid
+    // Fetch từ Mongo collections bằng asset_hwid
     if database.SoftwareCollection != nil {
         var software []models.SoftwareItem
-        cursor, _ := database.SoftwareCollection.Find(ctx, bson.M{"agent_hwid": agent.HWID})
+        cursor, _ := database.SoftwareCollection.Find(ctx, bson.M{"asset_hwid": asset.HWID})
         cursor.All(ctx, &software)
-        agent.Software = software
+        asset.Software = software
     }
     
     if database.SecurityAlertCollection != nil {
         var alerts []models.SecurityAlert
-        cursor, _ := database.SecurityAlertCollection.Find(ctx, bson.M{"hw_id": agent.HWID})
+        cursor, _ := database.SecurityAlertCollection.Find(ctx, bson.M{"hw_id": asset.HWID})
         cursor.All(ctx, &alerts)
-        agent.Alerts = alerts
+        asset.Alerts = alerts
     }
     // ... tương tự cho USB, OpenPorts, IOActivities
 }
@@ -133,12 +133,12 @@ Models đã được tách rõ ràng thành 2 file:
 **File: `internal/models/mongo_models.go` (MongoDB)**
 - Chứa các struct với tag `bson:"..."` cho MongoDB driver
 - Sử dụng `primitive.ObjectID` cho `_id` fields
-- Cross-DB links sử dụng string fields (agent_hwid, hw_id, user_id, incident_id)
+- Cross-DB links sử dụng string fields (asset_hwid, hw_id, user_id, incident_id)
 
 **Ví dụ:**
 ```go
 // models.go (PostgreSQL)
-type Agent struct {
+type asset struct {
     HWID      string    `gorm:"primaryKey;column:hw_id" json:"hwid"`
     Hostname  string    `gorm:"column:hostname" json:"hostname"`
     // Virtual fields (dữ liệu từ MongoDB)
@@ -149,7 +149,7 @@ type Agent struct {
 // mongo_models.go (MongoDB)
 type SoftwareItem struct {
     ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-    AgentHWID string             `bson:"agent_hwid" json:"agent_hwid"`
+    assetHWID string             `bson:"asset_hwid" json:"asset_hwid"`
     SoftwareName string          `bson:"software_name" json:"software_name"`
     UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
 }
@@ -163,29 +163,29 @@ type SoftwareItem struct {
 
 #### Linking Strategy
 ```
-PostgreSQL Agent.HWID (string, primary key)
+PostgreSQL asset.HWID (string, primary key)
     ↓ Virtual FK (matching field name in Mongo)
 MongoDB Collections:
-    - agent_hwid (SoftwareItem, USBLog, OpenPort, AgentInventory, AgentIOActivity)
+    - asset_hwid (SoftwareItem, USBLog, OpenPort, assetInventory, assetIOActivity)
     - hw_id (SecurityAlert)
-    - agent_hw_id (IncidentActivity liên kết với Incident)
+    - asset_hw_id (IncidentActivity liên kết với Incident)
 ```
 
 #### Cross-DB Consistency: Manual Cascade Delete
 
-**Problem:** Khi xóa Agent từ PostgreSQL, dữ liệu Mongo không tự động xóa.
+**Problem:** Khi xóa asset từ PostgreSQL, dữ liệu Mongo không tự động xóa.
 
-**Solution:** ✅ Implemented in `internal/service/agents/lifecycle_service.go`
+**Solution:** ✅ Implemented in `internal/service/assets/lifecycle_service.go`
 
 ```go
-// CleanupAgentTelemetry: Xóa tất cả telemetry của agent từ MongoDB
-func (s *AgentLifecycleService) CleanupAgentTelemetry(hwids []string) error {
+// CleanupassetTelemetry: Xóa tất cả telemetry của asset từ MongoDB
+func (s *assetLifecycleService) CleanupassetTelemetry(hwids []string) error {
     if hwids == nil || len(hwids) == 0 {
         return nil
     }
     
     ctx := context.TODO()
-    filter := bson.M{"agent_hwid": bson.M{"$in": hwids}}
+    filter := bson.M{"asset_hwid": bson.M{"$in": hwids}}
     
     // Xóa từ tất cả Mongo collections
     if database.SoftwareCollection != nil {
@@ -197,18 +197,18 @@ func (s *AgentLifecycleService) CleanupAgentTelemetry(hwids []string) error {
     if database.OpenPortCollection != nil {
         database.OpenPortCollection.DeleteMany(ctx, filter)
     }
-    if database.AgentInventoryCollection != nil {
-        database.AgentInventoryCollection.DeleteMany(ctx, filter)
+    if database.assetInventoryCollection != nil {
+        database.assetInventoryCollection.DeleteMany(ctx, filter)
     }
-    if database.AgentIOActivityCollection != nil {
-        database.AgentIOActivityCollection.DeleteMany(ctx, filter)
+    if database.assetIOActivityCollection != nil {
+        database.assetIOActivityCollection.DeleteMany(ctx, filter)
     }
     
     return nil
 }
 ```
 
-**Được gọi từ:** `internal/service/approvals/strategies/agent_strategy.go` khi agent bị xóa (soft delete).
+**Được gọi từ:** `internal/service/approvals/strategies/asset_strategy.go` khi asset bị xóa (soft delete).
 
 ---
 
@@ -238,8 +238,8 @@ var MongoClient *mongo.Client
 var SoftwareCollection *mongo.Collection
 var USBCollection *mongo.Collection
 var OpenPortCollection *mongo.Collection
-var AgentInventoryCollection *mongo.Collection
-var AgentIOActivityCollection *mongo.Collection
+var assetInventoryCollection *mongo.Collection
+var assetIOActivityCollection *mongo.Collection
 var SecurityAlertCollection *mongo.Collection
 var AIChatSessionCollection *mongo.Collection
 var AIChatLogCollection *mongo.Collection
@@ -258,7 +258,7 @@ func InitDB() {
     // ... etc
     
     // Auto-migrate only PostgreSQL
-    DB.AutoMigrate(&models.Organization{}, &models.Agent{}, ...)
+    DB.AutoMigrate(&models.Organization{}, &models.asset{}, ...)
 }
 ```
 
@@ -274,19 +274,19 @@ Các models đã được migrate sang MongoDB:
 | SoftwareItem | ✅ Moved | software_items | Mongo |
 | USBLog | ✅ Moved | usb_logs | Mongo |
 | OpenPort | ✅ Moved | open_ports | Mongo |
-| AgentInventory | ✅ Moved | agent_inventory | Mongo |
-| AgentIOActivity | ✅ Moved | agent_io_activities | Mongo |
+| assetInventory | ✅ Moved | asset_inventory | Mongo |
+| assetIOActivity | ✅ Moved | asset_io_activities | Mongo |
 | SecurityAlert | ✅ Moved | security_alerts | Mongo |
 | IncidentActivity | ✅ Moved | (cross-linked) | Mongo |
 | AIChatLog | ✅ Moved | ai_chat_logs | Mongo |
 | AIChatSession | ✅ Moved | ai_chat_sessions | Mongo |
 
 **Refactored Services:**
-- `internal/service/agents/data_service.go` - Fetch from Mongo + attach to Agent
-- `internal/service/agents/data/*.go` - All data processors (inventory, software, usb, port, data_transfer)
+- `internal/service/assets/data_service.go` - Fetch from Mongo + attach to asset
+- `internal/service/assets/data/*.go` - All data processors (inventory, software, usb, port, data_transfer)
 - `internal/service/scoring/score_service.go` - Real-time risk scoring from Mongo
 - `internal/service/incidents/event_engine.go` - SecurityAlert insert/update to Mongo
-- `internal/service/approvals/strategies/agent_strategy.go` - CleanupAgentTelemetry cascade
+- `internal/service/approvals/strategies/asset_strategy.go` - CleanupassetTelemetry cascade
 - `internal/service/controllers/dashboard_controller.go` - Mongo queries for metrics
 - `internal/api/v1/ai/chat_handler.go` - AI chat session/log management
 
@@ -298,7 +298,7 @@ Các models đã được migrate sang MongoDB:
 **Linking Fields Across Databases:**
 | Entity | PK in Postgres | FK in Mongo |
 |--------|---|---|
-| Agent | HWID (string) | agent_hwid |
+| asset | HWID (string) | asset_hwid |
 | User | ID (uint) | user_id |
 | Incident | ID (uint) | incident_id |
 | Organization | ID (uint) | org_id |
@@ -315,7 +315,7 @@ Các models đã được migrate sang MongoDB:
 
 Hai database được kết nối độc lập:
 ```go
-// PostgreSQL: Quản lý tổ chức, user, agent metadata
+// PostgreSQL: Quản lý tổ chức, user, asset metadata
 DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 
 // MongoDB: Quản lý telemetry, logs, real-time data
@@ -336,19 +336,19 @@ Mỗi service method khi trả dữ liệu cho API handler sẽ:
 
 Ví dụ:
 ```go
-// agents/data_service.go
-func (s *AgentDataService) GetAgentDetail(hwid string) (*models.Agent, error) {
+// assets/data_service.go
+func (s *assetDataService) GetassetDetail(hwid string) (*models.asset, error) {
     // 1. From PostgreSQL
-    var agent models.Agent
-    if err := database.DB.First(&agent, "hw_id = ?", hwid).Error; err != nil {
+    var asset models.asset
+    if err := database.DB.First(&asset, "hw_id = ?", hwid).Error; err != nil {
         return nil, err
     }
     
     // 2. Attach from MongoDB
-    s.attachAgentTelemetry(&agent)  // Fetches Software, Alerts, USB, Ports, IO
+    s.attachassetTelemetry(&asset)  // Fetches Software, Alerts, USB, Ports, IO
     
     // 3. Return composed
-    return &agent, nil
+    return &asset, nil
 }
 ```
 
@@ -358,13 +358,13 @@ func (s *AgentDataService) GetAgentDetail(hwid string) (*models.Agent, error) {
 
 **Cascade Delete Pattern:**
 ```go
-// Được gọi khi agent bị xóa từ PostgreSQL
-CleanupAgentTelemetry([]string{agentHWID}) 
+// Được gọi khi asset bị xóa từ PostgreSQL
+CleanupassetTelemetry([]string{assetHWID}) 
     → Xóa từ SoftwareCollection
     → Xóa từ USBCollection
     → Xóa từ OpenPortCollection
-    → Xóa từ AgentInventoryCollection
-    → Xóa từ AgentIOActivityCollection
+    → Xóa từ assetInventoryCollection
+    → Xóa từ assetIOActivityCollection
 ```
 
 ---
@@ -383,18 +383,18 @@ CleanupAgentTelemetry([]string{agentHWID})
 
 | Query | Source | Pattern | Performance |
 |-------|--------|---------|---|
-| Get Agent List | PG + Mongo | 1 PG query + N manual Mongo fetches | ⚠️ N+1 risk if not cached |
+| Get asset List | PG + Mongo | 1 PG query + N manual Mongo fetches | ⚠️ N+1 risk if not cached |
 | Dashboard Stats | Mongo | Aggregation pipeline | ⚡ ~100-200ms for 1000 alerts |
-| Risk Score | Mongo | Multi-collection scan | ⚡ ~50-100ms per agent |
+| Risk Score | Mongo | Multi-collection scan | ⚡ ~50-100ms per asset |
 
 ### Optimization Recommendations
 
 1. **Connection Pooling:** Mongoose pools mongo connections, GORM pools Postgres
 2. **Batch Operations:** Sử dụng `InsertMany`, `UpdateMany` khi xử lý baseline
 3. **Indexing:** 
-   - Mongo: `agent_hwid`, `hw_id`, `user_id` nên có index
+   - Mongo: `asset_hwid`, `hw_id`, `user_id` nên có index
    - Postgres: HWID, OrgID nên có index
-4. **Caching:** Frontend có thể cache agent list để tránh re-fetch
+4. **Caching:** Frontend có thể cache asset list để tránh re-fetch
 5. **Goroutines:** Background tasks (risk recalculation, cleanup) sử dụng goroutines để không block main flow
 
 ---
@@ -424,9 +424,9 @@ Frontend vẫn nhận được dữ liệu với cùng API schema:
 **See:** `/memories/session/frontend_audit_sent.md` for comprehensive audit.
 
 **Quick Summary:**
-- Missing React.memo on data-heavy components (AgentSoftware, AgentUSB, AgentPort)
+- Missing React.memo on data-heavy components (assetSoftware, assetUSB, assetPort)
 - WebSocket events trigger too many API calls (need debouncing)
-- AgentDetail uses sequential API calls instead of parallel
+- assetDetail uses sequential API calls instead of parallel
 - Missing input validation on incident/policy forms
 - SessionID type needs validation (ObjectID vs uint)
 
@@ -442,15 +442,15 @@ Frontend vẫn nhận được dữ liệu với cùng API schema:
 ### Transaction & Atomicity: ⚠️ MEDIUM RISK
 - ❌ Không thể thực hiện 1 Transaction bao gồm cả SQL và NoSQL
 - ✅ **Mitigation:** 
-  - Prioritize SQL writes trước (Agent created in PG)
+  - Prioritize SQL writes trước (asset created in PG)
   - Nếu Mongo write fail, log error + rollback SQL
-  - CleanupAgentTelemetry được gọi synchronously với agent deletion
+  - CleanupassetTelemetry được gọi synchronously với asset deletion
 
 ### Data Consistency: ✅ MANAGED
 
 **Best Practices Implemented:**
-1. ✅ HWID matching giữa PG Agent + Mongo documents
-2. ✅ Soft delete trên Agent triggers cascade cleanup
+1. ✅ HWID matching giữa PG asset + Mongo documents
+2. ✅ Soft delete trên asset triggers cascade cleanup
 3. ✅ Service layer không trực tiếp expose DB methods
 4. ✅ Validation trên input trước khi ghi DB
 
@@ -466,10 +466,10 @@ Frontend vẫn nhận được dữ liệu với cùng API schema:
 - [ ] Session ID type validation in AI Chat
 
 ### Phase 2: Database Optimization (1 sprint)
-- [ ] Add MongoDB indexes on `agent_hwid`, `hw_id`, `user_id`
+- [ ] Add MongoDB indexes on `asset_hwid`, `hw_id`, `user_id`
 - [ ] Implement connection pooling metrics
 - [ ] Batch operation optimization for baseline processing
-- [ ] Cache layer for agent list (optional)
+- [ ] Cache layer for asset list (optional)
 
 ### Phase 3: Integration Testing (1 sprint)
 - [ ] Run with production-like data volume
@@ -487,37 +487,37 @@ Frontend vẫn nhận được dữ liệu với cùng API schema:
 
 ## 9. Troubleshooting & Common Issues
 
-### Issue: Telemetry not showing in AgentDetail
+### Issue: Telemetry not showing in assetDetail
 
-**Cause:** `attachAgentTelemetry()` not called before returning to handler
+**Cause:** `attachassetTelemetry()` not called before returning to handler
 
 **Fix:** Verify in service layer:
 ```go
 // ✅ Correct
-agent := s.GetAgentDetail(hwid) // Service calls attachAgentTelemetry
-return agent, nil
+asset := s.GetassetDetail(hwid) // Service calls attachassetTelemetry
+return asset, nil
 
 // ❌ Wrong
-var agent Agent
-DB.First(&agent, hwid)
-return agent, nil  // Missing telemetry!
+var asset asset
+DB.First(&asset, hwid)
+return asset, nil  // Missing telemetry!
 ```
 
-### Issue: Agent deletion leaves orphaned Mongo docs
+### Issue: asset deletion leaves orphaned Mongo docs
 
-**Cause:** CleanupAgentTelemetry not called
+**Cause:** CleanupassetTelemetry not called
 
 **Fix:** Ensure cascade cleanup in approval strategy:
 ```go
-// In agent_strategy.go
+// In asset_strategy.go
 if err == nil {
-    s.lifecycleService.CleanupAgentTelemetry([]string{agent.HWID})
+    s.lifecycleService.CleanupassetTelemetry([]string{asset.HWID})
 }
 ```
 
-### Issue: Slow agent list loading
+### Issue: Slow asset list loading
 
-**Cause:** N+1 queries (1 SQL for agents + N Mongo queries for telemetry)
+**Cause:** N+1 queries (1 SQL for assets + N Mongo queries for telemetry)
 
 **Fix (Long-term):** 
 - Implement batch Mongo queries
@@ -530,7 +530,7 @@ if err == nil {
 
 ### Check PostgreSQL
 ```bash
-psql -U postgres -d sent_system -c "SELECT hwid, hostname, status FROM agent LIMIT 10;"
+psql -U postgres -d sent_system -c "SELECT hwid, hostname, status FROM asset LIMIT 10;"
 ```
 
 ### Check MongoDB
@@ -538,7 +538,7 @@ psql -U postgres -d sent_system -c "SELECT hwid, hostname, status FROM agent LIM
 mongosh
 use sent_logs
 db.software_items.count()
-db.security_alerts.find({agent_hwid: "A1B2C3D4E5F6"}).limit(5)
+db.security_alerts.find({asset_hwid: "A1B2C3D4E5F6"}).limit(5)
 ```
 
 ### Run Backend Tests
@@ -559,7 +559,7 @@ docker-compose up -d --build
 - **GORM Docs:** https://gorm.io
 - **MongoDB Go Driver:** https://github.com/mongodb/mongo-go-driver
 - **SENT Backend Flow:** See `docs/BACKEND_FLOW.md`
-- **Agent Communication:** See `docs/AGENT_FLOW.md`
+- **asset Communication:** See `docs/asset_FLOW.md`
 - **Database Design Decisions:** See `docs/Morong.md`
 
 ---

@@ -68,8 +68,8 @@ func ChatWithPolicy(userQuestion string) (string, string, error) {
 		incidentContext += "Hiện không có sự cố nào.\n"
 	} else {
 		for _, inc := range incidents {
-			incidentContext += fmt.Sprintf("- [%s] Loại: %s | Mức độ: %s | Agent: %s | Trạng thái: %s\n",
-				inc.CreatedAt.Format("15:04 02/01"), inc.Type, inc.Severity, inc.AgentHWID, inc.Status)
+			incidentContext += fmt.Sprintf("- [%s] Loại: %s | Mức độ: %s | asset: %s | Trạng thái: %s\n",
+				inc.CreatedAt.Format("15:04 02/01"), inc.Type, inc.Severity, inc.AssetHWID, inc.Status)
 		}
 	}
 
@@ -139,9 +139,9 @@ func AnalyzeIncidentWithAI(incidentID string) (string, error) {
 		return "", fmt.Errorf("không tìm thấy hồ sơ sự cố")
 	}
 
-	var agent models.Agent
-	if loadErr := database.DB.Where("hw_id = ?", incident.AgentHWID).First(&agent).Error; loadErr == nil {
-		incident.Agent = agent
+	var asset models.Asset
+	if loadErr := database.DB.Where("hw_id = ?", incident.AssetHWID).First(&asset).Error; loadErr == nil {
+		incident.Asset = asset
 	}
 
 	if database.SecurityAlertCollection != nil {
@@ -173,7 +173,7 @@ Nhiệm vụ: Đọc các cảnh báo trong Hồ sơ sự cố và báo cáo cho
 [USER]
 Hãy phân tích sự cố này và cho tôi biết nên làm gì tiếp theo.`,
 		incident.ID, incident.Type, incident.Severity,
-		incident.Agent.Hostname, incident.Agent.IPAddress,
+		incident.Asset.Hostname, incident.Asset.IPAddress,
 		string(alertsJSON),
 	)
 

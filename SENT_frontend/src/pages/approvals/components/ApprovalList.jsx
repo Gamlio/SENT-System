@@ -5,8 +5,8 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
     
     const getModuleConfig = (type) => {
         switch (type) {
-            case 'AGENT_ENROLL': return { label: 'Máy mới', icon: <Laptop size={16} className="text-blue-400"/>, requester: 'Thiết bị (Agent)' };
-            case 'AGENT_DELETE': return { label: 'Gỡ máy', icon: <Trash2 size={16} className="text-red-400"/>, requester: 'Quản trị viên' };
+            case 'asset_ENROLL': return { label: 'Máy mới', icon: <Laptop size={16} className="text-blue-400"/>, requester: 'Thiết bị (asset)' };
+            case 'asset_DELETE': return { label: 'Gỡ máy', icon: <Trash2 size={16} className="text-red-400"/>, requester: 'Quản trị viên' };
             case 'POLICY_CREATE': return { label: 'Chính sách', icon: <Shield size={16} className="text-emerald-400"/>, requester: 'SOC Admin' };
             case 'DOCUMENT_UPLOAD': return { label: 'Tài liệu', icon: <FileText size={16} className="text-purple-400"/>, requester: 'Nhân viên' };
             case 'USER_CREATE': return { label: 'Nhân sự', icon: <UserPlus size={16} className="text-orange-400"/>, requester: 'CISO' };
@@ -22,8 +22,8 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
             if (ticket.module_type === 'USER_CREATE') return `Cấp tài khoản: ${data.full_name} (@${data.username})`;
             if (ticket.module_type === 'USER_UPDATE') return `Đổi quyền cho: ${data.full_name} (@${data.username})`;
             if (ticket.module_type === 'USER_DELETE') return `Yêu cầu Xóa tài khoản nhân sự`;
-            if (ticket.module_type === 'AGENT_ENROLL') return `Yêu cầu gia nhập: ${data.hostname} (${data.ip})`;
-            if (ticket.module_type === 'AGENT_DELETE') return `Xóa vĩnh viễn: ${ticket.target_name}`;
+            if (ticket.module_type === 'asset_ENROLL') return `Yêu cầu gia nhập: ${data.hostname} (${data.ip})`;
+            if (ticket.module_type === 'asset_DELETE') return `Xóa vĩnh viễn: ${ticket.target_name}`;
             return ticket.target_name;
         } catch { return ticket.target_name; }
     };

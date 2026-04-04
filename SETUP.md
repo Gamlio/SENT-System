@@ -1,7 +1,7 @@
 # ⚙️ Hướng dẫn Triển khai Hệ thống SENT SOC
 
 ## 📋 Yêu cầu hệ thống
-* **Backend/Agent:** Golang 1.21+
+* **Backend/asset:** Golang 1.21+
 * **Frontend:** NodeJS 18+ (React 18)
 * **Database:** PostgreSQL 15+
 
@@ -25,9 +25,9 @@
 2.  Cài đặt dependencies: `npm install`
 3.  Khởi chạy: `npm start` (Giao diện sẽ chạy tại `http://localhost:3000`)
 
-## 🛡️ Bước 4: Cài đặt Endpoint Agent
+## 🛡️ Bước 4: Cài đặt Endpoint asset
 1.  Di chuyển vào thư mục: `cd SENT`
 2.  Cấu hình `config.json` hoặc nhập **Company Code** khi khởi chạy lần đầu.
 3.  Build và chạy: `go run main.go`
-    * *Lưu ý: Agent cần quyền Admin trên Windows để thu thập thông tin phần mềm và USB.*
+    * *Lưu ý: asset cần quyền Admin trên Windows để thu thập thông tin phần mềm và USB.*
 

@@ -2,15 +2,16 @@ import React, { useMemo } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { PieChart as PieIcon, Activity } from 'lucide-react';
 
-const UserStats = ({ users }) => {
+const UserStats = ({ users = [] }) => {
+    const safeUsers = users || [];
     
     // --- 1. TÍNH TOÁN SỐ LIỆU (Logic chuyển từ file cũ sang) ---
     
     // Biểu đồ tròn: Tỷ lệ Admin/User
     const roleStats = useMemo(() => [
-        { name: 'Admin', value: users.filter(u => u.role === 'ADMIN').length, color: '#f59e0b' },
-        { name: 'User', value: users.filter(u => u.role === 'USER').length, color: '#3b82f6' }
-    ], [users]);
+        { name: 'Admin', value: safeUsers.filter(u => u.role === 'ADMIN').length, color: '#f59e0b' },
+        { name: 'User', value: safeUsers.filter(u => u.role === 'USER').length, color: '#3b82f6' }
+    ], [safeUsers]);
 
     // Biểu đồ cột: Tăng trưởng 6 tháng
     const growthData = useMemo(() => {
@@ -21,7 +22,7 @@ const UserStats = ({ users }) => {
             const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
             const monthLabel = `T${d.getMonth() + 1}`; 
             
-            const count = users.filter(user => {
+            const count = safeUsers.filter(user => {
                 if (!user.created_at) return false;
                 const userDate = new Date(user.created_at);
                 return userDate.getMonth() === d.getMonth() && userDate.getFullYear() === d.getFullYear();

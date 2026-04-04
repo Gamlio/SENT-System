@@ -20,7 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const LOG_FILE = "agent_history.log"
+const LOG_FILE = "asset_history.log"
 
 // XÓA bỏ trường CompanyCode ở đây
 type Payload struct {
@@ -38,12 +38,17 @@ type Client struct {
 	WSConn     *websocket.Conn // Kết nối WebSocket duy nhất
 }
 
-var AgentClient = &Client{
+var assetClient = &Client{
 	LastHashes: make(map[string]string),
 	LastStatus: "PENDING",
 }
 
-// Hàm tạo chữ ký cho Agent
+// GetAssetClient returns the global asset client instance
+func GetAssetClient() *Client {
+	return assetClient
+}
+
+// Hàm tạo chữ ký cho asset
 func generateSignature(payload []byte, secretKey string) string {
 	mac := hmac.New(sha256.New, []byte(secretKey))
 	mac.Write(payload)
@@ -74,7 +79,7 @@ func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, f
 	jsonBytes, _ := json.Marshal(payload)
 	signature := generateSignature(jsonBytes, config.Current.SecretKey) // Generate signature for the payload
 	// Tạo Request mới để có thể nhét Header vào
-	req, err := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/agents/push", bytes.NewBuffer(jsonBytes))
+	req, err := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/assets/push", bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		return "ERROR"
 	}
@@ -158,7 +163,7 @@ func (c *Client) SendAlert(hwid, hostname, alertType, message, severity string) 
 	jsonBytes, _ := json.Marshal(alertPayload)
 	signature := generateSignature(jsonBytes, config.Current.SecretKey)
 
-	req, _ := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/agents/push", bytes.NewBuffer(jsonBytes))
+	req, _ := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/assets/push", bytes.NewBuffer(jsonBytes))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Sent-Signature", signature)
 
@@ -174,7 +179,7 @@ func (c *Client) SendAlert(hwid, hostname, alertType, message, severity string) 
 // [MỚI] SendBaseline: Xóa bộ nhớ đệm và gửi dữ liệu chuẩn Zero Trust
 func (c *Client) SendBaseline(hwid, hostname, logType string, data interface{}) {
 	c.Mutex.Lock()
-	// Xóa dấu vết cũ của loại log này để ép Agent gửi lại bản full
+	// Xóa dấu vết cũ của loại log này để ép asset gửi lại bản full
 	delete(c.LastHashes, logType)
 	c.Mutex.Unlock()
 

@@ -6,7 +6,7 @@ const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading }) =>
 
     const defaultState = {
         employee_id: '', username: '', full_name: '', email: '', phone: '', password: '',
-        perm_agent_view: false, perm_agent_action: false, perm_agent_delete: false,
+        perm_asset_view: false, perm_asset_action: false, perm_asset_delete: false,
         perm_policy_view: false, perm_policy_action: false,
         perm_incident_view: false, perm_incident_action: false,
         perm_doc_view: false, perm_doc_manage: false,
@@ -22,9 +22,9 @@ const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading }) =>
                     ...initialData,
                     password: '', // Không bao giờ hiện pass cũ
                     phone: initialData.phone || '', 
-                    perm_agent_view: !!initialData.perm_agent_view,
-                    perm_agent_action: !!initialData.perm_agent_action,
-                    perm_agent_delete: !!initialData.perm_agent_delete,
+                    perm_asset_view: !!initialData.perm_asset_view,
+                    perm_asset_action: !!initialData.perm_asset_action,
+                    perm_asset_delete: !!initialData.perm_asset_delete,
                     perm_policy_view: !!initialData.perm_policy_view,
                     perm_policy_action: !!initialData.perm_policy_action,
                     perm_incident_view: !!initialData.perm_incident_view,
@@ -46,7 +46,7 @@ const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading }) =>
             const updated = { ...prev, [field]: val };
             // Logic liên đới
             if (val) {
-                if (['perm_agent_action', 'perm_agent_delete'].includes(field)) updated.perm_agent_view = true;
+                if (['perm_asset_action', 'perm_asset_delete'].includes(field)) updated.perm_asset_view = true;
                 if (field === 'perm_policy_action') updated.perm_policy_view = true;
                 if (field === 'perm_incident_action') updated.perm_incident_view = true;
                 if (field === 'perm_doc_manage') updated.perm_doc_view = true;
@@ -101,9 +101,9 @@ const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading }) =>
                             <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">Ma trận Đặc quyền (Permissions)</h4>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <PermissionBlock title="Máy trạm" icon={<Monitor size={16}/>} color="text-emerald-400">
-                                    <ToggleSwitch field="perm_agent_view" label="Xem danh sách" data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_agent_action" label="Chỉnh sửa máy" data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_agent_delete" label="Xóa máy" data={formData} onToggle={handleToggle} isDanger/>
+                                    <ToggleSwitch field="perm_asset_view" label="Xem danh sách" data={formData} onToggle={handleToggle}/>
+                                    <ToggleSwitch field="perm_asset_action" label="Chỉnh sửa máy" data={formData} onToggle={handleToggle}/>
+                                    <ToggleSwitch field="perm_asset_delete" label="Xóa máy" data={formData} onToggle={handleToggle} isDanger/>
                                 </PermissionBlock>
                                 <PermissionBlock title="Sự cố" icon={<AlertTriangle size={16}/>} color="text-red-400">
                                     <ToggleSwitch field="perm_incident_view" label="Xem sự cố" data={formData} onToggle={handleToggle}/>

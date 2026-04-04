@@ -14,7 +14,7 @@ func Register(s Sensor) {
 	Registry = append(Registry, s)
 }
 
-// Hàm khởi tạo: Nơi bạn "cắm" các module vào Agent
+// Hàm khởi tạo: Nơi bạn "cắm" các module vào asset
 func InitCollectors() {
 	Register(&SoftwareSensor{})
 	Register(&USBSensor{})

@@ -51,7 +51,7 @@ const IncidentDetail = () => {
 
     if (loading || !incident) return <div className="h-screen bg-[#050B14] flex items-center justify-center text-emerald-500 font-mono text-sm animate-pulse">ESTABLISHING SECURE CONNECTION...</div>;
 
-    const agent = incident.agent || incident.Agent || {};
+    const asset = incident.asset || incident.asset || {};
     const alerts = incident.alerts || incident.Alerts || [];
 
     return (
@@ -89,17 +89,17 @@ const IncidentDetail = () => {
                             <div>
                                 <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">Hostname</p>
                                 <p className="text-xs font-bold text-white flex items-center gap-2">
-                                    {agent.hostname || 'Unknown Device'}
-                                    <span className={`w-1.5 h-1.5 rounded-full ${agent.status === 'online' ? 'bg-emerald-500' : 'bg-slate-600'}`}></span>
+                                    {asset.hostname || 'Unknown Device'}
+                                    <span className={`w-1.5 h-1.5 rounded-full ${asset.status === 'online' ? 'bg-emerald-500' : 'bg-slate-600'}`}></span>
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">IP Address</p>
-                                <p className="text-[11px] text-emerald-400 font-mono flex items-center gap-1"><Network size={10}/> {agent.ip_address || 'N/A'}</p>
+                                <p className="text-[11px] text-emerald-400 font-mono flex items-center gap-1"><Network size={10}/> {asset.ip_address || 'N/A'}</p>
                             </div>
                             <div className="col-span-2">
-                                <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">HWID / Agent ID</p>
-                                <p className="text-[10px] text-slate-400 font-mono">{agent.hwid || incident.agent_hw_id}</p>
+                                <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">HWID / asset ID</p>
+                                <p className="text-[10px] text-slate-400 font-mono">{asset.hwid || incident.asset_hw_id}</p>
                             </div>
                         </div>
                     </div>
