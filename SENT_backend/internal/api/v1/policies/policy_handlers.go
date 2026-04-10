@@ -21,9 +21,9 @@ func GetPoliciesByCategory(c *gin.Context) {
 	c.JSON(http.StatusOK, list)
 }
 
-// AddUniversalPolicy (GATE): Tiếp nhận yêu cầu thêm luật lẻ
-func AddUniversalPolicy(c *gin.Context) {
-	var req models.UniversalPolicy
+// AddPolicy (GATE): Tiếp nhận yêu cầu thêm luật lẻ
+func AddPolicy(c *gin.Context) {
+	var req models.Policy
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
@@ -106,7 +106,7 @@ func SyncPoliciesForAsset(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 	hwid := c.Query("hwid")
 	if hwid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu thông tin HWID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu thông tin AssetID"})
 		return
 	}
 

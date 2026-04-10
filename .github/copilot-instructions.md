@@ -17,7 +17,7 @@ Khi nhận được yêu cầu fix lỗi, hãy thực hiện theo 3 bước:
 ## 3. Quy tắc lập kế hoạch Update (Update Planning)
 Mọi kế hoạch nâng cấp tính năng phải được trình bày theo mô hình Agile:
 * **Chia nhỏ Task:** Chia tính năng lớn thành các User Stories và Sub-tasks cụ thể (Backend, Database Migration, Frontend UI).
-* **Kiểm tra Tương thích:** * Kiểm tra sự tương thích giữa GORM (Postgres) và MongoDB (đảm bảo `asset_hw_id` luôn khớp).
+* **Kiểm tra Tương thích:** * Kiểm tra sự tương thích giữa GORM (Postgres) và MongoDB (đảm bảo `asset_hwid` luôn khớp).
     * Kiểm tra các thư viện hiện có: `lucide-react`, `axios`, `gorm.io/driver/postgres`, `mongo-driver`.
     * Đảm bảo logic xóa dữ liệu (Cascade) được xử lý thủ công giữa 2 Database.
 

@@ -33,9 +33,9 @@ func main() {
 		gin.SetMode(mode)
 	}
 
-	r := gin.Default()
-	r.GET("/ws", websocket.WsHandler)
+	r := gin.New()
 
+	r.RedirectTrailingSlash = false
 	// ===== BẢNG MÔNG BẢO MẬT TẦNG GLOBAL =====
 	// 1. Kiểm tra Content-Type, Body Size -> Chặn DoS attacks
 	r.Use(middleware.SecurityValidationMiddleware())
@@ -75,7 +75,7 @@ func main() {
 		assetPublicGroup := v1Group.Group("/assets")
 		{
 			assetPublicGroup.POST("/push", middleware.AssetFloodProtectionMiddleware(), middleware.ValidateAssetPayloadMiddleware(), assets.PushDataHandler)
-			assetPublicGroup.POST("/enroll", middleware.AssetEnrollRateLimitMiddleware(), assets.Enrollasset)
+			assetPublicGroup.POST("/enroll", middleware.AssetEnrollRateLimitMiddleware(), assets.EnrollAsset)
 			assetPublicGroup.GET("/sync-policies", assets.GetActiveEnrollmentToken, policies.SyncPoliciesForAsset)
 		}
 
@@ -84,6 +84,7 @@ func main() {
 		protected.Use(middleware.AuthRequired())
 		protected.Use(middleware.InputSanitizationMiddleware())
 		{
+			r.GET("/ws", websocket.WsHandler)
 			usersGroup := protected.Group("/users")
 			{
 				usersGroup.GET("", users.GetUsers)
@@ -95,17 +96,17 @@ func main() {
 			assetsGroup := protected.Group("/assets")
 			{
 				assetsGroup.GET("/stats", assets.GetStats)
-				assetsGroup.GET("", assets.Getassets)
-				assetsGroup.GET("/:hwid", assets.GetassetDetail)
-				assetsGroup.GET("/:hwid/logs", assets.GetassetLogs)
+				assetsGroup.GET("", assets.GetAssets)
+				assetsGroup.GET("/:hwid", assets.GetAssetDetail)
+				assetsGroup.GET("/:hwid/logs", assets.GetAssetLogs)
 				assetsGroup.GET("/active-token", assets.GetActiveEnrollmentToken)
 				assetsGroup.POST("/generate-token", assets.GenerateEnrollmentToken)
 				assetsGroup.POST("/:hwid/trigger-baseline", assets.TriggerBaseline)
 				assetsGroup.PUT("/:hwid/assign", assets.AssignManager)
 				assetsGroup.PUT("/:hwid/device-type", assets.UpdateDeviceType)
 				assetsGroup.PUT("/:hwid/department", assets.UpdateDepartment)
-				assetsGroup.POST("/:hwid/request-delete", assets.RequestDeleteasset)
-				assetsGroup.POST("/bulk-request-delete", assets.RequestBulkDeleteassets)
+				assetsGroup.POST("/:hwid/request-delete", assets.RequestDeleteAsset)
+				assetsGroup.POST("/bulk-request-delete", assets.RequestBulkDeleteAssets)
 			}
 
 			aiDocs := protected.Group("/docs")
@@ -121,7 +122,7 @@ func main() {
 			{
 				policiesGroup.GET("", policies.GetPoliciesByCategory)           // Lấy luật JSON
 				policiesGroup.POST("/bulk", policies.AddBulkPolicies)           // Thêm nhiều luật cùng lúc (Dành cho import Excel)
-				policiesGroup.POST("", policies.AddUniversalPolicy)             // Thêm luật JSON
+				policiesGroup.POST("", policies.AddPolicy)                      // Thêm luật JSON
 				policiesGroup.DELETE("/:id", policies.DeletePolicy)             // Xóa luật JSONager)
 				policiesGroup.POST("/bulk-delete", policies.DeleteBulkPolicies) // Xóa nhiều luật cùng lúc
 
@@ -134,15 +135,19 @@ func main() {
 
 			incidentsGroup := protected.Group("/incidents")
 			{
-				dashGroup.GET("/incidents", incidents.GetIncidents)
-				incidentsGroup.GET("", incidents.GetIncidents)
-				incidentsGroup.GET("/:id", incidents.GetIncidentDetail)
-				incidentsGroup.POST("/:id/activity", incidents.AddIncidentActivity)
+				incidentsGroup.GET("", incidents.GetIncidents)          // Lấy danh sách (Đã đổi tên khớp Handler)
+				incidentsGroup.GET("/:id", incidents.GetIncidentDetail) // Chi tiết sự cố + Timeline Audit
+				incidentsGroup.POST("/close", incidents.CloseIncident)  // Đóng Case kèm Baseline Proof
 				incidentsGroup.PUT("/:id/playbook", incidents.UpdatePlaybookProgress)
 
-				incidentsGroup.PUT("/:id/assign", incidents.AssignIncident)
-				incidentsGroup.POST("/:id/execute", incidents.ExecuteLiveAction)
+				// --- Dành cho Admin/Auditor (Chuyển giao quyền quản lý) ---
+				// Gợi ý: Nên bọc qua một middleware CheckRole("ADMIN") ở đây
+				incidentsGroup.PUT("/:id/assign", incidents.AssignIncident)                   // Chỉ Admin mới được phân công người làm
+				incidentsGroup.GET("/audit/:audit_id/verify", incidents.VerifyAuditIntegrity) // Kiểm tra tính toàn vẹn của Log
+
+				// Các chức năng phân tích bổ sung
 				incidentsGroup.POST("/:id/ai-analyze", incidents.AnalyzeIncidentAI)
+				incidentsGroup.POST("/:id/execute", incidents.ExecuteLiveAction)
 			}
 			aiGroup := protected.Group("/ai")
 			{
@@ -165,11 +170,7 @@ func main() {
 				// Admin thao tác: Duyệt hoặc Từ chối
 				approvalsGroup.PUT("/:id/review", approvals.ReviewTicket)
 			}
-			filesGroup := protected.Group("/files")
-			{
-				// GET /api/v1/files/incidents/:filename
-				filesGroup.GET("/incidents/:filename", incidents.GetIncidentImage)
-			}
+
 		}
 	}
 

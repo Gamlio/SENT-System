@@ -10,9 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 	"gorm.io/gorm"
 )
 
@@ -51,23 +49,24 @@ func (s *IncidentService) applyContextualMatrix(alertType, basePriority, departm
 	return basePriority
 }
 
-// TriggerSecurityEvent: Nhận tín hiệu từ Sensor và đưa vào quy trình Triage (Phân loại)
-func (s *IncidentService) TriggerSecurityEvent(asset models.Asset, alertType, title, description, priority string) {
-	// 1. Lọc qua Ma trận Ngữ cảnh để lấy Priority chuẩn
+func (s *IncidentService) TriggerSecurityEvent(ctx context.Context, asset models.Asset, alertType, title, description, priority string) {
 	finalPriority := s.applyContextualMatrix(alertType, priority, asset.DepartmentTag)
 
 	alert := models.SecurityAlert{
-		OrgID:       asset.OrgID,
-		HWID:        asset.HWID,
+		OrgID:       int64(asset.OrgID), // Ép kiểu cho MongoDB
+		AssetHWID:   asset.AssetHWID,
 		AlertType:   alertType,
 		Title:       title,
 		Description: description,
 		Priority:    finalPriority,
 		Severity:    s.getSeverityByPriority(finalPriority),
 		IsResolved:  false,
+		CreatedAt:   time.Now(),
 	}
+
 	if database.SecurityAlertCollection != nil {
-		res, err := database.SecurityAlertCollection.InsertOne(context.TODO(), alert)
+		// Dùng ctx truyền vào thay vì context.TODO()
+		res, err := database.SecurityAlertCollection.InsertOne(ctx, alert)
 		if err == nil {
 			if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
 				alert.ID = oid
@@ -77,14 +76,15 @@ func (s *IncidentService) TriggerSecurityEvent(asset models.Asset, alertType, ti
 
 	var correlatedIncident models.Incident
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// Tìm sự cố tương tự trong cửa sổ 24h[cite: 9]
 		timeWindow := time.Now().Add(-DefaultCorrelationWindow)
-		err := tx.Where("asset_hw_id = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
-			asset.HWID, alertType, timeWindow).First(&correlatedIncident).Error
+		err := tx.Where("asset_hwid = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
+			asset.AssetHWID, alertType, timeWindow).First(&correlatedIncident).Error
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			correlatedIncident = models.Incident{
 				OrgID:       asset.OrgID,
-				AssetHWID:   asset.HWID,
+				AssetHWID:   asset.AssetHWID,
 				Type:        alertType,
 				Priority:    finalPriority,
 				Severity:    s.getSeverityByPriority(finalPriority),
@@ -94,62 +94,57 @@ func (s *IncidentService) TriggerSecurityEvent(asset models.Asset, alertType, ti
 			if err := tx.Create(&correlatedIncident).Error; err != nil {
 				return err
 			}
-		} else if err == nil {
-			updates := map[string]interface{}{"updated_at": time.Now()}
-			if s.shouldUpgradePriority(correlatedIncident.Priority, finalPriority) {
-				updates["priority"] = finalPriority
-				updates["severity"] = s.getSeverityByPriority(finalPriority)
-			}
-			tx.Model(&correlatedIncident).Updates(updates)
-		}
 
-		if database.SecurityAlertCollection != nil {
-			_, err := database.SecurityAlertCollection.UpdateOne(context.TODO(), bson.M{"_id": alert.ID}, bson.M{"$set": bson.M{"incident_id": correlatedIncident.ID}})
-			if err != nil && err != mongo.ErrNoDocuments {
-				return err
+			// Ghi log Audit OPEN vào MongoDB[cite: 9]
+			audit := models.IncidentAudit{
+				IncidentID: int64(correlatedIncident.ID), // Đồng bộ int64 cho Mongo[cite: 5]
+				UserID:     nil,
+				ActionType: "OPEN",
+				Content:    "Hệ thống tự động khởi tạo hồ sơ sự cố.",
+				NewStatus:  "Open",
+				IPAddress:  "0.0.0.0", // Mặc định nếu không có IP Sensor
+				CreatedAt:  time.Now(),
 			}
+			audit.GenerateAuditHash()
+			database.IncidentAuditCollection.InsertOne(ctx, audit)
 		}
-
 		return nil
 	})
 
-	// 4. Gọi Engine tính điểm v6.0
+	// 4. Gọi Engine tính điểm v6.0[cite: 9, 10]
 	if err == nil {
-		scoring.RecalculateRiskScore(asset.HWID)
+		scoring.RecalculateRiskScore(asset.AssetHWID)
 	}
 }
 
 // AutoResolveIncident: Tự động đóng Case nếu asset báo cáo trạng thái đã an toàn
 func (s *IncidentService) AutoResolveIncident(hwid string, alertType string) {
 	var incident models.Incident
-	err := database.DB.Where("asset_hw_id = ? AND type = ? AND status != ?", hwid, alertType, "Resolved").First(&incident).Error
+	err := database.DB.Where("asset_hwid = ? AND type = ? AND status != ?", hwid, alertType, "Resolved").First(&incident).Error
 
 	if err == nil {
 		database.DB.Transaction(func(tx *gorm.DB) error {
 			tx.Model(&incident).Updates(map[string]interface{}{
 				"status":      "Resolved",
-				"description": incident.Description + " [Hệ thống tự động đóng do vi phạm đã được khắc phục]",
+				"description": incident.Description + " [Auto-Resolved]",
 			})
 
-			// Đóng toàn bộ alert liên quan (Mongo)
-			if database.SecurityAlertCollection != nil {
-				_, err := database.SecurityAlertCollection.UpdateMany(context.TODO(), bson.M{"incident_id": incident.ID}, bson.M{"$set": bson.M{"is_resolved": true}})
-				if err != nil {
-					fmt.Printf("Warning: failed to update SecurityAlert resolution in Mongo: %v", err)
-				}
+			// [SỬA LỖI] Ghi log vào MongoDB, không dùng tx.Create vì IncidentAudit là NoSQL
+			audit := models.IncidentAudit{
+				IncidentID:   int64(incident.ID),
+				UserID:       nil,
+				ActionType:   "RESOLVE",
+				Content:      "AI SOC xác nhận thiết bị đã sạch vi phạm. Tự động đóng hồ sơ.",
+				OldStatus:    incident.Status,
+				NewStatus:    "Resolved",
+				EvidenceData: "{\"system_check\": \"verified_clean\"}",
+				CreatedAt:    time.Now(),
 			}
 
-			// Ghi log vào Timeline
-			tx.Create(&models.IncidentActivity{
-				IncidentID: incident.ID,
-				ActionType: "RESOLVE",
-				Content:    "AI SOC xác nhận thiết bị đã sạch vi phạm. Tự động kết thúc hồ sơ.",
-				OldStatus:  incident.Status,
-				NewStatus:  "Resolved",
-			})
+			audit.GenerateAuditHash()
+			database.IncidentAuditCollection.InsertOne(context.TODO(), audit)
 			return nil
 		})
-		scoring.RecalculateRiskScore(hwid) // Cập nhật lại Risk Score về 0
 	}
 }
 

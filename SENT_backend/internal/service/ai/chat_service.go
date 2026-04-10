@@ -54,7 +54,7 @@ func ChatWithPolicy(userQuestion string) (string, string, error) {
 	// 1. LẤY POLICY (Giữ nguyên)
 	// CẢNH BÁO HIỆU NĂNG: Lấy tất cả policy có thể gây chậm hệ thống.
 	// ĐỀ XUẤT: Sử dụng Vector Search (RAG) để tìm các policy liên quan nhất đến câu hỏi.
-	var policies []models.UniversalPolicy
+	var policies []models.Policy
 	database.DB.Where("is_active = ?", true).Find(&policies)
 	policyContext := "CHÍNH SÁCH CÔNG TY:\n"
 	for _, p := range policies {
@@ -140,7 +140,7 @@ func AnalyzeIncidentWithAI(incidentID string) (string, error) {
 	}
 
 	var asset models.Asset
-	if loadErr := database.DB.Where("hw_id = ?", incident.AssetHWID).First(&asset).Error; loadErr == nil {
+	if loadErr := database.DB.Where("asset_hwid = ?", incident.AssetHWID).First(&asset).Error; loadErr == nil {
 		incident.Asset = asset
 	}
 

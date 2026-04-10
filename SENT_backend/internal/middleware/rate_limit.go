@@ -61,7 +61,7 @@ func RateLimitMiddleware(r rate.Limit, b int) gin.HandlerFunc {
 type assetFloodTracker struct {
 	mu            sync.RWMutex
 	assets        map[string]*assetRequestStats
-	blockList     map[string]time.Time // HWID -> BlockedUntil
+	blockList     map[string]time.Time // AssetID -> BlockedUntil
 	cleanupTicker *time.Ticker
 }
 
@@ -99,7 +99,7 @@ func (aft *assetFloodTracker) RecordRequest(hwid string, bodySize int64) bool {
 
 	now := time.Now()
 
-	// Kiểm tra xem HWID có bị block không
+	// Kiểm tra xem AssetID có bị block không
 	if blockTime, exists := aft.blockList[hwid]; exists {
 		if now.Before(blockTime) {
 			return false // Vẫn bị block
@@ -193,18 +193,18 @@ var assetFloodTrackerInstance = NewassetFloodTracker()
 // AssetFloodProtectionMiddleware: Middleware chặn asset flooding
 func AssetFloodProtectionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Lấy HWID từ request
+		// Lấy AssetID từ request
 		var req struct {
-			HWID string `json:"hwid"`
+			AssetID string `json:"asset_hwid"`
 		}
 		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing HWID in request"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing AssetID in request"})
 			c.Abort()
 			return
 		}
 
-		if req.HWID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "HWID cannot be empty"})
+		if req.AssetID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AssetID cannot be empty"})
 			c.Abort()
 			return
 		}
@@ -215,9 +215,9 @@ func AssetFloodProtectionMiddleware() gin.HandlerFunc {
 			bodySize = 0
 		}
 
-		if !assetFloodTrackerInstance.RecordRequest(req.HWID, bodySize) {
+		if !assetFloodTrackerInstance.RecordRequest(req.AssetID, bodySize) {
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": fmt.Sprintf("asset %s detected suspicious activity. Temporarily blocked", req.HWID),
+				"error": fmt.Sprintf("asset %s detected suspicious activity. Temporarily blocked", req.AssetID),
 			})
 			c.Abort()
 			return

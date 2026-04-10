@@ -21,7 +21,7 @@ type ExcelRow struct {
 }
 
 // CreatePolicyRequest: Logic tạo luật và Ticket phê duyệt
-func (s *PolicyService) CreatePolicyRequest(req models.UniversalPolicy, orgID uint, creator string) error {
+func (s *PolicyService) CreatePolicyRequest(req models.Policy, orgID uint, creator string) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		req.OrgID = orgID
 		req.ApprovalStatus = "PENDING"
@@ -56,7 +56,7 @@ func (s *PolicyService) BulkCreatePolicyRequest(rows []ExcelRow, orgID uint) (in
 				continue
 			}
 
-			policy := models.UniversalPolicy{
+			policy := models.Policy{
 				OrgID:          orgID,
 				Title:          row.Title,
 				Category:       row.Category,
@@ -90,15 +90,15 @@ func (s *PolicyService) BulkCreatePolicyRequest(rows []ExcelRow, orgID uint) (in
 }
 
 // GetEffectivePolicies: Engine tính toán luật hiệu dụng cho asset
-func (s *PolicyService) GetEffectivePolicies(orgID uint, hwid string) ([]models.UniversalPolicy, error) {
-	var allPolicies []models.UniversalPolicy
+func (s *PolicyService) GetEffectivePolicies(orgID uint, hwid string) ([]models.Policy, error) {
+	var allPolicies []models.Policy
 	// Chỉ lấy các luật đã được APPROVED
 	err := database.DB.Where("org_id = ? AND is_active = ? AND approval_status = ?", orgID, true, "APPROVED").Find(&allPolicies).Error
 	if err != nil {
 		return nil, err
 	}
 
-	effectiveMap := make(map[string]models.UniversalPolicy)
+	effectiveMap := make(map[string]models.Policy)
 
 	// 1. Áp dụng GLOBAL trước
 	for _, p := range allPolicies {
@@ -110,7 +110,7 @@ func (s *PolicyService) GetEffectivePolicies(orgID uint, hwid string) ([]models.
 	// 2. Áp dụng SPECIFIC (Ghi đè)
 	for _, p := range allPolicies {
 		if p.TargetType == "SPECIFIC" {
-			for _, target := range p.TargetHWIDs {
+			for _, target := range p.TargetAssetHWIDs {
 				if target == hwid {
 					effectiveMap[p.Category+"|"+p.Value] = p
 					break
@@ -119,7 +119,7 @@ func (s *PolicyService) GetEffectivePolicies(orgID uint, hwid string) ([]models.
 		}
 	}
 
-	var results []models.UniversalPolicy
+	var results []models.Policy
 	for _, p := range effectiveMap {
 		results = append(results, p)
 	}
@@ -127,8 +127,8 @@ func (s *PolicyService) GetEffectivePolicies(orgID uint, hwid string) ([]models.
 }
 
 // GetPolicies: Truy vấn danh sách có lọc
-func (s *PolicyService) GetPolicies(orgID uint, category, status string) []models.UniversalPolicy {
-	var list []models.UniversalPolicy
+func (s *PolicyService) GetPolicies(orgID uint, category, status string) []models.Policy {
+	var list []models.Policy
 	query := database.DB.Where("org_id = ?", orgID)
 	if category != "" {
 		query = query.Where("category = ?", category)
@@ -142,7 +142,7 @@ func (s *PolicyService) GetPolicies(orgID uint, category, status string) []model
 
 // DeletePolicyRequest: Tạo yêu cầu xóa 1 luật
 func (s *PolicyService) DeletePolicyRequest(id uint, orgID uint, creator string) error {
-	var policy models.UniversalPolicy
+	var policy models.Policy
 	if err := database.DB.Where("id = ? AND org_id = ?", id, orgID).First(&policy).Error; err != nil {
 		return fmt.Errorf("không tìm thấy chính sách")
 	}

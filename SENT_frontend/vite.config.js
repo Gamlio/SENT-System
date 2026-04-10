@@ -9,9 +9,20 @@ export default defineConfig({
   ],
   server: {
     port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000', 
+        changeOrigin: true,
+        secure: false,
+      },
+      '/ws': {
+        target: 'http://localhost:8000',
+        ws: true,
+      },
+    },
   },
   build: {
     outDir: 'build',
-    minify: 'terser',
+    minify: 'terser', 
   },
 })

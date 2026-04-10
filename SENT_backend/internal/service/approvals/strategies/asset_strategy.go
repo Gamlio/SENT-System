@@ -13,14 +13,14 @@ import (
 type assetEnrollStrategy struct{}
 
 func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	return tx.Model(&models.Asset{}).Where("hw_id = ?", ticket.TargetName).
+	return tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).
 		Updates(map[string]interface{}{
 			"status":    "ACTIVE",
 			"last_seen": time.Now(), // <--- BUMP NÓ LÊN TRÊN CÙNG
 		}).Error
 }
 func (s *assetEnrollStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	return tx.Model(&models.Asset{}).Where("hw_id = ?", ticket.TargetName).
+	return tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).
 		Updates(map[string]interface{}{
 			"status":    "REJECTED",
 			"last_seen": time.Now(), // <--- BUMP NÓ LÊN TRÊN CÙNG
@@ -34,7 +34,7 @@ type assetDeleteStrategy struct{}
 
 func (s *assetDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
 	// XÓA MỀM: Đổi trạng thái thành RETIRED, xóa SecretKey để chặn kết nối vĩnh viễn
-	err := tx.Model(&models.Asset{}).Where("hw_id = ?", ticket.TargetName).
+	err := tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).
 		Updates(map[string]interface{}{
 			"status":     "RETIRED",
 			"secret_key": "", // Thu hồi khóa, vứt bỏ quyền truy cập
@@ -44,13 +44,13 @@ func (s *assetDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 	}
 	// Manual cascade cleanup dữ liệu telemetry Mongo
 	lifecycleService := assets.AssetLifecycleService{}
-	lifecycleService.CleanupassetTelemetry([]string{ticket.TargetName})
+	lifecycleService.CleanupassetTelemetry([]string{ticket.TargetName}, ticket.OrgID)
 	return nil
 }
 
 func (s *assetDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
 	// BỊ TỪ CHỐI XÓA: Khôi phục máy trạm từ PENDING_DELETE về trạng thái ACTIVE
-	return tx.Model(&models.Asset{}).Where("hw_id = ?", ticket.TargetName).Update("status", "ACTIVE").Error
+	return tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).Update("status", "ACTIVE").Error
 }
 
 // ==============================================================
@@ -60,8 +60,8 @@ type assetBulkDeleteStrategy struct{}
 
 // Struct dùng để giải mã SnapshotData
 type BulkDeleteSnapshot struct {
-	HWIDs  []string `json:"hwids"`
-	Reason string   `json:"reason"`
+	AssetIDs []string `json:"hwids"`
+	Reason   string   `json:"reason"`
 }
 
 func (s *assetBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
@@ -71,7 +71,7 @@ func (s *assetBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approval
 	}
 
 	// XÓA MỀM HÀNG LOẠT: Đổi trạng thái và thu hồi khóa của hàng trăm máy trong 1 nốt nhạc
-	err := tx.Model(&models.Asset{}).Where("hw_id IN ?", snap.HWIDs).
+	err := tx.Model(&models.Asset{}).Where("asset_hwid IN ?", snap.AssetIDs).
 		Updates(map[string]interface{}{
 			"status":     "RETIRED",
 			"secret_key": "",
@@ -80,7 +80,7 @@ func (s *assetBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approval
 		return err
 	}
 	lifecycleService := assets.AssetLifecycleService{}
-	lifecycleService.CleanupassetTelemetry(snap.HWIDs)
+	lifecycleService.CleanupassetTelemetry(snap.AssetIDs, ticket.OrgID)
 	return nil
 }
 
@@ -91,5 +91,5 @@ func (s *assetBulkDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalT
 	}
 
 	// BỊ TỪ CHỐI XÓA HÀNG LOẠT: Khôi phục toàn bộ danh sách máy về ACTIVE
-	return tx.Model(&models.Asset{}).Where("hw_id IN ?", snap.HWIDs).Update("status", "ACTIVE").Error
+	return tx.Model(&models.Asset{}).Where("asset_hwid IN ?", snap.AssetIDs).Update("status", "ACTIVE").Error
 }

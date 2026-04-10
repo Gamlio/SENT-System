@@ -26,7 +26,7 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	if err == nil {
 		json.Unmarshal(file, &Current)
 		// Nếu đã có SecretKey tức là đăng ký thành công rồi
-		if Current.SecretKey != "http://192.168.2.4:8000" {
+		if Current.SecretKey != "" {
 			return
 		}
 	}
@@ -35,8 +35,7 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	fmt.Println("===========================================")
 	fmt.Println("   🛡️ KÍCH HOẠT SENT SENSOR (CLI MODE)")
 	fmt.Println("===========================================")
-
-	Current.BackendURL = "" // Thay bằng IP Server thật của bạn
+	Current.BackendURL = "http://192.168.2.4:8000" // Thay bằng IP Server thật của bạn
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -52,7 +51,7 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 
 func enrollToServer(token, hwid, hostname, ipAddress string) bool {
 	payload := map[string]string{
-		"hwid":       hwid,
+		"asset_hwid": hwid,
 		"hostname":   hostname,
 		"ip_address": ipAddress,
 		"token":      token,

@@ -140,7 +140,7 @@ Hệ thống thu thập và xử lý 8 loại dữ liệu giám sát chính từ
 - **Luồng xử lý:** Event engine detect → Tạo alert → Link với incident → Lưu MongoDB → Push notification real-time
 - **File liên quan:** `internal/service/security/alerts.go`, `mongo_models.go`
 
-### 5.7 Incident Activities (IncidentActivity)
+### 5.7 Incident Activities (IncidentAudit)
 - **Mục đích:** Timeline chi tiết quá trình xử lý incident
 - **Dữ liệu thu thập:** Action type (COMMENT, STATUS_CHANGE, AI_ANALYSIS), content, old/new status, images, user info
 - **Luồng xử lý:** User actions → Tạo activity log → Lưu MongoDB → Hiển thị timeline trong incident details
@@ -195,7 +195,7 @@ Quản lý vòng đời asset từ enrollment đến decommission.
 
 - **Trạng thái:** PENDING → APPROVED → ACTIVE → SUSPENDED
 - **Luồng enrollment:**
-  1. asset gửi request với HWID, hostname, IP, token
+  1. asset gửi request với AssetHWID , hostname, IP, token
   2. Validate token region → Tạo record PENDING
   3. Tạo approval ticket → Admin approve
   4. Status chuyển ACTIVE → Gửi secret key
@@ -217,7 +217,7 @@ Luồng xử lý sự cố end-to-end với AI support.
   2. Investigation → AI analysis
   3. Status updates: Open → Investigating → Resolved
   4. Resolution summary khi đóng case
-- **Timeline:** Mọi action được log trong IncidentActivity
+- **Timeline:** Mọi action được log trong IncidentAudit
 - **File liên quan:** `internal/service/incidents/incident_service.go`, `internal/api/v1/incidents/`, `models.go`
 
 ---
@@ -228,13 +228,13 @@ Hệ thống chính sách tập trung cho tất cả loại threats.
 
 - **Policy Types:** SOFTWARE, USB, NETWORK
 - **Policy Values:** BLACKLIST/WHITELIST
-- **Target Scope:** GLOBAL hoặc specific HWIDs
+- **Target Scope:** GLOBAL hoặc specific AssetHWID s
 - **Luồng thực thi:**
   1. Admin tạo policy → Status PENDING
   2. Approval workflow → Active
   3. Event engine check violations
   4. Tạo incident nếu match
-- **File liên quan:** `models.go` (UniversalPolicy), `internal/service/policies/`, `internal/api/v1/policies/`
+- **File liên quan:** `models.go` (Policy), `internal/service/policies/`, `internal/api/v1/policies/`
 
 ---
 
@@ -245,7 +245,7 @@ Quản lý tài liệu chính sách và quy trình.
 - **Upload Process:** Word/PDF → Convert to PDF → Store files
 - **Approval:** Maker-Checker cho documents
 - **AI Processing:** Parse nội dung → Extract rules → Auto-create policies
-- **File liên quan:** `models.go` (PolicyDocument), `internal/api/v1/policies/policy_handlers.go`, `uploads/`
+- **File liên quan:** `models.go` (Document), `internal/api/v1/policies/policy_handlers.go`, `uploads/`
 
 ---
 
@@ -318,7 +318,7 @@ Hệ thống tính điểm rủi ro động.
 │   ├── middleware/           
 │   │   └── auth.go               # Check JWT và Role Level
 │   ├── models/               
-│   │   └── models.go             # Struct DB (asset, UniversalPolicy, PolicyDocument...)
+│   │   └── models.go             # Struct DB (asset, Policy, Document...)
 │   ├── repository/               # REPOSITORY: Truy vấn DB 
 │   │   └── policy_repo.go        
 │   ├── utils/               # REPOSITORY: Truy vấn DB 

@@ -9,24 +9,23 @@ import (
 )
 
 type AssetPayload struct {
-	Type     string      `json:"type" binding:"required,oneof=DATA HEARTBEAT"` // "DATA" | "HEARTBEAT"
-	LogType  string      `json:"log_type" binding:"required,max=50,alphanum"`
-	HWID     string      `json:"hwid" binding:"required,max=64,alphanum"`
+	Type     string      `json:"type" binding:"required,oneof=DATA HEARTBEAT ALERT"` // "DATA" | "HEARTBEAT"
+	LogType  string      `json:"log_type" binding:"required,max=50"`
+	AssetID  string      `json:"asset_hwid" binding:"required,max=64"`
 	Hostname string      `json:"hostname" binding:"required,min=1,max=255"`
 	Data     interface{} `json:"data" binding:"required"`
 }
 
 func ProcessassetData(payload AssetPayload) {
 	// 1. Cập nhật nhịp đập (Keep-alive)
-	database.DB.Model(&models.Asset{}).Where("hw_id = ?", payload.HWID).
-		Updates(map[string]interface{}{"last_seen": time.Now(), "hostname": payload.Hostname})
-
+	database.DB.Model(&models.Asset{}).Where("asset_hwid = ?", payload.AssetID).
+		Update("last_seen", time.Now())
 	if payload.Type == "HEARTBEAT" {
 		return
 	}
 
 	var asset models.Asset
-	if err := database.DB.Where("hw_id = ?", payload.HWID).First(&asset).Error; err != nil {
+	if err := database.DB.Where("asset_hwid = ?", payload.AssetID).First(&asset).Error; err != nil {
 		return
 	}
 
@@ -58,14 +57,14 @@ func ProcessassetData(payload AssetPayload) {
 	// Frontend assetDetail.jsx sẽ nhận tin này và tự fetchDetail() lại
 	websocket.GlobalHub.Broadcast(map[string]interface{}{
 		"type": "ASSET_UPDATE",
-		"hwid": payload.HWID,
+		"hwid": payload.AssetID,
 	})
 
 	// Nếu là Baseline xong, báo tin riêng
 	if payload.LogType == "software_baseline" {
 		websocket.GlobalHub.Broadcast(map[string]interface{}{
 			"type": "BASELINE_COMPLETED",
-			"hwid": payload.HWID,
+			"hwid": payload.AssetID,
 		})
 	}
 }

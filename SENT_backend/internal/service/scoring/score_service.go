@@ -60,16 +60,16 @@ type ScoreService struct {
 	db *gorm.DB
 }
 
-func RecalculateRiskScore(assetHWID string) {
+func RecalculateRiskScore(assetAssetID string) {
 	var asset models.Asset
-	if err := database.DB.Where("hw_id = ?", assetHWID).First(&asset).Error; err != nil {
+	if err := database.DB.Where("asset_hwid = ?", assetAssetID).First(&asset).Error; err != nil {
 		return
 	}
 
 	// 1. Lấy telemetry ở MongoDB
 	var alerts []models.SecurityAlert
 	if database.SecurityAlertCollection != nil {
-		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"hw_id": assetHWID, "is_resolved": false})
+		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"asset_hwid": assetAssetID, "is_resolved": false})
 		if err == nil {
 			cursor.All(context.TODO(), &alerts)
 		}
@@ -77,7 +77,7 @@ func RecalculateRiskScore(assetHWID string) {
 
 	var ioActivities []models.AssetIOActivity
 	if database.AssetIOActivityCollection != nil {
-		cursor, err := database.AssetIOActivityCollection.Find(context.TODO(), bson.M{"asset_hwid": assetHWID})
+		cursor, err := database.AssetIOActivityCollection.Find(context.TODO(), bson.M{"asset_hwid": assetAssetID})
 		if err == nil {
 			cursor.All(context.TODO(), &ioActivities)
 		}
@@ -85,7 +85,7 @@ func RecalculateRiskScore(assetHWID string) {
 
 	var openPorts []models.OpenPort
 	if database.OpenPortCollection != nil {
-		cursor, err := database.OpenPortCollection.Find(context.TODO(), bson.M{"asset_hwid": assetHWID, "status": "OPEN"})
+		cursor, err := database.OpenPortCollection.Find(context.TODO(), bson.M{"asset_hwid": assetAssetID, "status": "OPEN"})
 		if err == nil {
 			cursor.All(context.TODO(), &openPorts)
 		}
@@ -93,7 +93,7 @@ func RecalculateRiskScore(assetHWID string) {
 
 	var usbLogs []models.USBLog
 	if database.USBCollection != nil {
-		cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"asset_hwid": assetHWID, "event_type": "CONNECTED"})
+		cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"asset_hwid": assetAssetID, "event_type": "CONNECTED"})
 		if err == nil {
 			cursor.All(context.TODO(), &usbLogs)
 		}
@@ -190,14 +190,14 @@ func (s *ScoreService) GetPriorityFromMatrix(sensorType, departmentTag string) (
 func (s *ScoreService) CalculateCurrentRiskScore(assetID uint) (float64, error) {
 	var incidents []models.Incident
 	// Fetch all OPEN incidents for the asset
-	if err := s.db.Where("asset_id = ? AND status = ?", assetID, "Open").Find(&incidents).Error; err != nil {
+	if err := s.db.Where("asset_hwid = ? AND status = ?", assetID, "Open").Find(&incidents).Error; err != nil {
 		return 0, fmt.Errorf("failed to fetch open incidents for asset %d: %w", assetID, err)
 	}
 
 	if len(incidents) == 0 {
 		// No open incidents, current risk score is 0
 		// Ensure asset's risk_score is updated to 0 if it was previously higher
-		if err := s.db.Model(&models.Asset{}).Where("id = ?", assetID).Update("risk_score", 0.0).Error; err != nil {
+		if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", assetID).Update("risk_score", 0.0).Error; err != nil {
 			return 0, fmt.Errorf("failed to reset risk score for asset %d: %w", assetID, err)
 		}
 		return 0, nil
@@ -261,7 +261,7 @@ func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
 	// Fetch incidents that occurred within the last 30 days and are P1 or P2.
 	// The document implies "lỗi P1 trong 30 ngày qua" (P1 errors in the past 30 days)
 	// should cause deduction, regardless of their current status (Open/Resolved).
-	if err := s.db.Where("asset_id = ? AND occurred_at >= ? AND (priority = ? OR priority = ?)",
+	if err := s.db.Where("asset_hwid = ? AND occurred_at >= ? AND (priority = ? OR priority = ?)",
 		assetID, thirtyDaysAgo, "P1", "P2").Find(&recentIncidents).Error; err != nil {
 		return 0, fmt.Errorf("failed to fetch recent incidents for trust score deduction for asset %d: %w", assetID, err)
 	}
@@ -316,7 +316,7 @@ func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
 		updates["last_trust_recovery_applied_at"] = asset.LastTrustRecoveryAppliedAt
 	}
 
-	if err := s.db.Model(&models.Asset{}).Where("id = ?", assetID).Updates(updates).Error; err != nil {
+	if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", assetID).Updates(updates).Error; err != nil {
 		return currentTrustScore, fmt.Errorf("failed to update trust score for asset %d: %w", assetID, err)
 	}
 
@@ -334,7 +334,7 @@ func (s *ScoreService) UpdateassetLastIncidentTime(assetID uint, incidentTime ti
 	// Only update if the new incident time is more recent than the current LastIncidentAt
 	// or if LastIncidentAt is nil.
 	if asset.LastIncidentAt == nil || incidentTime.After(*asset.LastIncidentAt) {
-		if err := s.db.Model(&models.Asset{}).Where("id = ?", assetID).Update("last_incident_at", incidentTime).Error; err != nil {
+		if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", assetID).Update("last_incident_at", incidentTime).Error; err != nil {
 			return fmt.Errorf("failed to update last incident time for asset %d: %w", assetID, err)
 		}
 	}

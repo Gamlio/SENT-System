@@ -13,12 +13,12 @@ type Organization struct {
 	CompanyCode       string `gorm:"unique;not null" json:"company_code"`
 	EnrollTokenPrefix string `json:"enroll_token_prefix"`
 	// Relationships (Đã bổ sung đầy đủ các liên kết Has Many)
-	Users           []User            `gorm:"foreignKey:OrgID" json:"-"`
-	Regions         []Region          `gorm:"foreignKey:OrgID" json:"-"`
-	Policies        []UniversalPolicy `gorm:"foreignKey:OrgID" json:"-"`
-	assets          []Asset           `gorm:"foreignKey:OrgID" json:"-"`
-	ApprovalTickets []ApprovalTicket  `gorm:"foreignKey:OrgID" json:"-"`
-	PolicyDocuments []PolicyDocument  `gorm:"foreignKey:OrgID" json:"-"`
+	Users           []User           `gorm:"foreignKey:OrgID" json:"-"`
+	Regions         []Region         `gorm:"foreignKey:OrgID" json:"-"`
+	Policies        []Policy         `gorm:"foreignKey:OrgID" json:"-"`
+	Assets          []Asset          `gorm:"foreignKey:OrgID" json:"-"`
+	ApprovalTickets []ApprovalTicket `gorm:"foreignKey:OrgID" json:"-"`
+	Documents       []Document       `gorm:"foreignKey:OrgID" json:"-"`
 }
 
 type Region struct {
@@ -27,7 +27,7 @@ type Region struct {
 	Name        string `json:"name"`
 	EnrollToken string `gorm:"unique" json:"enroll_token"`
 	// Relationships
-	assets []Asset `gorm:"foreignKey:RegionID" json:"-"`
+	Assets []Asset `gorm:"foreignKey:RegionID" json:"-"`
 }
 
 // --- NHÓM 2: NGƯỜI DÙNG ---
@@ -70,7 +70,7 @@ type User struct {
 	ApprovedBy     string `json:"approved_by"`
 }
 type UserPayload struct {
-	Username           string `json:"username" binding:"required,min=3,max=50,alphanum"`
+	Username           string `json:"username" binding:"required,min=3,max=50"`
 	Password           string `json:"password" binding:"required,min=8,max=128"`
 	FullName           string `json:"full_name" binding:"required,min=3,max=100"`
 	Phone              string `json:"phone" binding:"omitempty,len=10,numeric"`
@@ -95,8 +95,9 @@ type UserPermission struct {
 
 // --- NHÓM 3: THIẾT BỊ (assetS) ---
 type Asset struct {
-	HWID      string    `gorm:"primaryKey;column:hw_id" json:"hwid"`
-	OrgID     uint      `gorm:"column:org_id" json:"org_id"`
+	AssetHWID string    `gorm:"primaryKey;column:asset_hwid" json:"asset_hwid"`
+	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`
+	OrgID     uint      `gorm:"column:org_id" json:"org_id" binding:"required"`
 	RegionID  *uint     `gorm:"column:region_id" json:"region_id"`
 	UserID    *uint     `gorm:"column:user_id" json:"user_id"`
 	Hostname  string    `gorm:"column:hostname" json:"hostname"`
@@ -114,20 +115,18 @@ type Asset struct {
 	IOActivities               []AssetIOActivity `gorm:"-" json:"io_activities"` // Virtual field, dữ liệu lấy từ MongoDB
 	RiskScore                  int               `json:"risk_score" gorm:"default:0"`
 	Status                     string            `json:"status" gorm:"default:'PENDING'"`
+	DeviceType                 string            `json:"device_type" gorm:"column:device_type;default:'UNKNOWN'"`
 	TrustScore                 float64           `gorm:"default:100"` // Long-term trust
-	DepartmentTag              string            // Explicit Department Tag (e.g., FINANCE, DEV, PROD)
-	LastIncidentAt             *time.Time        // Timestamp of the last incident for this asset
-	LastTrustRecoveryAppliedAt *time.Time        // Timestamp when trust score recovery was last applied
-
-	DeviceType     string `json:"device_type" gorm:"default:'OFFICE'"`
-	IsZeroTrust    bool   `gorm:"default:false" json:"is_zero_trust"`
-	BaselineStatus string `gorm:"default:'NONE'" json:"baseline_status"`
-
-	SecretKey string `json:"-"`
+	DepartmentTag              string            `json:"department_tag"`
+	LastIncidentAt             *time.Time        `json:"last_incident_at"`
+	LastTrustRecoveryAppliedAt *time.Time        `json:"last_trust_recovery_applied_at"`
+	IsZeroTrust                bool              `gorm:"default:false" json:"is_zero_trust"`
+	BaselineStatus             string            `gorm:"default:'NONE'" json:"baseline_status"`
+	SecretKey                  string            `json:"-"`
 	// [MỚI] ĐỒNG BỘ: Lưu người đã cấp phép máy trạm này
 	ApprovedBy string `json:"approved_by"`
 
-	Incidents []Incident `gorm:"foreignKey:assetHWID;references:HWID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"incidents"`
+	Incidents []Incident `gorm:"foreignKey:AssetHWID;" json:"incidents"`
 }
 type WhitelistItem struct {
 	gorm.Model
@@ -147,10 +146,10 @@ type EnrollmentToken struct {
 	CreatedBy string    `json:"created_by"` // Username của Admin đã tạo mã
 }
 type EnrollRequest struct {
-	HWID      string `json:"hwid" binding:"required,max=64,alphanum"`
+	AssetHWID string `json:"asset_hwid" binding:"required,max=64"`
 	Hostname  string `json:"hostname" binding:"required,min=1,max=255"`
 	IPAddress string `json:"ip_address" binding:"required,ip"`
-	Token     string `json:"token" binding:"required,min=20,max=255"` // Mã cài đặt (Enrollment Token)
+	Token     string `json:"token" binding:"required,min=10,max=255"` // Mã cài đặt (Enrollment Token)
 }
 
 // --- NHÓM 5: QUẢN LÝ SỰ CỐ & AUTOMATION ---
@@ -158,11 +157,9 @@ type Incident struct {
 	gorm.Model // ID, CreatedAt, UpdatedAt, DeletedAt
 	// Lưu ý: ID ở đây là uint
 
-	OrgID     uint   `json:"org_id"`
-	AssetHWID string `gorm:"column:asset_hw_id" json:"asset_hw_id"`
-	// Relationship
-	Asset Asset `gorm:"foreignKey:AssetHWID;references:HWID" json:"asset"`
-
+	OrgID        uint   `json:"org_id" binding:"required"`
+	AssetHWID    string `gorm:"type:varchar(64);column:asset_hwid;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"asset_hwid"`
+	Asset        Asset  `gorm:"foreignKey:AssetHWID;references:AssetHWID" json:"asset"`
 	Type         string `json:"type"`          // Loại sự cố (VD: Malware, DDoS)
 	Severity     string `json:"severity"`      // Low, Medium, High, Critical
 	Priority     string `json:"priority"`      // P1, P2, P3, P4
@@ -170,9 +167,8 @@ type Incident struct {
 	Description  string `json:"description"`   // Mô tả ngắn gọn
 	PlaybookName string `json:"playbook_name"` // Tên quy trình xử lý áp dụng
 	AIAnalysis   string `json:"ai_analysis"`   // Kết quả phân tích từ AI
-	// [MỚI] Thông tin người được phân công xử lý (nếu có)
-	AssigneeID *uint `json:"assignee_id" gorm:"index"`
-	Assignee   *User `json:"assignee" gorm:"foreignKey:AssigneeID"`
+	AssigneeID   *uint  `json:"assignee_id" gorm:"index"`
+	Assignee     *User  `json:"assignee" gorm:"foreignKey:AssigneeID"`
 
 	// [MỚI THÊM] Báo cáo sau khi đóng Case
 	ResolutionSummary string `json:"resolution_summary" gorm:"type:text"`
@@ -180,26 +176,26 @@ type Incident struct {
 	Alerts []SecurityAlert `gorm:"-" json:"alerts"` // Virtual field, dữ liệu lấy từ MongoDB
 
 	// [MỚI] Link sang bảng hoạt động
-	Activities       []IncidentActivity `gorm:"-" json:"activities"` // Virtual field, dữ liệu lấy từ MongoDB
-	PlaybookProgress string             `json:"playbook_progress" gorm:"type:text"`
+	Activities       []IncidentAudit `gorm:"-" json:"activities"` // Virtual field, dữ liệu lấy từ MongoDB
+	PlaybookProgress string          `json:"playbook_progress" gorm:"type:text"`
 }
 
 // --- NHÓM 5: CHÍNH SÁCH TẬP TRUNG ---
-type UniversalPolicy struct {
+type Policy struct {
 	ID        uint           `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
-	OrgID      uint   `json:"org_id" gorm:"index:idx_policy_org_status"`
+	OrgID      uint   `json:"org_id" binding:"required" gorm:"index:idx_policy_org_status"`
 	Title      string `json:"title"`
 	Category   string `json:"category"` // SOFTWARE, USB, NETWORK
 	Value      string `json:"value"`    // Tên exe, mã USB, Port...
 	PolicyType string `json:"policy_type" gorm:"default:'BLACKLIST'"`
 	IsActive   bool   `json:"is_active" gorm:"default:true"`
 
-	TargetType  string   `json:"target_type" gorm:"default:'GLOBAL'"`
-	TargetHWIDs []string `json:"target_hwids" gorm:"serializer:json"`
+	TargetType       string   `json:"target_type" gorm:"default:'GLOBAL'"`
+	TargetAssetHWIDs []string `json:"target_asset_hwids" gorm:"serializer:json"`
 
 	IncidentID *uint `json:"incident_id"`
 
@@ -209,7 +205,7 @@ type UniversalPolicy struct {
 	ApprovedBy     string `json:"approved_by"`                                                          // Username người duyệt đơn
 }
 
-type PolicyDocument struct {
+type Document struct {
 	gorm.Model
 	Title       string `json:"title"`
 	FileName    string `json:"file_name"`
@@ -245,5 +241,5 @@ type ApprovalTicket struct {
 	ReviewNote  string `json:"review_note"`  // Lý do từ chối (nếu có)
 
 	// Lưu dạng JSON để admin xem trước nội dung mà không cần join bảng phức tạp
-	SnapshotData string `json:"snapshot_data" gorm:"type:text"`
+	SnapshotData string `json:"snapshot_data" gorm:"type:jsonb"`
 }

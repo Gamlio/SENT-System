@@ -15,9 +15,9 @@
 **Các Model:**
 - Organization, Region
 - User, UserPermission
-- asset (chỉ thông tin định danh như HWID, hostname, IP)
+- asset (chỉ thông tin định danh như AssetHWID , hostname, IP)
 - Incident, ApprovalTicket
-- UniversalPolicy, PolicyDocument
+- Policy, Document
 - EnrollmentToken, WhitelistItem
 
 **Lợi ích:** Đảm bảo tính toàn vẹn dữ liệu (Data Integrity), hỗ trợ Transaction, Query phức tạp với JOIN.
@@ -35,7 +35,7 @@
 - assetInventory (thông tin phần cứng)
 - assetIOActivity (dữ liệu I/O)
 - SecurityAlert (cảnh báo bảo mật)
-- IncidentActivity (nhật ký sự cố)
+- IncidentAudit (nhật ký sự cố)
 - AIChatSession, AIChatLog (lịch sử chat AI)
 
 **Lợi ích:** Hiệu suất ghi cao (Write-optimized), linh hoạt schema, dễ mở rộng cho dữ liệu không cấu trúc.
@@ -49,8 +49,8 @@
 Vì MongoDB không hỗ trợ JOIN với PostgreSQL, chúng ta sử dụng **virtual foreign keys** dựa trên string fields:
 
 ```
-PostgreSQL asset (HWID: "A1B2C3D4E5F6") 
-    ↓ (linking by HWID)
+PostgreSQL asset (AssetHWID : "A1B2C3D4E5F6") 
+    ↓ (linking by AssetHWID )
 MongoDB Collections (bson field: "asset_hwid")
     ├─ SoftwareItem { asset_hwid: "A1B2C3D4E5F6", ... }
     ├─ USBLog { asset_hwid: "A1B2C3D4E5F6", ... }
@@ -102,14 +102,14 @@ func (s *assetDataService) attachassetTelemetry(asset *models.asset) {
     // Fetch từ Mongo collections bằng asset_hwid
     if database.SoftwareCollection != nil {
         var software []models.SoftwareItem
-        cursor, _ := database.SoftwareCollection.Find(ctx, bson.M{"asset_hwid": asset.HWID})
+        cursor, _ := database.SoftwareCollection.Find(ctx, bson.M{"asset_hwid": asset.AssetHWID })
         cursor.All(ctx, &software)
         asset.Software = software
     }
     
     if database.SecurityAlertCollection != nil {
         var alerts []models.SecurityAlert
-        cursor, _ := database.SecurityAlertCollection.Find(ctx, bson.M{"hw_id": asset.HWID})
+        cursor, _ := database.SecurityAlertCollection.Find(ctx, bson.M{"hw_id": asset.AssetHWID })
         cursor.All(ctx, &alerts)
         asset.Alerts = alerts
     }
@@ -139,7 +139,7 @@ Models đã được tách rõ ràng thành 2 file:
 ```go
 // models.go (PostgreSQL)
 type asset struct {
-    HWID      string    `gorm:"primaryKey;column:hw_id" json:"hwid"`
+    AssetHWID       string    `gorm:"primaryKey;column:hw_id" json:"asset_hwid"`
     Hostname  string    `gorm:"column:hostname" json:"hostname"`
     // Virtual fields (dữ liệu từ MongoDB)
     Software  []SoftwareItem    `gorm:"-" json:"software"`
@@ -149,7 +149,7 @@ type asset struct {
 // mongo_models.go (MongoDB)
 type SoftwareItem struct {
     ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-    assetHWID string             `bson:"asset_hwid" json:"asset_hwid"`
+    assetAssetHWID  string             `bson:"asset_hwid" json:"asset_hwid"`
     SoftwareName string          `bson:"software_name" json:"software_name"`
     UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
 }
@@ -163,12 +163,12 @@ type SoftwareItem struct {
 
 #### Linking Strategy
 ```
-PostgreSQL asset.HWID (string, primary key)
+PostgreSQL asset.AssetHWID  (string, primary key)
     ↓ Virtual FK (matching field name in Mongo)
 MongoDB Collections:
     - asset_hwid (SoftwareItem, USBLog, OpenPort, assetInventory, assetIOActivity)
     - hw_id (SecurityAlert)
-    - asset_hw_id (IncidentActivity liên kết với Incident)
+    - asset_hwid (IncidentAudit liên kết với Incident)
 ```
 
 #### Cross-DB Consistency: Manual Cascade Delete
@@ -277,7 +277,7 @@ Các models đã được migrate sang MongoDB:
 | assetInventory | ✅ Moved | asset_inventory | Mongo |
 | assetIOActivity | ✅ Moved | asset_io_activities | Mongo |
 | SecurityAlert | ✅ Moved | security_alerts | Mongo |
-| IncidentActivity | ✅ Moved | (cross-linked) | Mongo |
+| IncidentAudit | ✅ Moved | (cross-linked) | Mongo |
 | AIChatLog | ✅ Moved | ai_chat_logs | Mongo |
 | AIChatSession | ✅ Moved | ai_chat_sessions | Mongo |
 
@@ -292,18 +292,18 @@ Các models đã được migrate sang MongoDB:
 
 ---
 
-### ✅ Bước 4: Sử dụng ID duy nhất (UUID/HWID)
+### ✅ Bước 4: Sử dụng ID duy nhất (UUID/AssetHWID )
 **Status:** ✅ **COMPLETED**
 
 **Linking Fields Across Databases:**
 | Entity | PK in Postgres | FK in Mongo |
 |--------|---|---|
-| asset | HWID (string) | asset_hwid |
+| asset | AssetHWID  (string) | asset_hwid |
 | User | ID (uint) | user_id |
 | Incident | ID (uint) | incident_id |
 | Organization | ID (uint) | org_id |
 
-**Benefit:** HWID là string immutable, không thay đổi giữa 2 DB. Dễ match records.
+**Benefit:** AssetHWID  là string immutable, không thay đổi giữa 2 DB. Dễ match records.
 
 ---
 
@@ -359,7 +359,7 @@ func (s *assetDataService) GetassetDetail(hwid string) (*models.asset, error) {
 **Cascade Delete Pattern:**
 ```go
 // Được gọi khi asset bị xóa từ PostgreSQL
-CleanupassetTelemetry([]string{assetHWID}) 
+CleanupassetTelemetry([]string{assetAssetHWID }) 
     → Xóa từ SoftwareCollection
     → Xóa từ USBCollection
     → Xóa từ OpenPortCollection
@@ -393,7 +393,7 @@ CleanupassetTelemetry([]string{assetHWID})
 2. **Batch Operations:** Sử dụng `InsertMany`, `UpdateMany` khi xử lý baseline
 3. **Indexing:** 
    - Mongo: `asset_hwid`, `hw_id`, `user_id` nên có index
-   - Postgres: HWID, OrgID nên có index
+   - Postgres: AssetHWID , OrgID nên có index
 4. **Caching:** Frontend có thể cache asset list để tránh re-fetch
 5. **Goroutines:** Background tasks (risk recalculation, cleanup) sử dụng goroutines để không block main flow
 
@@ -449,7 +449,7 @@ Frontend vẫn nhận được dữ liệu với cùng API schema:
 ### Data Consistency: ✅ MANAGED
 
 **Best Practices Implemented:**
-1. ✅ HWID matching giữa PG asset + Mongo documents
+1. ✅ AssetHWID  matching giữa PG asset + Mongo documents
 2. ✅ Soft delete trên asset triggers cascade cleanup
 3. ✅ Service layer không trực tiếp expose DB methods
 4. ✅ Validation trên input trước khi ghi DB
@@ -511,7 +511,7 @@ return asset, nil  // Missing telemetry!
 ```go
 // In asset_strategy.go
 if err == nil {
-    s.lifecycleService.CleanupassetTelemetry([]string{asset.HWID})
+    s.lifecycleService.CleanupassetTelemetry([]string{asset.AssetHWID })
 }
 ```
 

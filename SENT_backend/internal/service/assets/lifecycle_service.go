@@ -20,7 +20,7 @@ type AssetLifecycleService struct{}
 func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID uint, secretKey string) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var asset models.Asset
-		err := tx.Where("hw_id = ?", req.HWID).First(&asset).Error
+		err := tx.Where("asset_hwid = ?", req.AssetHWID).First(&asset).Error
 
 		if err == nil {
 			// Máy cũ: Chuyển về PENDING, cập nhật thông tin và Secret Key mới
@@ -30,7 +30,7 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 		} else {
 			// Máy mới: Tạo mới hoàn toàn với Secret Key
 			asset = models.Asset{
-				HWID: req.HWID, Hostname: req.Hostname, IPAddress: req.IPAddress,
+				AssetHWID: req.AssetHWID, Hostname: req.Hostname, IPAddress: req.IPAddress,
 				OrgID: orgID, Status: "PENDING", LastSeen: time.Now(), SecretKey: secretKey,
 			}
 			tx.Create(&asset)
@@ -39,7 +39,7 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 		// Tạo đơn phê duyệt
 		ticket := models.ApprovalTicket{
 			OrgID: orgID, ModuleType: "ASSET_ENROLL", ActionType: "ENROLL",
-			TargetName: asset.HWID, Status: "PENDING", RequestedBy: "System_Enroll",
+			TargetName: asset.AssetHWID, Status: "PENDING", RequestedBy: "System_Enroll",
 		}
 		return tx.Create(&ticket).Error
 	})
@@ -49,7 +49,7 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 func (s *AssetLifecycleService) CreateBulkDeleteRequest(hwids []string, orgID uint, reason string, requester string) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		// 1. Chuyển trạng thái máy sang PENDING_DELETE trên giao diện
-		tx.Model(&models.Asset{}).Where("hw_id IN ? AND org_id = ?", hwids, orgID).Update("status", "PENDING_DELETE")
+		tx.Model(&models.Asset{}).Where("asset_hwid IN ? AND org_id = ?", hwids, orgID).Update("status", "PENDING_DELETE")
 
 		// 2. Tạo Ticket
 		snap, _ := json.Marshal(map[string]interface{}{"hwids": hwids, "reason": reason})
@@ -68,10 +68,11 @@ func (s *AssetLifecycleService) CreateBulkDeleteRequest(hwids []string, orgID ui
 		return nil
 	})
 }
-func (s *AssetLifecycleService) UpdateDeviceType(hwid string, deviceType string) error {
+func (s *AssetLifecycleService) UpdateDeviceType(hwid string, orgID uint, deviceType string) error {
 	// 1. Cập nhật thông tin trong Database
+	// [SECURITY] Bổ sung org_id để tránh IDOR
 	err := database.DB.Model(&models.Asset{}).
-		Where("hw_id = ?", hwid).
+		Where("asset_hwid = ? AND org_id = ?", hwid, orgID).
 		Update("device_type", deviceType).Error
 
 	if err != nil {
@@ -88,14 +89,15 @@ func (s *AssetLifecycleService) UpdateDeviceType(hwid string, deviceType string)
 // AssignManager: Gán nhân sự phụ trách máy
 func (s *AssetLifecycleService) AssignManager(hwid string, orgID uint, userID uint) error {
 	return database.DB.Model(&models.Asset{}).
-		Where("hw_id = ? AND org_id = ?", hwid, orgID).
+		Where("asset_hwid = ? AND org_id = ?", hwid, orgID).
 		Update("user_id", userID).Error
 
 }
 
-func (s *AssetLifecycleService) CleanupassetTelemetry(hwids []string) {
+func (s *AssetLifecycleService) CleanupassetTelemetry(hwids []string, orgID uint) {
 	ctx := context.TODO()
-	filter := bson.M{"asset_hwid": bson.M{"$in": hwids}}
+	// [SECURITY] Bổ sung org_id để tránh IDOR khi xóa dữ liệu trên MongoDB
+	filter := bson.M{"asset_hwid": bson.M{"$in": hwids}, "org_id": int64(orgID)}
 
 	if database.SoftwareCollection != nil {
 		_, _ = database.SoftwareCollection.DeleteMany(ctx, filter)
@@ -113,6 +115,7 @@ func (s *AssetLifecycleService) CleanupassetTelemetry(hwids []string) {
 		_, _ = database.AssetIOActivityCollection.DeleteMany(ctx, filter)
 	}
 	if database.SecurityAlertCollection != nil {
-		_, _ = database.SecurityAlertCollection.DeleteMany(ctx, bson.M{"hw_id": bson.M{"$in": hwids}})
+		// [FIX] Sử dụng chung filter đã được gia cố bảo mật
+		_, _ = database.SecurityAlertCollection.DeleteMany(ctx, filter)
 	}
 }

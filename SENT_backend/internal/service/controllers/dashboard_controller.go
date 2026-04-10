@@ -34,7 +34,7 @@ type DashboardSummary struct {
 }
 
 type assetRiskView struct {
-	HWID          string  `json:"hwid"`
+	AssetHWID     string  `json:"asset_hwid"`
 	Hostname      string  `json:"hostname"`
 	IPAddress     string  `json:"ip_address"`
 	RiskScore     int     `json:"risk_score"`
@@ -138,7 +138,7 @@ func (dc *DashboardController) FetchDetailedSummary(orgID uint) (*DashboardSumma
 		err := database.DB.Where("org_id = ?", orgID).Order("risk_score desc").Limit(5).Find(&assets).Error
 		for _, a := range assets {
 			summary.TopRiskassets = append(summary.TopRiskassets, assetRiskView{
-				HWID:          a.HWID,
+				AssetHWID:     a.AssetHWID,
 				Hostname:      a.Hostname,
 				IPAddress:     a.IPAddress,
 				RiskScore:     a.RiskScore,
@@ -164,7 +164,7 @@ func (dc *DashboardController) FetchDetailedSummary(orgID uint) (*DashboardSumma
 				summary.RecentAlerts = append(summary.RecentAlerts, AlertView{
 					AlertType: al.AlertType,
 					Severity:  al.Severity,
-					AssetName: al.HWID,
+					AssetName: al.AssetHWID,
 					CreatedAt: al.CreatedAt,
 				})
 			}

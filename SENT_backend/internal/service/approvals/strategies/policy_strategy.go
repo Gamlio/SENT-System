@@ -21,7 +21,7 @@ func (s *PolicyCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTic
 	// - Ghi danh tính người duyệt vào bản ghi Policy (Audit)
 	// - Kích hoạt luật (IsActive = true)
 	// - Chốt chặn OrgID: Chỉ cập nhật nếu Policy đó thuộc về đúng Org của Ticket
-	result := tx.Model(&models.UniversalPolicy{}).
+	result := tx.Model(&models.Policy{}).
 		Where("id = ? AND org_id = ?", ticket.TargetID, ticket.OrgID).
 		Updates(map[string]interface{}{
 			"approval_status": "APPROVED",
@@ -43,7 +43,7 @@ func (s *PolicyCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTic
 
 func (s *PolicyCreateStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
 	// Khi từ chối, ta vẫn nên lưu lại người đã từ chối để làm bằng chứng (Audit)
-	return tx.Model(&models.UniversalPolicy{}).
+	return tx.Model(&models.Policy{}).
 		Where("id = ? AND org_id = ?", ticket.TargetID, ticket.OrgID).
 		Updates(map[string]interface{}{
 			"approval_status": "REJECTED",
@@ -56,7 +56,7 @@ type PolicyDeleteStrategy struct{}
 
 func (s *PolicyDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
 	// Thực hiện xóa thật bản ghi trong DB khi được duyệt
-	return tx.Delete(&models.UniversalPolicy{}, ticket.TargetID).Error
+	return tx.Delete(&models.Policy{}, ticket.TargetID).Error
 }
 
 func (s *PolicyDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
@@ -74,7 +74,7 @@ func (s *PolicyBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approva
 		return err
 	}
 	// Xóa đồng loạt theo danh sách ID đã lưu trong vé
-	return tx.Where("id IN ? AND org_id = ?", data.IDs, ticket.OrgID).Delete(&models.UniversalPolicy{}).Error
+	return tx.Where("id IN ? AND org_id = ?", data.IDs, ticket.OrgID).Delete(&models.Policy{}).Error
 }
 
 func (s *PolicyBulkDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {

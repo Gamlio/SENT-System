@@ -27,7 +27,7 @@ func (s *DocumentService) CreateUploadRequest(orgID uint, title, category, fileN
 		}
 
 		// 2. Tạo Record nháp (PENDING)
-		doc := models.PolicyDocument{
+		doc := models.Document{
 			OrgID:          orgID,
 			Title:          title,
 			FileName:       safeFileName,
@@ -57,7 +57,7 @@ func (s *DocumentService) CreateUploadRequest(orgID uint, title, category, fileN
 
 // CreateUpdateRequest: Tạo đơn yêu cầu cập nhật nội dung/file
 func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, category string, fileName string, fileContent []byte, requester string) error {
-	var doc models.PolicyDocument
+	var doc models.Document
 	if err := database.DB.Where("id = ? AND org_id = ?", docID, orgID).First(&doc).Error; err != nil {
 		return fmt.Errorf("không tìm thấy tài liệu")
 	}
@@ -103,7 +103,7 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 
 // CreateDeleteRequest: Tạo đơn yêu cầu xóa tài liệu (Zero Trust)
 func (s *DocumentService) CreateDeleteRequest(docID uint, orgID uint, requester string) error {
-	var doc models.PolicyDocument
+	var doc models.Document
 	if err := database.DB.Where("id = ? AND org_id = ?", docID, orgID).First(&doc).Error; err != nil {
 		return fmt.Errorf("không tìm thấy tài liệu")
 	}
@@ -122,8 +122,8 @@ func (s *DocumentService) CreateDeleteRequest(docID uint, orgID uint, requester 
 }
 
 // GetDocuments: Lấy danh sách tài liệu theo Org và trạng thái
-func (s *DocumentService) GetDocuments(orgID uint, status string) ([]models.PolicyDocument, error) {
-	var docs []models.PolicyDocument
+func (s *DocumentService) GetDocuments(orgID uint, status string) ([]models.Document, error) {
+	var docs []models.Document
 	query := database.DB.Where("org_id = ?", orgID)
 
 	if status != "" {

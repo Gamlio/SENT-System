@@ -13,8 +13,8 @@ import (
 
 // Payload đón dữ liệu thô
 type assetPayload struct {
-	LogType  string          `json:"log_type" binding:"required,max=50,alphanum"`
-	HWID     string          `json:"hwid" binding:"required,max=64,alphanum"`
+	LogType  string          `json:"log_type" binding:"required,max=50"`
+	AssetID  string          `json:"asset_hwid" binding:"required,max=64"`
 	Hostname string          `json:"hostname" binding:"required,min=1,max=255"`
 	Data     json.RawMessage `json:"data" binding:"required"`
 }
@@ -30,7 +30,7 @@ func PushDataHandler(c *gin.Context) {
 
 	// 2. Xác thực danh tính thiết bị
 	var asset models.Asset
-	if err := database.DB.Where("hw_id = ?", req.HWID).First(&asset).Error; err != nil {
+	if err := database.DB.Where("asset_hwid = ?", req.AssetID).First(&asset).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Thiết bị không tồn tại"})
 		return
 	}
@@ -43,7 +43,7 @@ func PushDataHandler(c *gin.Context) {
 	go assetService.ProcessassetData(assetService.AssetPayload{
 		Type:     "DATA",
 		LogType:  req.LogType,
-		HWID:     req.HWID,
+		AssetID:  req.AssetID,
 		Hostname: req.Hostname,
 		Data:     req.Data,
 	})
@@ -54,7 +54,7 @@ func PushDataHandler(c *gin.Context) {
 func UpdateDepartment(c *gin.Context) {
 	hwid := c.Param("hwid")
 	var req struct {
-		DepartmentTag string `json:"department_tag" binding:"required,min=1,max=50,alphanum-"`
+		DepartmentTag string `json:"department_tag" binding:"required,min=1,max=50,-"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -63,7 +63,7 @@ func UpdateDepartment(c *gin.Context) {
 	}
 
 	// Lưu xuống DB
-	if err := database.DB.Model(&models.Asset{}).Where("hw_id = ?", hwid).Update("department_tag", req.DepartmentTag).Error; err != nil {
+	if err := database.DB.Model(&models.Asset{}).Where("asset_hwid = ?", hwid).Update("department_tag", req.DepartmentTag).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi cập nhật phòng ban"})
 		return
 	}

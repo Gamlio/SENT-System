@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -194,9 +197,9 @@ func assetAuthSecurityMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hwid := c.Param("hwid")
 
-		// Validate HWID format (max 64 alphanumeric)
+		// Validate AssetHWID  format (max 64 eric)
 		if len(hwid) > 64 || !regexp.MustCompile(`^[a-zA-Z0-9]*$`).MatchString(hwid) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid HWID format"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid AssetHWID  format"})
 			c.Abort()
 			return
 		}
@@ -208,9 +211,20 @@ func assetAuthSecurityMiddleware() gin.HandlerFunc {
 // ValidateUserCreationMiddleware: Middleware riêng cho user creation endpoints
 func ValidateUserCreationMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Đọc body request
+		// 1. Đọc toàn bộ nội dung Body dưới dạng mảng byte
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể đọc dữ liệu"})
+			c.Abort()
+			return
+		}
+
+		// 2. [QUAN TRỌNG] Nạp lại dữ liệu vào Body để Handler phía sau (Register/Login) có thể đọc
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		// 3. Phân tích bản sao byte để validate
 		var req map[string]interface{}
-		if err := c.BindJSON(&req); err != nil {
+		if err := json.Unmarshal(bodyBytes, &req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 			c.Abort()
 			return
@@ -264,18 +278,18 @@ func ValidateAssetPayloadMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Validate HWID
+		// Validate AssetHWID
 		hwidRaw, exists := req["hwid"]
 		if exists {
 			hwid, ok := hwidRaw.(string)
 			if !ok {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "HWID must be string"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "AssetHWID  must be string"})
 				c.Abort()
 				return
 			}
 
 			if len(hwid) > 64 || !regexp.MustCompile(`^[a-zA-Z0-9]*$`).MatchString(hwid) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid HWID format"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid AssetHWID  format"})
 				c.Abort()
 				return
 			}
@@ -291,7 +305,7 @@ func ValidateAssetPayloadMiddleware() gin.HandlerFunc {
 				return
 			}
 
-			// LogType must be alphanumeric
+			// LogType must be eric
 			if !regexp.MustCompile(`^[a-zA-Z0-9_]*$`).MatchString(logType) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid LogType format"})
 				c.Abort()

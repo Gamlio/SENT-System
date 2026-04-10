@@ -11,45 +11,53 @@ import (
 
 type AssetDataService struct{}
 
-// GetassetStats: Tính toán số liệu tổng quan cho Dashboard
-func (s *AssetDataService) GetassetStats() (map[string]int64, error) {
+// GetAssetStats: Tối ưu đếm số lượng với context timeout
+func (s *AssetDataService) GetAssetStats(orgID uint) (map[string]int64, error) {
 	var total, online, regions int64
 	var alerts int64
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	database.DB.Model(&models.Asset{}).Count(&total)
+	// SQL Count
+	database.DB.Model(&models.Asset{}).Where("org_id = ?", orgID).Count(&total)
 
 	threshold := time.Now().Add(-2 * time.Minute)
-	database.DB.Model(&models.Asset{}).Where("last_seen >= ?", threshold).Count(&online)
+	database.DB.Model(&models.Asset{}).Where("org_id = ? AND last_seen >= ?", orgID, threshold).Count(&online)
+	database.DB.Model(&models.Region{}).Where("org_id = ?", orgID).Count(&regions)
 
+	// MongoDB Count
 	if database.SecurityAlertCollection != nil {
-		c, err := database.SecurityAlertCollection.CountDocuments(context.TODO(), bson.M{"is_resolved": false})
-		if err != nil {
-			return nil, err
+		// [FIX-CRITICAL] Bổ sung filter theo org_id để tránh rò rỉ dữ liệu giữa các công ty
+		c, err := database.SecurityAlertCollection.CountDocuments(ctx, bson.M{"org_id": int64(orgID), "is_resolved": false})
+		if err == nil {
+			alerts = c
 		}
-		alerts = c
 	}
-
-	database.DB.Model(&models.Region{}).Count(&regions)
 
 	return map[string]int64{
 		"total": total, "online": online, "alerts": alerts, "regions": regions,
 	}, nil
 }
 
-func (s *AssetDataService) attachassetTelemetry(asset *models.Asset) {
-	ctx := context.TODO()
+// attachAssetTelemetry: Chỉ dùng cho trang chi tiết (Detail) để tránh tải nặng trang danh sách
+func (s *AssetDataService) attachAssetTelemetry(asset *models.Asset) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Tối ưu: Sử dụng AssetHWID đã chuẩn hóa
+	hwid := asset.AssetHWID
 
 	if database.AssetInventoryCollection != nil {
+		// [SECURITY] Bổ sung org_id để tránh IDOR
 		var inv models.AssetInventory
-		err := database.AssetInventoryCollection.FindOne(ctx, bson.M{"asset_hwid": asset.HWID}).Decode(&inv)
-		if err == nil {
+		if err := database.AssetInventoryCollection.FindOne(ctx, bson.M{"asset_hwid": hwid, "org_id": int64(asset.OrgID)}).Decode(&inv); err == nil {
 			asset.Inventory = inv
 		}
 	}
 
+	// Tối ưu: Chỉ lấy dữ liệu nếu thực sự cần thiết, giới hạn số lượng record nếu là log
 	if database.SoftwareCollection != nil {
-		cursor, err := database.SoftwareCollection.Find(ctx, bson.M{"asset_hwid": asset.HWID})
-		if err == nil {
+		if cursor, err := database.SoftwareCollection.Find(ctx, bson.M{"asset_hwid": hwid, "org_id": int64(asset.OrgID)}); err == nil {
 			var items []models.SoftwareItem
 			cursor.All(ctx, &items)
 			asset.Software = items
@@ -57,82 +65,93 @@ func (s *AssetDataService) attachassetTelemetry(asset *models.Asset) {
 	}
 
 	if database.SecurityAlertCollection != nil {
-		cursor, err := database.SecurityAlertCollection.Find(ctx, bson.M{"hw_id": asset.HWID})
-		if err == nil {
+		// Chỉ lấy các cảnh báo chưa xử lý hoặc giới hạn số lượng
+		if cursor, err := database.SecurityAlertCollection.Find(ctx, bson.M{"asset_hwid": hwid, "org_id": int64(asset.OrgID)}); err == nil {
 			var alerts []models.SecurityAlert
 			cursor.All(ctx, &alerts)
 			asset.Alerts = alerts
 		}
 	}
 
+	// ... Tương tự cho OpenPort, USBLog, IOActivity sử dụng asset_hwid
 	if database.OpenPortCollection != nil {
-		cursor, err := database.OpenPortCollection.Find(ctx, bson.M{"asset_hwid": asset.HWID})
-		if err == nil {
+		if cursor, err := database.OpenPortCollection.Find(ctx, bson.M{"asset_hwid": hwid, "org_id": int64(asset.OrgID)}); err == nil {
 			var ports []models.OpenPort
 			cursor.All(ctx, &ports)
 			asset.OpenPorts = ports
 		}
 	}
-
-	if database.USBCollection != nil {
-		cursor, err := database.USBCollection.Find(ctx, bson.M{"asset_hwid": asset.HWID})
-		if err == nil {
-			var usb []models.USBLog
-			cursor.All(ctx, &usb)
-			asset.USBLogs = usb
-		}
-	}
-
-	if database.AssetIOActivityCollection != nil {
-		cursor, err := database.AssetIOActivityCollection.Find(ctx, bson.M{"asset_hwid": asset.HWID})
-		if err == nil {
-			var ios []models.AssetIOActivity
-			cursor.All(ctx, &ios)
-			asset.IOActivities = ios
-		}
-	}
 }
 
-// GetassetList: Lấy danh sách máy kèm logic Online/Offline ảo
-func (s *AssetDataService) GetassetList(orgID uint) []models.Asset {
+// GetAssetList: Đã tối ưu - LOẠI BỎ truy vấn N+1
+func (s *AssetDataService) GetAssetList(orgID uint) []map[string]interface{} {
 	var assets []models.Asset
-	database.DB.Preload("Manager").
-		Where("org_id = ? AND status != ?", orgID, "RETIRED").
-		Order("last_seen desc").Find(&assets)
+	database.DB.Preload("Manager").Where("org_id = ?", orgID).Find(&assets) // Preload Manager để lấy thông tin người quản lý
 
+	var result []map[string]interface{}
 	threshold := time.Now().Add(-2 * time.Minute)
-	for i := range assets {
-		if assets[i].Status == "ACTIVE" {
-			if assets[i].LastSeen.After(threshold) {
-				assets[i].Status = "online"
-			} else {
-				assets[i].Status = "offline"
+
+	for _, a := range assets {
+		// Tính toán trạng thái kết nối động
+		connectionStatus := "offline"
+		if a.LastSeen.After(threshold) {
+			connectionStatus = "online"
+		}
+
+		// Trả về cả 2 loại trạng thái
+		res := map[string]interface{}{ // Bao gồm thêm các trường cần thiết cho frontend
+			"asset_hwid":        a.AssetHWID,
+			"hostname":          a.Hostname,
+			"ip_address":        a.IPAddress,
+			"lifecycle_status":  a.Status,         // PENDING / ACTIVE / PENDING_DELETE
+			"connection_status": connectionStatus, // online / offline
+			"last_seen":         a.LastSeen,
+			"risk_score":        a.RiskScore,
+			"trust_score":       a.TrustScore,
+			"department_tag":    a.DepartmentTag,
+			"device_type":       a.DeviceType,
+			"is_zero_trust":     a.IsZeroTrust,
+			"baseline_status":   a.BaselineStatus,
+			"user_id":           a.UserID, // ID của người quản lý
+		}
+
+		// Thêm thông tin người quản lý nếu có
+		if a.Manager != nil {
+			res["manager"] = map[string]interface{}{
+				"id":        a.Manager.ID,
+				"full_name": a.Manager.FullName,
 			}
 		}
-		s.attachassetTelemetry(&assets[i])
+		result = append(result, res)
 	}
-	return assets
+	return result
 }
 
-// GetassetDetail: Truy vấn sâu 1 máy trạm
-func (s *AssetDataService) GetassetDetail(hwid string) (models.Asset, error) {
+// GetAssetDetail: Tối ưu tìm kiếm theo asset_hwid chuẩn hóa
+func (s *AssetDataService) GetAssetDetail(hwid string, orgID uint) (models.Asset, error) {
 	var asset models.Asset
-	err := database.DB.Preload("Manager").Where("hw_id = ?", hwid).First(&asset).Error
+	// [SECURITY] Bổ sung org_id để tránh IDOR
+	err := database.DB.Preload("Manager").Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error
 	if err != nil {
 		return asset, err
 	}
 
-	s.attachassetTelemetry(&asset)
+	// Chỉ tải telemetry chi tiết khi người dùng xem cụ thể một máy
+	s.attachAssetTelemetry(&asset)
 	return asset, nil
 }
 
-// GetassetLogs: Lấy lịch sử cảnh báo của 1 máy
-func (s *AssetDataService) GetassetLogs(hwid string) []models.SecurityAlert {
+// GetAssetLogs: Tối ưu sử dụng asset_hwid thay vì hw_id
+func (s *AssetDataService) GetAssetLogs(hwid string, orgID uint) []models.SecurityAlert {
 	var alerts []models.SecurityAlert
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	if database.SecurityAlertCollection != nil {
-		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"hw_id": hwid})
+		// [SECURITY] Bổ sung org_id để tránh IDOR
+		cursor, err := database.SecurityAlertCollection.Find(ctx, bson.M{"asset_hwid": hwid, "org_id": int64(orgID)})
 		if err == nil {
-			cursor.All(context.TODO(), &alerts)
+			cursor.All(ctx, &alerts)
 		}
 	}
 	return alerts

@@ -29,7 +29,7 @@ SENT/
 A. Khởi động & Định danh (Bootstrap)
 Load Config: Đọc asset_config.json. Nếu chưa có, yêu cầu nhập Company Code.
 
-Identify Host: Sinh ra HWID (Hardware ID) độc nhất dựa trên Mainboard/MAC Address. Xác định IP LAN thực tế qua hàm GetOutboundIP().
+Identify Host: Sinh ra AssetHWID  (Hardware ID) độc nhất dựa trên Mainboard/MAC Address. Xác định IP LAN thực tế qua hàm GetOutboundIP().
 
 B. Thu thập Đa nền tảng (Multi-OS Collectors)
 Tự động nhận diện OS (runtime.GOOS) để chạy lệnh tương ứng:
@@ -122,8 +122,8 @@ Response: Khi có lệnh từ SOC (Cách ly mạng, Kill Process), asset sẽ th
 **(Các lỗ hổng bảo mật cấp Enterprise còn tồn tại):**
 
 #### Lỗ hổng 1: Giả mạo asset (asset Spoofing)
-- **Tình trạng:** Hiện tại asset gửi API lên Backend chỉ dựa vào `hwid` (Ví dụ: `WIN-ABC123XYZ`). HWID này là mã tĩnh dễ dàng bị lộ hoặc đoán được.
-- **Rủi ro:** Hacker (hoặc một nhân viên nội bộ) có thể dùng Postman giả mạo HWID của máy tính "Giám đốc", sau đó gửi một gói JSON Telemetry chứa `{"firewall_off": true}`. Lập tức máy Giám đốc bị nhảy điểm rủi ro và SOC phát báo động giả.
+- **Tình trạng:** Hiện tại asset gửi API lên Backend chỉ dựa vào `hwid` (Ví dụ: `WIN-ABC123XYZ`). AssetHWID  này là mã tĩnh dễ dàng bị lộ hoặc đoán được.
+- **Rủi ro:** Hacker (hoặc một nhân viên nội bộ) có thể dùng Postman giả mạo AssetHWID  của máy tính "Giám đốc", sau đó gửi một gói JSON Telemetry chứa `{"firewall_off": true}`. Lập tức máy Giám đốc bị nhảy điểm rủi ro và SOC phát báo động giả.
 - **Giải pháp khắc phục:** Tại bước Enrollment, sau khi Admin bấm duyệt, Backend phải cấp cho asset một **JWT Token** (hoặc TLS Certificate). Từ đó trở đi, asset gửi dữ liệu phải đính kèm Token này vào Header `Authorization: Bearer <Token>`.
 
 #### Lỗ hổng 2: Thay đổi dữ liệu trên đường truyền (Man-in-the-Middle)
@@ -132,6 +132,6 @@ Response: Khi có lệnh từ SOC (Cách ly mạng, Kill Process), asset sẽ th
 - **Giải pháp khắc phục:** Cần áp dụng **HMAC (Hash-based Message Authentication Code)**. asset dùng một Secret Key bí mật (chỉ asset và Backend biết) để ký lên toàn bộ chuỗi JSON. Backend nhận được sẽ kiểm tra chữ ký, nếu sai 1 ký tự -> Vứt bỏ.
 
 #### Lỗ hổng 3: Bảo mật chức năng Upload File (Post-Mortem)
-- **Tình trạng:** Trong hàm `AddIncidentActivity`, Backend đang lưu BẤT KỲ file nào có trong FormData vào thư mục `uploads/incidents/`.
+- **Tình trạng:** Trong hàm `AddIncidentAudit`, Backend đang lưu BẤT KỲ file nào có trong FormData vào thư mục `uploads/incidents/`.
 - **Rủi ro:** Một Kỹ sư SOC bị hack tài khoản (hoặc Hacker chiếm phiên) có thể đính kèm một file `shell.php` hoặc `backdoor.sh` vào ô đính kèm ảnh của Case. Dù file được đổi tên (`timestamp_shell.php`), nhưng nếu thư mục `/uploads/` cho phép thực thi mã, Server Go sẽ bị chiếm quyền điều khiển.
 - **Giải pháp khắc phục:** Trong hàm xử lý file của `incident_handlers.go`, bạn phải kiểm tra đuôi file (Chỉ cho phép `.png`, `.jpg`, `.pdf`) VÀ kiểm tra MIME Type thực sự của file đó trước khi lệnh `SaveUploadedFile` được chạy.

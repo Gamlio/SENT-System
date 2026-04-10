@@ -24,11 +24,11 @@ const LOG_FILE = "asset_history.log"
 
 // XÓA bỏ trường CompanyCode ở đây
 type Payload struct {
-	Type     string      `json:"type"`
-	LogType  string      `json:"log_type"`
-	HWID     string      `json:"hwid"`
-	Hostname string      `json:"hostname"`
-	Data     interface{} `json:"data"`
+	Type      string      `json:"type"`
+	LogType   string      `json:"log_type"`
+	AssetHWID string      `json:"asset_hwid"`
+	Hostname  string      `json:"hostname"`
+	Data      interface{} `json:"data"`
 }
 
 type Client struct {
@@ -69,11 +69,11 @@ func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, f
 	// Đã xóa config.Current.CompanyCode
 	// Construct the payload for sending data
 	payload := Payload{
-		Type:     "DATA",
-		LogType:  logType,
-		HWID:     hwid,
-		Hostname: hostname,
-		Data:     data,
+		Type:      "DATA",
+		LogType:   logType,
+		AssetHWID: hwid,
+		Hostname:  hostname,
+		Data:      data,
 	}
 
 	jsonBytes, _ := json.Marshal(payload)
@@ -147,12 +147,12 @@ type AlertData struct {
 	Severity  string `json:"severity"`
 }
 
-func (c *Client) SendAlert(hwid, hostname, alertType, message, severity string) {
+func (c *Client) SendAlert(asset_hwid, hostname, alertType, message, severity string) {
 	alertPayload := Payload{
-		Type:     "ALERT",
-		LogType:  "alert",
-		HWID:     hwid,
-		Hostname: hostname,
+		Type:      "ALERT",
+		LogType:   "alert",
+		AssetHWID: asset_hwid,
+		Hostname:  hostname,
 		Data: AlertData{
 			AlertType: alertType,
 			Message:   message,
@@ -177,18 +177,18 @@ func (c *Client) SendAlert(hwid, hostname, alertType, message, severity string) 
 }
 
 // [MỚI] SendBaseline: Xóa bộ nhớ đệm và gửi dữ liệu chuẩn Zero Trust
-func (c *Client) SendBaseline(hwid, hostname, logType string, data interface{}) {
+func (c *Client) SendBaseline(asset_hwid, hostname, logType string, data interface{}) {
 	c.Mutex.Lock()
 	// Xóa dấu vết cũ của loại log này để ép asset gửi lại bản full
 	delete(c.LastHashes, logType)
 	c.Mutex.Unlock()
 
 	// Gửi kèm flag baseline để Backend xử lý vào bảng Baseline riêng
-	c.SendPayload(hwid, hostname, logType+"_baseline", data, false)
+	c.SendPayload(asset_hwid, hostname, logType+"_baseline", data, false)
 }
 
 // [MỚI] ListenForCommands: Lắng nghe lệnh từ Dashboard qua WebSocket
-func (c *Client) StartHybridCommunication(hwid string, onCommand func(string, interface{})) {
+func (c *Client) StartHybridCommunication(asset_hwid string, onCommand func(string, interface{})) {
 	go func() {
 		for {
 			// Tự động suy luận Host từ SERVER_URL thay vì hardcode localhost
@@ -201,7 +201,7 @@ func (c *Client) StartHybridCommunication(hwid string, onCommand func(string, in
 			u := url.URL{Scheme: wsScheme, Host: parsedURL.Host, Path: "/ws"}
 			q := u.Query()
 			q.Set("token", config.Current.SecretKey) // Dùng SecretKey làm phương thức xác thực
-			q.Set("hwid", hwid)
+			q.Set("asset_hwid", asset_hwid)
 			u.RawQuery = q.Encode()
 
 			conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)

@@ -9,7 +9,7 @@ Khi người dùng yêu cầu hiển thị thông tin chi tiết của một ass
 
 ## 1. Xác định Nguồn (Sources)
 * Lấy thông tin cơ bản từ PostgreSQL (bảng assets, Incidents).
-* Xác định các Collection cần truy vấn ở MongoDB dựa trên `assetHWID` (ví dụ: `SoftwareCollection`, `USBCollection`).
+* Xác định các Collection cần truy vấn ở MongoDB dựa trên `assetAssetHWID ` (ví dụ: `SoftwareCollection`, `USBCollection`).
 
 ## 2. Viết Logic Truy vấn (Query Logic)
 * Sử dụng `database.MongoClient` để thực hiện các câu lệnh `Find` hoặc `Aggregate`.

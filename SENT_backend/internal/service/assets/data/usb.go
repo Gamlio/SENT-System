@@ -39,9 +39,9 @@ func ProcessUSB(asset models.Asset, data interface{}) {
 
 	for _, rec := range records {
 		incomingUsbMap[rec.DeviceHash] = true
-		filter := bson.M{"asset_hwid": asset.HWID, "device_hash": rec.DeviceHash}
+		filter := bson.M{"asset_hwid": asset.AssetHWID, "device_hash": rec.DeviceHash}
 		update := bson.M{"$set": bson.M{
-			"asset_hwid":    asset.HWID,
+			"asset_hwid":    asset.AssetHWID,
 			"device_name":   rec.DeviceName,
 			"device_id":     rec.DeviceID,
 			"vid":           rec.VID,
@@ -53,7 +53,7 @@ func ProcessUSB(asset models.Asset, data interface{}) {
 		}}
 		_, _ = database.USBCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true))
 
-		incSvc.TriggerSecurityEvent(asset,
+		incSvc.TriggerSecurityEvent(context.TODO(), asset,
 			"USB Violation",
 			"[P3] Thiết bị ngoại vi mới",
 			fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s)", rec.DeviceName, rec.VID),
@@ -61,7 +61,7 @@ func ProcessUSB(asset models.Asset, data interface{}) {
 		)
 	}
 
-	cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.HWID, "event_type": "CONNECTED"})
+	cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "event_type": "CONNECTED"})
 	if err != nil {
 		return
 	}

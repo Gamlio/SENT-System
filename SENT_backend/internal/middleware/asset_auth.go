@@ -18,26 +18,24 @@ import (
 func assetHMACAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. Lấy chữ ký từ Header
-		signatureHeader := c.GetHeader("X-Signature")
+		signatureHeader := c.GetHeader("X-Sent-Signature")
 		if signatureHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Từ chối truy cập: Thiếu chữ ký (Signature)"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Từ chối truy cập: Thiếu chữ ký (X-Sent-Signature)"})
 			c.Abort()
 			return
 		}
 
-		// 2. Đọc Body (Payload) một cách an toàn
 		bodyBytes, err := c.GetRawData()
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể đọc dữ liệu"})
 			c.Abort()
 			return
 		}
-		// Đẩy body ngược lại vào Request để các hàm phía sau (ShouldBindJSON) còn đọc được
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 		// 3. Lấy HWID từ Body để tìm asset trong DB
 		var payload struct {
-			HWID string `json:"hwid"`
+			HWID string `json:"asset_hwid"`
 		}
 		if err := json.Unmarshal(bodyBytes, &payload); err != nil || payload.HWID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Payload không hợp lệ (Thiếu HWID)"})
@@ -47,7 +45,7 @@ func assetHMACAuth() gin.HandlerFunc {
 
 		// 4. Tìm asset và lấy SecretKey
 		var asset models.Asset
-		if err := database.DB.Where("hw_id = ?", payload.HWID).First(&asset).Error; err != nil {
+		if err := database.DB.Where("asset_hwid = ?", payload.HWID).First(&asset).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "asset không tồn tại trong hệ thống"})
 			c.Abort()
 			return

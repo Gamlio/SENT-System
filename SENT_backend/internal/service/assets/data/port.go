@@ -34,9 +34,9 @@ func ProcessPorts(asset models.Asset, data interface{}) {
 
 	for _, incomingPort := range payload.OpenPorts {
 		incomingPortsMap[incomingPort.Port] = true
-		filter := bson.M{"asset_hwid": asset.HWID, "port": incomingPort.Port}
+		filter := bson.M{"asset_hwid": asset.AssetHWID, "port": incomingPort.Port}
 		update := bson.M{"$set": bson.M{
-			"asset_hwid":   asset.HWID,
+			"asset_hwid":   asset.AssetHWID,
 			"port":         incomingPort.Port,
 			"process_name": incomingPort.ProcessName,
 			"status":       "OPEN",
@@ -46,13 +46,13 @@ func ProcessPorts(asset models.Asset, data interface{}) {
 		_, _ = database.OpenPortCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true))
 
 		if incomingPort.Port == 3389 || incomingPort.Port == 22 || incomingPort.Port == 4444 {
-			incSvc.TriggerSecurityEvent(asset, "Unauthorized Port",
+			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Unauthorized Port",
 				fmt.Sprintf("[P2] Mở cổng quản trị (%d) trái phép", incomingPort.Port),
 				fmt.Sprintf("Tiến trình '%s' đang mở cổng %d.", incomingPort.ProcessName, incomingPort.Port), "P2")
 		}
 	}
 
-	cursor, err := database.OpenPortCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.HWID, "status": "OPEN"})
+	cursor, err := database.OpenPortCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "status": "OPEN"})
 	if err != nil {
 		return
 	}

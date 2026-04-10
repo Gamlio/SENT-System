@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sent_backend/internal/models"
@@ -20,8 +21,8 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) {
 	}
 
 	ioMutex.Lock()
-	lastRecord, exists := ioCache[asset.HWID]
-	ioCache[asset.HWID] = current // Cập nhật giá trị mới nhất vào cache
+	lastRecord, exists := ioCache[asset.AssetHWID]
+	ioCache[asset.AssetHWID] = current // Cập nhật giá trị mới nhất vào cache
 	ioMutex.Unlock()
 
 	if !exists {
@@ -39,7 +40,7 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) {
 
 	if isNetworkSpike || isDiskSpike {
 		// 3. CHỈ LƯU VÀO MongoDB KHI CÓ BẤT THƯỜNG
-		current.AssetHWID = asset.HWID
+		current.AssetHWID = asset.AssetHWID
 
 		// 4. KÍCH HOẠT SỰ CỐ (Chỉ hiển thị ở phần Incidents)
 		incSvc := &incidents.IncidentService{}
@@ -48,7 +49,7 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) {
 			reason = "Phát hiện ghi đĩa khối lượng lớn (Nghi vấn mã hóa Ransomware hoặc Copy dữ liệu)"
 		}
 
-		incSvc.TriggerSecurityEvent(asset,
+		incSvc.TriggerSecurityEvent(context.TODO(), asset,
 			"Data Exfiltration/Intensive I/O",
 			"[P1] Hoạt động I/O bất thường",
 			fmt.Sprintf("%s. Lượng dữ liệu: %d MB/30s", reason, diffSent/1024/1024),

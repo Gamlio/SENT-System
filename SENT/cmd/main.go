@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"time"
 
@@ -33,9 +32,7 @@ func main() {
 
 	hInfo, _ := host.Info()
 
-	// 1. Mẹo Random HWID cho môi trường Test (để giả lập nhiều máy)
-	rand.Seed(time.Now().UnixNano())
-	hwid := fmt.Sprintf("%s-TEST-%d", hInfo.HostID, rand.Intn(9999))
+	AssetHWID := hInfo.HostID
 
 	hostname, _ := os.Hostname()
 	hostname = fmt.Sprintf("%s-Virtual", hostname)
@@ -47,28 +44,34 @@ func main() {
 	// Phải gọi hàm này để nó dừng lại bắt nhập Token nếu chưa có file config!
 	// =========================================================================
 	ipAddress := utils.GetOutboundIP()
-	config.LoadOrBootstrap(hwid, hostname, ipAddress)
+	config.LoadOrBootstrap(AssetHWID, hostname, ipAddress)
 
 	// Từ đoạn này trở xuống giữ nguyên...
 	client := transport.GetAssetClient()
 
 	// [QUAN TRỌNG]: Bật kênh nhận lệnh WebSocket
-	client.StartHybridCommunication(hwid, func(cmdType string, data interface{}) {
+	client.StartHybridCommunication(AssetHWID, func(cmdType string, cmdData interface{}) {
 		fmt.Printf("🎯 [LỆNH] Nhận yêu cầu: %s\n", cmdType)
 
 		switch cmdType {
 		case "TRIGGER_BASELINE":
-			fmt.Println("🚀 Đang thiết lập Baseline chuẩn...")
-			// Thu thập lại Software và gửi Baseline
-			sw, err := (&collector.SoftwareSensor{}).Collect()
-			if err == nil {
-				client.SendBaseline(hwid, hostname, "software", sw)
+			fmt.Println("🔄 Lệnh hệ thống: Đang thiết lập lại Baseline toàn diện...")
+
+			// Duyệt qua tất cả Sensor đã đăng ký trong Registry
+			for _, sensor := range collector.Registry {
+				// Lấy dữ liệu mới nhất từ Sensor
+				sensorData, err := sensor.Collect()
+				if err != nil {
+					fmt.Printf("❌ Lỗi thu thập Baseline cho %s: %v\n", sensor.Name(), err)
+					continue
+				}
+
+				// Gửi dữ liệu dưới dạng Baseline (_baseline)
+				client.SendBaseline(AssetHWID, hostname, sensor.Name(), sensorData)
+				fmt.Printf("✅ Đã cập nhật Baseline cho module: %s\n", sensor.Name())
 			}
 
-			usb, err := (&collector.USBSensor{}).Collect()
-			if err == nil {
-				client.SendBaseline(hwid, hostname, "usb", usb)
-			}
+			fmt.Println("🚀 Hoàn tất đồng bộ Baseline Zero Trust!")
 		case "ISOLATE":
 			// Logic cô lập máy bằng cách tắt toàn bộ kết nối mạng
 			fmt.Println("🛑 Đã nhận lệnh cô lập máy!")
@@ -97,7 +100,7 @@ func main() {
 			}
 
 			go func(logType string, logData interface{}) {
-				status := client.SendPayload(hwid, hostname, logType, logData, false)
+				status := client.SendPayload(AssetHWID, hostname, logType, logData, false)
 				if status == "ISOLATED" {
 					fmt.Println("🚨 [CẢNH BÁO] Máy trạm đã bị Server đưa vào khu vực Cách ly mạng!")
 				}

@@ -44,9 +44,9 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 		uniqueKey := rec.SoftwareName + "_" + rec.FileHash
 		incomingSoftwareMap[uniqueKey] = true
 
-		filter := bson.M{"asset_hwid": asset.HWID, "software_name": rec.SoftwareName, "file_hash": rec.FileHash}
+		filter := bson.M{"asset_hwid": asset.AssetHWID, "software_name": rec.SoftwareName, "file_hash": rec.FileHash}
 		update := bson.M{"$set": bson.M{
-			"asset_hwid":       asset.HWID,
+			"asset_hwid":       asset.AssetHWID,
 			"software_name":    rec.SoftwareName,
 			"version":          rec.Version,
 			"publisher":        rec.Publisher,
@@ -61,21 +61,21 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 
 		// --- CHỈ BÁO ĐỘNG KHI CÓ PHẦN MỀM MỚI ---
 		if rec.FileHash != "" && checkMaliciousHash(rec.FileHash) {
-			incSvc.TriggerSecurityEvent(asset, "Malware Detected", "[P1] Cảnh báo Mã Độc", fmt.Sprintf("Tiến trình: %s", rec.SoftwareName), "P1")
+			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Malware Detected", "[P1] Cảnh báo Mã Độc", fmt.Sprintf("Tiến trình: %s", rec.SoftwareName), "P1")
 		}
 		if rec.Status == "GHOST_REGISTRY" {
-			incSvc.TriggerSecurityEvent(asset, "Defense Evasion", "[P2] Xóa dấu vết phần mềm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P2")
+			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Defense Evasion", "[P2] Xóa dấu vết phần mềm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P2")
 		}
 		if checkBannedSoftware(rec.SoftwareName) {
-			incSvc.TriggerSecurityEvent(asset, "Software Violation", "[P3] Cài đặt phần mềm cấm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P3")
+			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Software Violation", "[P3] Cài đặt phần mềm cấm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P3")
 		}
 		if asset.IsZeroTrust && !VerifySoftware(rec, asset) {
-			incSvc.TriggerSecurityEvent(asset, "Zero Trust Violation", "[P1] Tiến trình lạ xuất hiện", fmt.Sprintf("Chưa phê duyệt: %s", rec.SoftwareName), "P1")
+			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Zero Trust Violation", "[P1] Tiến trình lạ xuất hiện", fmt.Sprintf("Chưa phê duyệt: %s", rec.SoftwareName), "P1")
 		}
 	}
 
 	// 3. CHIỀU ĐÓNG (DIFFING): Tìm các phần mềm vừa bị tắt
-	cursor, err := database.SoftwareCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.HWID, "is_running": true})
+	cursor, err := database.SoftwareCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "is_running": true})
 	if err != nil {
 		return
 	}
@@ -99,19 +99,19 @@ func HandleSoftwareBaseline(asset models.Asset, data interface{}) {
 	}
 
 	if database.SoftwareCollection != nil {
-		_, _ = database.SoftwareCollection.DeleteMany(context.TODO(), bson.M{"asset_hwid": asset.HWID})
+		_, _ = database.SoftwareCollection.DeleteMany(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID})
 	}
 
 	// Whitelist vẫn lưu ở Postgres
 	tx := database.DB.Begin()
 	for _, rec := range records {
 		tx.Create(&models.WhitelistItem{
-			OrgID: asset.OrgID, AssetHWID: asset.HWID, Type: "SOFTWARE_HASH", Value: rec.FileHash, Description: "Baseline: " + rec.SoftwareName,
+			OrgID: asset.OrgID, AssetHWID: asset.AssetHWID, Type: "SOFTWARE_HASH", Value: rec.FileHash, Description: "Baseline: " + rec.SoftwareName,
 		})
 
 		if rec.Publisher != "Unsigned" && rec.Publisher != "" {
 			tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.WhitelistItem{
-				OrgID: asset.OrgID, Type: "PUBLISHER", Value: rec.Publisher, Description: "Trusted Publisher",
+				OrgID: asset.OrgID, AssetHWID: asset.AssetHWID, Type: "PUBLISHER", Value: rec.Publisher, Description: "Trusted Publisher",
 			})
 		}
 	}

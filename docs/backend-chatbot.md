@@ -66,7 +66,7 @@ database.DB.Create(&userLog)
 Gọi `service_ai.ChatWithPolicy(req.Message)`
 
 **Bước 3.1: Thu thập dữ liệu context**
-- **Policies:** Lấy tất cả `UniversalPolicy` có `is_active = true`
+- **Policies:** Lấy tất cả `Policy` có `is_active = true`
 - **Incidents:** Lấy 5 sự cố gần nhất, sắp xếp theo `created_at desc`
 - **Playbook:** Knowledge base cố định về quy trình xử lý sự cố
 

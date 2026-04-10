@@ -11,7 +11,7 @@ Khi nhận yêu cầu về tài liệu hoặc cấu trúc, hãy thực hiện:
 * **Backend Flow:** Mô tả chi tiết từ Request -> Middleware -> Controller -> Service -> Repository -> Database.
 * **Frontend Flow:** Mô tả từ Component -> State Management (Redux/Context) -> API Call -> Render.
 * **Cấu trúc:** Xuất ra sơ đồ dạng Markdown (Mermaid) hoặc danh sách phân cấp file rõ ràng.
-Cross-DB Mapping: Hiểu rằng các field có tag gorm:"-" trong models.go (như Software, Alerts, Inventory) là dữ liệu ảo, cần được truy vấn từ MongoDB dựa trên HWID.
+Cross-DB Mapping: Hiểu rằng các field có tag gorm:"-" trong models.go (như Software, Alerts, Inventory) là dữ liệu ảo, cần được truy vấn từ MongoDB dựa trên AssetHWID .
 
 Phân vùng dữ liệu: Dữ liệu quản trị (User, Org, Policy) nằm ở Postgres; dữ liệu giám sát/logs (USB, Software, Port, IO) nằm ở MongoDB.
 ## 2. Cập nhật & Sửa đổi Cấu trúc (Refactoring)

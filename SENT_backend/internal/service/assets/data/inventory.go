@@ -17,9 +17,9 @@ func ProcessInventory(asset models.Asset, data interface{}) {
 		return
 	}
 
-	assetHWID := asset.HWID
+	assetAssetHWID := asset.AssetHWID
 	update := bson.M{"$set": bson.M{
-		"asset_hwid": assetHWID,
+		"asset_hwid": assetAssetHWID,
 		"os_info":    fmt.Sprintf("%v", invData["os_info"]),
 		"cpu_model":  fmt.Sprintf("%v", invData["cpu_model"]),
 		"updated_at": time.Now(),
@@ -29,5 +29,5 @@ func ProcessInventory(asset models.Asset, data interface{}) {
 		update["$set"].(bson.M)["ram_total_gb"] = int(ramFloat)
 	}
 
-	_, _ = database.AssetInventoryCollection.UpdateOne(context.TODO(), bson.M{"asset_hwid": assetHWID}, update, options.Update().SetUpsert(true))
+	_, _ = database.AssetInventoryCollection.UpdateOne(context.TODO(), bson.M{"asset_hwid": assetAssetHWID}, update, options.Update().SetUpsert(true))
 }

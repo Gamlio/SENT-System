@@ -38,9 +38,9 @@ const IncidentInfoSidebar = ({ incident, onUpdate }) => {
                         </p>
                     </div>
                     <div>
-                        <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">HWID</p>
-                        <p className="text-[10px] text-slate-400 font-mono truncate bg-[#050B14] px-1.5 py-0.5 rounded border border-slate-800 w-max" title={incident.asset_hw_id}>
-                            {incident.asset_hw_id?.substring(0, 12)}...
+                        <p className="text-[9px] text-slate-500 uppercase font-bold mb-0.5">AssetHWID </p>
+                        <p className="text-[10px] text-slate-400 font-mono truncate bg-[#050B14] px-1.5 py-0.5 rounded border border-slate-800 w-max" title={incident.asset_hwid}>
+                            {incident.asset_hwid?.substring(0, 12)}...
                         </p>
                     </div>
                     

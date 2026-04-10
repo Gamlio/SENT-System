@@ -3,10 +3,8 @@
 package collector
 
 import (
-	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
@@ -63,10 +61,6 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 						if err == nil {
 							fileHash = hash
 						}
-						realPublisher := getDigitalSignature(exePath)
-						if realPublisher != "Unsigned" {
-							publisher = realPublisher
-						}
 					}
 				}
 
@@ -86,23 +80,4 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 		}
 	}
 	return softwareList, nil
-}
-
-func getDigitalSignature(exePath string) string {
-	if exePath == "" {
-		return "Unsigned"
-	}
-	cleanPath := strings.Trim(exePath, "\"")
-	psCmd := fmt.Sprintf(`(Get-AuthenticodeSignature "%s").SignerCertificate.Subject`, cleanPath)
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
-	out, err := cmd.Output()
-
-	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
-		return "Unsigned"
-	}
-	parts := strings.Split(string(out), "CN=")
-	if len(parts) > 1 {
-		return strings.Split(parts[1], ",")[0]
-	}
-	return strings.TrimSpace(string(out))
 }

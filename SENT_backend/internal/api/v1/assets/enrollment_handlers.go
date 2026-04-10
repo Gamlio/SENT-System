@@ -22,16 +22,23 @@ func generateSecureToken(length int) string {
 // GetActiveEnrollmentToken (GATE): Lấy mã token hiện tại (nếu còn hạn)
 func GetActiveEnrollmentToken(c *gin.Context) {
 	orgID := c.GetUint("org_id")
-	username, _ := c.Get("username")
+
+	// Lấy tên người dùng từ token (nếu có) để ghi log ai là người tạo
+	usernameVal, _ := c.Get("username")
+	creator := "SYSTEM_AUTO"
+	if usernameVal != nil {
+		creator = usernameVal.(string)
+	}
 
 	var tokenRecord models.EnrollmentToken
 
-	// 1. Tìm token gần nhất còn hạn
-	err := database.DB.Where("org_id = ? AND expires_at > ?", orgID, time.Now()).
+	// 1. Tìm mã token còn hạn
+	err := database.DB.Select("token", "expires_at").
+		Where("org_id = ? AND expires_at > ?", orgID, time.Now()).
 		Order("expires_at desc").
 		First(&tokenRecord).Error
 
-	// 2. Nếu không tìm thấy mã nào còn hạn, tiến hành tạo tự động ngay lập tức
+	// 2. NẾU KHÔNG TÌM THẤY (Hoặc đã hết hạn) -> TỰ ĐỘNG SINH MÃ MỚI
 	if err != nil {
 		randomPart := strings.ToUpper(generateSecureToken(4))
 		tokenString := fmt.Sprintf("SENT-%d-%s", orgID, randomPart)
@@ -39,17 +46,18 @@ func GetActiveEnrollmentToken(c *gin.Context) {
 		tokenRecord = models.EnrollmentToken{
 			Token:     tokenString,
 			OrgID:     orgID,
-			CreatedBy: username.(string),
-			ExpiresAt: time.Now().Add(15 * time.Minute), // Thời hạn 15 phút
+			CreatedBy: creator,
+			ExpiresAt: time.Now().Add(15 * time.Minute), // Mã có thời hạn 15 phút
 		}
 
+		// Lưu vào Database
 		if err := database.DB.Create(&tokenRecord).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Không thể tự động sinh mã cài đặt"})
 			return
 		}
 	}
 
-	// 3. Trả về thông tin mã (dù là mã cũ đang chạy hay mã vừa mới tạo)
+	// 3. Trả về mã (Dù là mã cũ còn hạn hay mã vừa mới tạo)
 	c.JSON(200, gin.H{
 		"token":      tokenRecord.Token,
 		"expires_at": tokenRecord.ExpiresAt,
@@ -92,33 +100,34 @@ func GenerateEnrollmentToken(c *gin.Context) {
 	})
 }
 
-// Enrollasset (GATE): Tiếp nhận đăng ký từ máy trạm
-func Enrollasset(c *gin.Context) {
+// EnrollAsset (GATE): Tiếp nhận đăng ký từ máy trạm
+func EnrollAsset(c *gin.Context) {
 	var req models.EnrollRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
-	// 1. Xác thực Token (Bước bảo vệ cửa ngõ)
 	var tokenRecord models.EnrollmentToken
-	if err := database.DB.Where("token = ? AND expires_at > ?", req.Token, time.Now()).First(&tokenRecord).Error; err != nil {
+	// TỐI ƯU: Chỉ cần kiểm tra sự tồn tại (Exists), không cần lấy cả record nếu chỉ để check
+	err := database.DB.Select("org_id").
+		Where("token = ? AND expires_at > ?", req.Token, time.Now()).
+		First(&tokenRecord).Error
+
+	if err != nil {
 		c.JSON(401, gin.H{"error": "Mã cài đặt không hợp lệ hoặc đã hết hạn"})
 		return
 	}
 
-	// 2. Sinh Secret Key ngẫu nhiên cho máy này (Ví dụ dùng hàm có sẵn)
 	newSecretKey := generateSecureToken(16)
-
-	// 3. Gọi Service để lưu asset kèm SecretKey vào DB
 	svc := &assetSvc.AssetLifecycleService{}
-	// Bạn cần sửa hàm này trong lifecycle_service.go để nhận thêm tham số secretKey
+
+	// Sử dụng AssetHWID đã chuẩn hóa trong request
 	if err := svc.EnrollWithKey(req, tokenRecord.OrgID, newSecretKey); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	// [QUAN TRỌNG]: Trả về Key cho asset
 	c.JSON(200, gin.H{
 		"message":    "Đăng ký thành công",
 		"secret_key": newSecretKey,

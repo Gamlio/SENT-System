@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Bot, Loader2, Sparkles, ShieldAlert, CheckCircle, Activity, Terminal } from 'lucide-react';
-import axiosInstance from '../../../../api/axios';
+import axiosInstance from '../../../api/axios';
 
 const IncidentPlaybook = ({ incident, onUpdate }) => {
     const [analyzing, setAnalyzing] = useState(false);

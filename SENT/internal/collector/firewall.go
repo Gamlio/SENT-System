@@ -4,6 +4,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/StackExchange/wmi"
 )
 
 // 1. Khai báo Struct cho Sensor
@@ -21,28 +23,45 @@ func (s *FirewallSensor) Name() string {
 
 // 4. Đưa logic cũ vào hàm Collect()
 func (s *FirewallSensor) Collect() (interface{}, error) {
-	isOff := false
-	var cmd *exec.Cmd
-
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "netsh advfirewall show allprofiles state")
+		type MSFT_NetFirewallProfile struct {
+			Enabled bool
+		}
+		var profiles []MSFT_NetFirewallProfile
+		q := wmi.CreateQuery(&profiles, "")
+		// Truy vấn WMI. Nếu lỗi (VD: service WMI tắt), mặc định là an toàn (không off) để tránh báo động giả.
+		if err := wmi.Query(q, &profiles, nil, `ROOT\StandardCimv2`); err != nil {
+			return FirewallRecord{FirewallOff: false}, nil
+		}
+
+		for _, profile := range profiles {
+			if !profile.Enabled {
+				// Nếu bất kỳ profile nào bị tắt, coi như firewall đang off.
+				return FirewallRecord{FirewallOff: true}, nil
+			}
+		}
+		// Tất cả profile đều đang bật.
+		return FirewallRecord{FirewallOff: false}, nil
+
 	case "linux":
 		// Cảnh báo: Logic này chỉ check 'ufw'. Linux có thể dùng firewalld, iptables.
-		cmd = exec.Command("ufw", "status")
+		cmd := exec.Command("ufw", "status")
+		out, err := cmd.Output()
+		if err == nil && strings.Contains(strings.ToLower(string(out)), "inactive") {
+			return FirewallRecord{FirewallOff: true}, nil
+		}
+		return FirewallRecord{FirewallOff: false}, nil
+
 	case "darwin":
-		cmd = exec.Command("/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate")
+		cmd := exec.Command("/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate")
+		out, err := cmd.Output()
+		if err == nil && strings.Contains(strings.ToLower(string(out)), "disabled") {
+			return FirewallRecord{FirewallOff: true}, nil
+		}
+		return FirewallRecord{FirewallOff: false}, nil
+
 	default:
 		return FirewallRecord{FirewallOff: false}, nil // Hệ điều hành không hỗ trợ
 	}
-
-	out, err := cmd.Output()
-	// Tương tự Antivirus, lỗi command không tồn tại không nên làm dừng asset.
-	// Sẽ log trong tương lai, hiện tại chỉ kiểm tra output nếu không có lỗi.
-	if err == nil {
-		output := strings.ToLower(string(out))
-		isOff = strings.Contains(output, "off") || strings.Contains(output, "inactive") || strings.Contains(output, "disabled")
-	}
-
-	return FirewallRecord{FirewallOff: isOff}, nil
 }
