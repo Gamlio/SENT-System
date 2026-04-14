@@ -5,8 +5,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
+
+	"SENT/internal/policy"
 
 	"github.com/shirou/gopsutil/v3/process"
 )
@@ -31,6 +34,49 @@ func (s *SoftwareSensor) Collect() (interface{}, error) {
 	runningProcs := getRunningProcesses()
 	// Hàm getOSSoftware sẽ tự động được Go gọi đúng file tùy theo lúc build
 	return getOSSoftware(runningProcs) // Hàm này cần trả về (interface{}, error)
+}
+
+// EnforceSoftwarePolicy kiểm tra các tiến trình đang chạy với blacklist và chấm dứt chúng.
+// Hàm này nên được gọi trong một goroutine riêng, chạy thường xuyên (ví dụ: mỗi 10 giây).
+func EnforceSoftwarePolicy() {
+	blacklist := policy.GetBlacklistedSoftware()
+	if len(blacklist) == 0 {
+		return // Không có chính sách nào để thực thi
+	}
+
+	// Tạo một map để tra cứu nhanh hơn
+	blacklistMap := make(map[string]bool)
+	for _, name := range blacklist {
+		blacklistMap[name] = true
+	}
+
+	procs, err := process.Processes()
+	if err != nil {
+		log.Printf("Lỗi lấy danh sách tiến trình để kiểm tra chính sách: %v", err)
+		return
+	}
+
+	for _, p := range procs {
+		name, err := p.Name()
+		if err != nil {
+			continue
+		}
+
+		// Kiểm tra xem tên tiến trình có trong blacklist không
+		// So sánh cả tên gốc (ví dụ: utorrent.exe) và tên đã loại bỏ .exe (ví dụ: utorrent)
+		procNameLower := strings.ToLower(name)
+		if blacklistMap[procNameLower] || blacklistMap[strings.TrimSuffix(procNameLower, ".exe")] {
+			log.Printf("PHÁT HIỆN VI PHẠM: Tiến trình '%s' (PID: %d) nằm trong blacklist. Đang chấm dứt...", name, p.Pid)
+
+			// Chấm dứt tiến trình
+			if err := p.Terminate(); err != nil {
+				log.Printf("Lỗi khi chấm dứt tiến trình '%s': %v", name, err)
+			} else {
+				log.Printf("Đã chấm dứt thành công tiến trình '%s'.", name)
+				// Tại đây, có thể gửi một cảnh báo tức thời về backend
+			}
+		}
+	}
 }
 
 // --- CÁC HÀM DÙNG CHUNG ---

@@ -173,8 +173,8 @@ type Incident struct {
 	// [MỚI THÊM] Báo cáo sau khi đóng Case
 	ResolutionSummary string `json:"resolution_summary" gorm:"type:text"`
 	// Alerts liên quan
-	Alerts []SecurityAlert `gorm:"-" json:"alerts"` // Virtual field, dữ liệu lấy từ MongoDB
-
+	Alerts        []SecurityAlert `gorm:"-" json:"alerts"` // Virtual field, dữ liệu lấy từ MongoDB
+	LastAuditHash string          `json:"last_audit_hash"` // Lưu hash của bản ghi audit mới nhất để làm Golden Hash cho chuỗi kế tiếp
 	// [MỚI] Link sang bảng hoạt động
 	Activities       []IncidentAudit `gorm:"-" json:"activities"` // Virtual field, dữ liệu lấy từ MongoDB
 	PlaybookProgress string          `json:"playbook_progress" gorm:"type:text"`

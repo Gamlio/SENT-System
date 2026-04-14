@@ -2,7 +2,6 @@ package collector
 
 import (
 	"SENT/internal/utils"
-	"log"
 
 	psnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
@@ -34,19 +33,22 @@ func (s *PortSensor) Collect() (interface{}, error) {
 		return nil, err
 	}
 	var openPorts []OpenPortInfo
+
+	// Snapshot toàn bộ process một lần duy nhất để tối ưu hiệu năng đối chiếu
+	procs, _ := process.Processes()
+	procMap := make(map[int32]string)
+	for _, p := range procs {
+		if name, err := p.Name(); err == nil {
+			procMap[p.Pid] = name
+		}
+	}
+
 	for _, conn := range connections {
 		if conn.Status == "LISTEN" {
 			procName := "system" // Mặc định là system nếu không tìm thấy PID hoặc có lỗi
 			if conn.Pid > 0 {
-				p, err := process.NewProcess(conn.Pid)
-				if err == nil {
-					name, err := p.Name()
-					if err == nil {
-						procName = name
-					}
-				} else {
-					// Ghi log lỗi nếu cần, ví dụ process đã kết thúc trước khi kịp lấy tên
-					log.Printf("Không thể lấy thông tin process cho PID %d: %v", conn.Pid, err)
+				if name, exists := procMap[conn.Pid]; exists && name != "" {
+					procName = name
 				}
 			}
 			openPorts = append(openPorts, OpenPortInfo{

@@ -55,14 +55,14 @@ func ProcessassetData(payload AssetPayload) {
 	}
 
 	// Frontend assetDetail.jsx sẽ nhận tin này và tự fetchDetail() lại
-	websocket.GlobalHub.Broadcast(map[string]interface{}{
+	websocket.GlobalHub.BroadcastToOrg(asset.OrgID, map[string]interface{}{
 		"type": "ASSET_UPDATE",
 		"hwid": payload.AssetID,
 	})
 
 	// Nếu là Baseline xong, báo tin riêng
 	if payload.LogType == "software_baseline" {
-		websocket.GlobalHub.Broadcast(map[string]interface{}{
+		websocket.GlobalHub.BroadcastToOrg(asset.OrgID, map[string]interface{}{
 			"type": "BASELINE_COMPLETED",
 			"hwid": payload.AssetID,
 		})

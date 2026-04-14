@@ -25,6 +25,13 @@ type assetSoftwareRecord struct {
 	IsRunning       bool   `json:"is_running"`
 }
 
+// softwareViolation: Struct để giữ chi tiết vi phạm, phục vụ cho việc gom nhóm (batching).
+type softwareViolation struct {
+	Name     string
+	Type     string // Ví dụ: "Malware Detected", "Software Violation"
+	Priority string
+}
+
 func ProcessSoftware(asset models.Asset, data interface{}) {
 	bytes, _ := json.Marshal(data)
 	var records []assetSoftwareRecord
@@ -37,8 +44,8 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 
 	incSvc := &incidents.IncidentService{}
 
-	// 1. TẠO MAP ĐỂ LƯU CÁC TIẾN TRÌNH ĐANG CHẠY (Dùng Tên + Hash làm khóa để tránh trùng)
 	incomingSoftwareMap := make(map[string]bool)
+	var violations []softwareViolation // Slice để thu thập tất cả vi phạm từ payload này
 
 	for _, rec := range records {
 		uniqueKey := rec.SoftwareName + "_" + rec.FileHash
@@ -59,22 +66,61 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 
 		_, _ = database.SoftwareCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true))
 
-		// --- CHỈ BÁO ĐỘNG KHI CÓ PHẦN MỀM MỚI ---
+		// [FIX-EVENT-STORM] Thay vì gọi TriggerSecurityEvent ngay lập tức, chúng ta thu thập các vi phạm.
 		if rec.FileHash != "" && checkMaliciousHash(rec.FileHash) {
-			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Malware Detected", "[P1] Cảnh báo Mã Độc", fmt.Sprintf("Tiến trình: %s", rec.SoftwareName), "P1")
+			violations = append(violations, softwareViolation{Name: rec.SoftwareName, Type: "Malware Detected", Priority: "P1"})
 		}
 		if rec.Status == "GHOST_REGISTRY" {
-			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Defense Evasion", "[P2] Xóa dấu vết phần mềm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P2")
+			violations = append(violations, softwareViolation{Name: rec.SoftwareName, Type: "Defense Evasion", Priority: "P2"})
 		}
 		if checkBannedSoftware(rec.SoftwareName) {
-			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Software Violation", "[P3] Cài đặt phần mềm cấm", fmt.Sprintf("Phần mềm: %s", rec.SoftwareName), "P3")
+			violations = append(violations, softwareViolation{Name: rec.SoftwareName, Type: "Software Violation", Priority: "P3"})
 		}
 		if asset.IsZeroTrust && !VerifySoftware(rec, asset) {
-			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Zero Trust Violation", "[P1] Tiến trình lạ xuất hiện", fmt.Sprintf("Chưa phê duyệt: %s", rec.SoftwareName), "P1")
+			violations = append(violations, softwareViolation{Name: rec.SoftwareName, Type: "Zero Trust Violation", Priority: "P1"})
 		}
 	}
 
-	// 3. CHIỀU ĐÓNG (DIFFING): Tìm các phần mềm vừa bị tắt
+	// [FIX-EVENT-STORM] Nếu có bất kỳ vi phạm nào, xử lý chúng như một sự kiện duy nhất.
+	if len(violations) > 0 {
+		highestPriority := "P4"
+		highestAlertType := "Software Violation" // Mặc định
+		priorityMap := map[string]int{"P1": 4, "P2": 3, "P3": 2, "P4": 1}
+
+		groupedViolations := make(map[string][]string)
+		for _, v := range violations {
+			groupedViolations[v.Type] = append(groupedViolations[v.Type], v.Name)
+			// Tìm ra vi phạm có mức độ ưu tiên cao nhất để làm "mồi" cho việc gom nhóm Incident
+			if priorityMap[v.Priority] > priorityMap[highestPriority] {
+				highestPriority = v.Priority
+				highestAlertType = v.Type
+			}
+		}
+
+		var descriptionBuilder strings.Builder
+		descriptionBuilder.WriteString(fmt.Sprintf("Phát hiện %d vi phạm phần mềm trên máy trạm. ", len(violations)))
+
+		// Xây dựng một chuỗi mô tả chi tiết, tổng hợp tất cả các lỗi
+		if names, ok := groupedViolations["Malware Detected"]; ok {
+			descriptionBuilder.WriteString(fmt.Sprintf("Mã độc (%d): %s. ", len(names), strings.Join(names, ", ")))
+		}
+		if names, ok := groupedViolations["Zero Trust Violation"]; ok {
+			descriptionBuilder.WriteString(fmt.Sprintf("Tiến trình lạ (%d): %s. ", len(names), strings.Join(names, ", ")))
+		}
+		if names, ok := groupedViolations["Defense Evasion"]; ok {
+			descriptionBuilder.WriteString(fmt.Sprintf("Xóa dấu vết (%d): %s. ", len(names), strings.Join(names, ", ")))
+		}
+		if names, ok := groupedViolations["Software Violation"]; ok {
+			descriptionBuilder.WriteString(fmt.Sprintf("Phần mềm cấm (%d): %s. ", len(names), strings.Join(names, ", ")))
+		}
+
+		title := fmt.Sprintf("[%s] Phát hiện nhiều vi phạm phần mềm", highestPriority)
+
+		// Chỉ gọi TriggerSecurityEvent một lần duy nhất với dữ liệu đã được tổng hợp.
+		incSvc.TriggerSecurityEvent(context.TODO(), asset, highestAlertType, title, descriptionBuilder.String(), highestPriority)
+	}
+
+	// CHIỀU ĐÓNG (DIFFING): Tìm các phần mềm vừa bị tắt
 	cursor, err := database.SoftwareCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "is_running": true})
 	if err != nil {
 		return

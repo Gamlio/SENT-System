@@ -129,23 +129,40 @@ func UpdateDeviceType(c *gin.Context) {
 
 func TriggerBaseline(c *gin.Context) {
 	hwid := c.Param("hwid")
+	// [SECURITY] Lấy orgID từ context để đảm bảo đúng phạm vi truy cập
+	orgID := c.GetUint("org_id")
 
-	websocket.GlobalHub.Mu.Lock()
-	_, isOnline := websocket.GlobalHub.Clients[hwid]
-	websocket.GlobalHub.Mu.Unlock()
+	// [FIX-IDOR] Thêm bước xác thực chéo: hwid có thuộc orgID của user không?
+	// Đây là chốt chặn quan trọng nhất để chống lại việc user công ty A ra lệnh cho máy công ty B.
+	var asset models.Asset
+	if err := database.DB.Select("asset_hwid").Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error; err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền truy cập vào máy trạm này hoặc máy trạm không tồn tại."})
+		return
+	}
 
-	if !isOnline {
+	// Kiểm tra xem máy có online không.
+	websocket.GlobalHub.Mu.RLock()
+	orgClients, orgExists := websocket.GlobalHub.ClientsByOrg[orgID]
+	_, clientExists := false, false
+	if orgExists {
+		_, clientExists = orgClients[hwid]
+	}
+	websocket.GlobalHub.Mu.RUnlock()
+
+	if !clientExists {
+		// Sau khi đã xác thực quyền ở trên, ta có thể chắc chắn lỗi ở đây là do máy offline.
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Máy trạm hiện đang Offline"})
 		return
 	}
 
-	websocket.GlobalHub.PushCommand(hwid, gin.H{
+	websocket.GlobalHub.PushCommand(orgID, hwid, gin.H{
 		"type": "TRIGGER_BASELINE",
 		"data": gin.H{"requester": "Admin"},
 	})
 
 	// TRUY VẤN CHUẨN: Đổi hw_id -> asset_hwid
-	database.DB.Model(&models.Asset{}).Where("asset_hwid = ?", hwid).Update("baseline_status", "SCANNING")
+	// [SECURITY] Thêm điều kiện org_id vào câu lệnh update
+	database.DB.Model(&models.Asset{}).Where("asset_hwid = ? AND org_id = ?", hwid, orgID).Update("baseline_status", "SCANNING")
 
 	go func(targetAssetHWID string) {
 		time.Sleep(5 * time.Second)

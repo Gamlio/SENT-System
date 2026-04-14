@@ -12,6 +12,7 @@ import (
 
 func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 	var softwareList []SoftwareRecord
+	newMetas := make(map[string]FileMetadata) // Map lưu các file cần update hash
 	paths := []string{
 		`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`,
 		`SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`,
@@ -57,9 +58,23 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 					exePath := strings.Split(displayIcon, ",")[0]
 					exePath = strings.Trim(exePath, "\"")
 					if strings.HasSuffix(strings.ToLower(exePath), ".exe") {
-						hash, err := calculateSHA256(exePath)
+						// [SMART-DELTA] Start of the new logic
+						fileInfo, err := os.Stat(exePath)
 						if err == nil {
-							fileHash = hash
+							oldMeta, found := GetFileMetadata(exePath)
+
+							if !found || fileInfo.ModTime() != oldMeta.ModTime || fileInfo.Size() != oldMeta.Size {
+								// File is new or has changed, so re-hash it.
+								hash, err := calculateSHA256(exePath)
+								if err == nil {
+									fileHash = hash
+									// Update metadata in DB after successful hashing
+									newMetas[exePath] = FileMetadata{ModTime: fileInfo.ModTime(), Size: fileInfo.Size(), Hash: hash}
+								}
+							} else {
+								// File has not changed, use the cached hash.
+								fileHash = oldMeta.Hash
+							}
 						}
 					}
 				}
@@ -79,5 +94,11 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 			sk.Close()
 		}
 	}
+
+	// Ghi đĩa 1 lần duy nhất cho toàn bộ các phần mềm mới/có thay đổi
+	if len(newMetas) > 0 {
+		UpdateFileMetadataBatch(newMetas)
+	}
+
 	return softwareList, nil
 }

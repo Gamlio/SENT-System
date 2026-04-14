@@ -105,8 +105,7 @@ func (s *IncidentService) TriggerSecurityEvent(ctx context.Context, asset models
 				IPAddress:  "0.0.0.0", // Mặc định nếu không có IP Sensor
 				CreatedAt:  time.Now(),
 			}
-			audit.GenerateAuditHash()
-			database.IncidentAuditCollection.InsertOne(ctx, audit)
+			return s.createAndChainAudit(ctx, tx, &audit)
 		}
 		return nil
 	})

@@ -51,7 +51,7 @@ func (s *ApprovalService) ProcessReview(ticketID uint, status string, note strin
 		if processErr != nil {
 			return fmt.Errorf("lỗi thực thi nghiệp vụ: %v", processErr)
 		}
-		websocket.GlobalHub.Broadcast(map[string]interface{}{
+		websocket.GlobalHub.BroadcastToOrg(ticket.OrgID, map[string]interface{}{
 			"type": "REFRESH_APPROVALS",
 		})
 		return nil

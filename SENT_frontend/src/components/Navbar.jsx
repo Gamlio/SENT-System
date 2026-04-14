@@ -29,9 +29,17 @@ const Navbar = ({ onOpenCopilot }) => {
     // STATES CHO USER DROPDOWN
     const [showUserDropdown, setShowUserDropdown] = useState(false);
     const userDropdownRef = useRef(null);
-    
-    const userString = localStorage.getItem('user');
-    const user = userString ? JSON.parse(userString) : { full_name: 'SOC Analyst', role: 'admin', department_tag: 'SOC_L1' };
+
+    // [FIX-CRASH] An toàn khi parse dữ liệu user từ localStorage
+    const user = (() => {
+        try {
+            const userString = localStorage.getItem('user');
+            return userString ? JSON.parse(userString) : { full_name: 'SOC Analyst', role: 'admin', department_tag: 'SOC_L1' };
+        } catch (error) {
+            console.error("Lỗi parse dữ liệu user từ localStorage:", error);
+            return { full_name: 'SOC Analyst', role: 'admin', department_tag: 'SOC_L1' }; // Fallback
+        }
+    })();
 
     // CẬP NHẬT SỐ THÔNG BÁO CHƯA ĐỌC
     useEffect(() => {

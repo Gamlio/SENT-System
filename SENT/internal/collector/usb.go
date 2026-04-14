@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // Khai báo các biểu thức chính quy (Regex) ở cấp package để biên dịch một lần duy nhất.
@@ -42,14 +44,17 @@ func (s *USBSensor) Name() string {
 func (s *USBSensor) Collect() (interface{}, error) {
 	var usbList []USBRecord
 
+	// [FIX-WMI-HANG] Đặt timeout 10 giây cho các lệnh OS để tránh treo Agent
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	if runtime.GOOS == "windows" {
-		// Dùng PowerShell WMI lấy thông tin thiết bị PNP thuộc nhóm USB
 		psCommand := `
 			$usb = Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -match '^USB' -and $_.Status -eq 'OK' }
 			if ($usb.Count -eq 0) { Write-Output "[]"; exit }
 			$usb | Select-Object Name, PNPDeviceID | ConvertTo-Json -Compress
 		`
-		cmd := exec.Command("powershell", "-NoProfile", "-Command", psCommand)
+		cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", psCommand)
 		output, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("lỗi thực thi lệnh PowerShell: %w", err)
@@ -90,7 +95,7 @@ func (s *USBSensor) Collect() (interface{}, error) {
 
 	if runtime.GOOS == "linux" {
 		// Sử dụng lsusb trên Linux (Định dạng: Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub)
-		cmd := exec.Command("lsusb")
+		cmd := exec.CommandContext(ctx, "lsusb")
 		output, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("lỗi thực thi lsusb: %w", err)
@@ -129,7 +134,7 @@ func (s *USBSensor) Collect() (interface{}, error) {
 
 	if runtime.GOOS == "darwin" {
 		// macOS: Dùng system_profiler xuất ra JSON
-		cmd := exec.Command("system_profiler", "SPUSBDataType", "-json")
+		cmd := exec.CommandContext(ctx, "system_profiler", "SPUSBDataType", "-json")
 		output, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("lỗi thực thi system_profiler: %w", err)

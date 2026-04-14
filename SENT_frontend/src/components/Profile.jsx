@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { 
     User, Mail, Briefcase, Phone, Zap, Fingerprint, Activity, Clock,
     Monitor, ShieldCheck, FileText, Server, Shield, Lock, AlertTriangle
@@ -7,6 +8,7 @@ import {
 
 const Profile = () => {
     const navigate = useNavigate();
+    const { user: authUser } = useAuth();
     
     // 1. STATE AN TOÀN TRÁNH LỖI UNDEFINED
     const [user, setUser] = useState({
@@ -20,18 +22,12 @@ const Profile = () => {
         created_at: new Date().toISOString()
     });
 
-    // 2. PARSE LOCALSTORAGE AN TOÀN TRONG USEEFFECT
+    // 2. Lấy dữ liệu user từ AuthContext, loại bỏ việc truy cập localStorage và JSON.parse trực tiếp
     useEffect(() => {
-        try {
-            const userString = localStorage.getItem('user');
-            if (userString) {
-                const parsedUser = JSON.parse(userString);
-                setUser(prev => ({ ...prev, ...parsedUser }));
-            }
-        } catch (error) {
-            console.error("Lỗi parse dữ liệu User:", error);
+        if (authUser) {
+            setUser(prev => ({ ...prev, ...authUser }));
         }
-    }, []);
+    }, [authUser]);
 
     const getRoleBadge = (role) => {
         if (role === 'admin') return 'text-purple-400 border-purple-500/30 bg-purple-500/10 shadow-[0_0_10px_rgba(168,85,247,0.2)]';

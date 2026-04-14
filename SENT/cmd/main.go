@@ -12,6 +12,7 @@ import (
 	"SENT/internal/collector"
 	"SENT/internal/config"
 	"SENT/internal/transport"
+
 	"SENT/internal/utils"
 )
 
@@ -21,8 +22,7 @@ func main() {
 		if r := recover(); r != nil {
 			fmt.Printf("\n🚨 [LỖI NGHIÊM TRỌNG]: %v\n", r)
 		}
-		fmt.Println("\nNhấn Enter để thoát...")
-		fmt.Scanln()
+		log.Println("Agent đang tự động khởi động lại hoặc thoát do lỗi...")
 	}()
 
 	// [QUAN TRỌNG] Kiểm tra quyền Admin/Root trước khi làm bất cứ điều gì

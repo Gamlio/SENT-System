@@ -64,7 +64,7 @@ func (s *AssetLifecycleService) CreateBulkDeleteRequest(hwids []string, orgID ui
 		}
 
 		// 3. Thông báo Real-time cho Admin qua WebSocket
-		websocket.GlobalHub.Broadcast(map[string]interface{}{"type": "REFRESH_ASSET_LIST"})
+		websocket.GlobalHub.BroadcastToOrg(orgID, map[string]interface{}{"type": "REFRESH_ASSET_LIST"})
 		return nil
 	})
 }

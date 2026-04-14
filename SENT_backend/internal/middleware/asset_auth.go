@@ -51,12 +51,6 @@ func assetHMACAuth() gin.HandlerFunc {
 			return
 		}
 
-		// Nếu máy chưa có Secret Key (Đang Pending), tạm cho qua để xử lý Zero-Trust ở Processor
-		if asset.SecretKey == "" {
-			c.Next()
-			return
-		}
-
 		// 5. Tính toán lại mã băm HMAC-SHA256
 		mac := hmac.New(sha256.New, []byte(asset.SecretKey))
 		mac.Write(bodyBytes)
@@ -69,6 +63,10 @@ func assetHMACAuth() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		// Bơm thông tin asset vào context để các handler sau sử dụng
+		c.Set("asset_hwid", asset.AssetHWID)
+		c.Set("org_id", asset.OrgID)
 
 		c.Next()
 	}

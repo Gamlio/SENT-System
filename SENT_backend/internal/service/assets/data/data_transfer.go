@@ -7,11 +7,37 @@ import (
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
 	"sync"
+	"time"
 )
 
 // Cache lưu giá trị cũ để tính toán Delta (tốc độ)
 var ioCache = make(map[string]models.AssetIOActivity)
 var ioMutex sync.Mutex
+
+// init: Khởi chạy một goroutine để dọn dẹp cache định kỳ, chống rò rỉ bộ nhớ.
+func init() {
+	// Chạy một tiến trình dọn dẹp mỗi 10 phút.
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			cleanupExpiredCache()
+		}
+	}()
+}
+
+// cleanupExpiredCache: Xóa các entry trong ioCache của các máy trạm không hoạt động quá 5 phút.
+func cleanupExpiredCache() {
+	ioMutex.Lock()
+	defer ioMutex.Unlock()
+
+	threshold := 5 * time.Minute
+	for hwid, record := range ioCache {
+		if time.Since(record.Timestamp) > threshold {
+			delete(ioCache, hwid)
+		}
+	}
+}
 
 func ProcessDataTransfer(asset models.Asset, data interface{}) {
 	var current models.AssetIOActivity
@@ -19,6 +45,9 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) {
 	if err := json.Unmarshal(bytes, &current); err != nil {
 		return
 	}
+	// Gán timestamp hiện tại vì payload từ agent không chứa thông tin này.
+	// Đây là mốc thời gian để logic dọn dẹp cache hoạt động.
+	current.Timestamp = time.Now()
 
 	ioMutex.Lock()
 	lastRecord, exists := ioCache[asset.AssetHWID]

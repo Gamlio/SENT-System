@@ -11,6 +11,18 @@ const AuditTrailItem = ({ audit }) => {
         else alert("Xác thực thành công: Dữ liệu nguyên bản.");
     };
 
+    // [FIX-CRASH] Hàm parse và định dạng JSON một cách an toàn
+    const safeFormatJSON = (jsonString) => {
+        if (!jsonString) return null;
+        try {
+            const obj = JSON.parse(jsonString);
+            return JSON.stringify(obj, null, 2);
+        } catch (error) {
+            // Nếu parse lỗi, trả về chuỗi gốc để người dùng vẫn thấy được dữ liệu thô
+            return jsonString;
+        }
+    };
+
     return (
         <div className="relative pl-6 pb-6 border-l border-slate-800 last:pb-0">
             {/* Dot Icon */}
@@ -39,7 +51,7 @@ const AuditTrailItem = ({ audit }) => {
                             <span className="flex items-center gap-1"><ShieldCheck size={10}/> Technical Evidence</span>
                             <button onClick={() => verifyHash(audit.id)} className="text-slate-500 hover:text-indigo-400 underline uppercase text-[8px]">Verify Hash</button>
                         </div>
-                        <pre className="text-slate-400 overflow-x-auto">{JSON.stringify(JSON.parse(audit.evidence_data), null, 2)}</pre>
+                        <pre className="text-slate-400 overflow-x-auto">{safeFormatJSON(audit.evidence_data)}</pre>
                     </div>
                 )}
 

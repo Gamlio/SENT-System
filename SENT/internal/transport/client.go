@@ -2,16 +2,11 @@ package transport
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"net/http"
-	"net/url"
-	"os"
-	"sync"
+	"strings"
 	"time"
 
 	"SENT/internal/config"
@@ -20,211 +15,100 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const LOG_FILE = "asset_history.log"
-
-// XÓA bỏ trường CompanyCode ở đây
-type Payload struct {
-	Type      string      `json:"type"`
-	LogType   string      `json:"log_type"`
-	AssetHWID string      `json:"asset_hwid"`
-	Hostname  string      `json:"hostname"`
-	Data      interface{} `json:"data"`
+// AssetClient quản lý các kết nối mạng của Agent
+type AssetClient struct {
+	HTTPClient *http.Client
 }
 
-type Client struct {
-	LastHashes map[string]string
-	LastStatus string
-	Mutex      sync.Mutex
-	WSConn     *websocket.Conn // Kết nối WebSocket duy nhất
-}
-
-var assetClient = &Client{
-	LastHashes: make(map[string]string),
-	LastStatus: "PENDING",
-}
-
-// GetAssetClient returns the global asset client instance
-func GetAssetClient() *Client {
-	return assetClient
-}
-
-// Hàm tạo chữ ký cho asset
-func generateSignature(payload []byte, secretKey string) string {
-	mac := hmac.New(sha256.New, []byte(secretKey))
-	mac.Write(payload)
-	return hex.EncodeToString(mac.Sum(nil))
-}
-func (c *Client) SendPayload(hwid, hostname, logType string, data interface{}, force bool) string {
-	c.Mutex.Lock()
-	currentHash := utils.CalculateHash(data)
-	lastHash := c.LastHashes[logType]
-
-	if !force && currentHash == lastHash {
-		c.Mutex.Unlock()
-		return "NO_CHANGE"
+// GetAssetClient khởi tạo một HTTP client mới
+func GetAssetClient() *AssetClient {
+	return &AssetClient{
+		HTTPClient: &http.Client{Timeout: 15 * time.Second},
 	}
-	c.LastHashes[logType] = currentHash
-	c.Mutex.Unlock()
+}
 
-	// Đã xóa config.Current.CompanyCode
-	// Construct the payload for sending data
-	payload := Payload{
-		Type:      "DATA",
-		LogType:   logType,
-		AssetHWID: hwid,
-		Hostname:  hostname,
-		Data:      data,
+// SendPayload gửi dữ liệu log thông thường (POST)
+func (c *AssetClient) SendPayload(hwid, hostname, logType string, data interface{}, isBaseline bool) string {
+	if isBaseline {
+		logType = logType + "_baseline"
 	}
 
-	jsonBytes, _ := json.Marshal(payload)
-	signature := generateSignature(jsonBytes, config.Current.SecretKey) // Generate signature for the payload
-	// Tạo Request mới để có thể nhét Header vào
-	req, err := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/assets/push", bytes.NewBuffer(jsonBytes))
+	payload := map[string]interface{}{
+		"asset_hwid": hwid,
+		"hostname":   hostname,
+		"log_type":   logType,
+		"data":       data,
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Lỗi encode JSON payload: %v", err)
+		return "ERROR"
+	}
+
+	req, err := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/assets/data", bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		return "ERROR"
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Sent-Signature", signature) // Đính kèm chữ ký
 
-	// Thực hiện gửi
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-
-	status := "OK"
-	serverState := "ACTIVE"
-
-	if err != nil {
-		status = "FAIL: " + err.Error()
-		serverState = "ERROR"
-	} else {
-		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		status = fmt.Sprintf("HTTP %d", resp.StatusCode)
-
-		if resp.StatusCode == http.StatusOK {
-			var respBody map[string]interface{}
-			if err := json.Unmarshal(bodyBytes, &respBody); err == nil {
-				if state, ok := respBody["status"].(string); ok {
-					serverState = state
-
-					// Xóa sạch Hashes để gửi lại toàn bộ dữ liệu khi được duyệt
-					if serverState == "ACTIVE" && c.LastStatus == "PENDING" {
-						c.Mutex.Lock()
-						c.LastHashes = make(map[string]string)
-						c.Mutex.Unlock()
-						fmt.Println("🚀 Máy đã được duyệt! Đang đồng bộ lại toàn bộ dữ liệu...")
-					}
-					c.LastStatus = serverState
-				}
-			}
-		} else if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-			var errResp map[string]interface{}
-			json.Unmarshal(bodyBytes, &errResp)
-			if state, ok := errResp["status"].(string); ok {
-				serverState = state
-				c.LastStatus = serverState
-			}
-		}
-	}
-
-	logToFile("DATA", logType, status)
-	return serverState
-}
-
-func logToFile(pType, lType, status string) {
-	f, err := os.OpenFile(LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err == nil {
-		line := fmt.Sprintf("[%s] [%s] %s | %s\n", time.Now().Format(time.DateTime), pType, lType, status)
-		f.WriteString(line)
-		f.Close()
-	}
-}
-
-type AlertData struct {
-	AlertType string `json:"alert_type"`
-	Message   string `json:"message"`
-	Severity  string `json:"severity"`
-}
-
-func (c *Client) SendAlert(asset_hwid, hostname, alertType, message, severity string) {
-	alertPayload := Payload{
-		Type:      "ALERT",
-		LogType:   "alert",
-		AssetHWID: asset_hwid,
-		Hostname:  hostname,
-		Data: AlertData{
-			AlertType: alertType,
-			Message:   message,
-			Severity:  severity,
-		},
-	}
-
-	jsonBytes, _ := json.Marshal(alertPayload)
-	signature := generateSignature(jsonBytes, config.Current.SecretKey)
-
-	req, _ := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/assets/push", bytes.NewBuffer(jsonBytes))
-	req.Header.Set("Content-Type", "application/json")
+	// Tạo chữ ký HMAC để xác thực với Backend
+	signature := utils.SignPayload(jsonPayload, config.Current.SecretKey)
 	req.Header.Set("X-Sent-Signature", signature)
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-
-	if err == nil {
-		fmt.Printf("🚨 Đã gửi cảnh báo khẩn cấp [%s] về SOC Server!\n", alertType)
-		resp.Body.Close()
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		log.Printf("Lỗi kết nối tới server (%s): %v", logType, err)
+		return "ERROR"
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusForbidden {
+		return "ISOLATED" // Trả về tín hiệu máy đã bị backend cách ly
+	}
+
+	return "OK"
 }
 
-// [MỚI] SendBaseline: Xóa bộ nhớ đệm và gửi dữ liệu chuẩn Zero Trust
-func (c *Client) SendBaseline(asset_hwid, hostname, logType string, data interface{}) {
-	c.Mutex.Lock()
-	// Xóa dấu vết cũ của loại log này để ép asset gửi lại bản full
-	delete(c.LastHashes, logType)
-	c.Mutex.Unlock()
-
-	// Gửi kèm flag baseline để Backend xử lý vào bảng Baseline riêng
-	c.SendPayload(asset_hwid, hostname, logType+"_baseline", data, false)
+// SendBaseline gửi dữ liệu cấu hình chuẩn ban đầu
+func (c *AssetClient) SendBaseline(hwid, hostname, logType string, data interface{}) {
+	c.SendPayload(hwid, hostname, logType, data, true)
 }
 
-// [MỚI] ListenForCommands: Lắng nghe lệnh từ Dashboard qua WebSocket
-func (c *Client) StartHybridCommunication(asset_hwid string, onCommand func(string, interface{})) {
+// StartHybridCommunication thiết lập kết nối WebSocket để nhận lệnh realtime
+func (c *AssetClient) StartHybridCommunication(hwid string, commandHandler func(string, interface{})) {
 	go func() {
 		for {
-			// Tự động suy luận Host từ SERVER_URL thay vì hardcode localhost
-			parsedURL, _ := url.Parse(config.Current.BackendURL)
-			wsScheme := "ws"
-			if parsedURL.Scheme == "https" {
-				wsScheme = "wss"
-			}
+			// Tự động chuyển đổi HTTP/HTTPS sang WS/WSS
+			wsURL := strings.Replace(config.Current.BackendURL, "http://", "ws://", 1)
+			wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+			wsURL = fmt.Sprintf("%s/ws?hwid=%s", wsURL, hwid)
 
-			u := url.URL{Scheme: wsScheme, Host: parsedURL.Host, Path: "/ws"}
-			q := u.Query()
-			q.Set("token", config.Current.SecretKey) // Dùng SecretKey làm phương thức xác thực
-			q.Set("asset_hwid", asset_hwid)
-			u.RawQuery = q.Encode()
-
-			conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+			conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 			if err != nil {
-				time.Sleep(10 * time.Second) // Thử lại sau 10s nếu rớt mạng
+				time.Sleep(5 * time.Second) // Thử lại sau 5s nếu không kết nối được
 				continue
 			}
 
-			c.WSConn = conn
-			fmt.Println("✅ [WebSocket] Đã thiết lập kênh lệnh hai chiều với Server")
+			log.Println("📡 Đã kết nối WebSocket thành công tới Server!")
 
 			for {
 				var msg struct {
 					Type string      `json:"type"`
 					Data interface{} `json:"data"`
 				}
-				if err := conn.ReadJSON(&msg); err != nil {
-					break // Ngắt kết nối để reconnect
+
+				err := conn.ReadJSON(&msg)
+				if err != nil {
+					log.Println("⚠️ Mất kết nối WebSocket, đang kết nối lại...")
+					conn.Close()
+					break
 				}
-				// Xử lý lệnh (VD: TRIGGER_BASELINE, ISOLATE, RESTART)
-				onCommand(msg.Type, msg.Data)
+
+				// Chuyển lệnh nhận được ngược lại cho main.go xử lý
+				commandHandler(msg.Type, msg.Data)
 			}
-			c.WSConn = nil
 		}
 	}()
 }

@@ -68,6 +68,7 @@ func CloseIncident(c *gin.Context) {
 		IncidentID   uint   `json:"incident_id" binding:"required"`
 		Note         string `json:"note" binding:"required"`
 		EvidenceData string `json:"evidence_data" binding:"required"`
+		Images       string `json:"images"` // Thêm trường images để nhận link file bằng chứng
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": "Thiếu bằng chứng đóng case"})
@@ -86,6 +87,7 @@ func CloseIncident(c *gin.Context) {
 		UserID:       &mongoUserID,    // Gán *int64
 		Content:      req.Note,
 		EvidenceData: req.EvidenceData,
+		Images:       req.Images, // Gán giá trị images
 		IPAddress:    c.ClientIP(),
 	}
 
@@ -96,21 +98,36 @@ func CloseIncident(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Đã đóng sự cố", "hash": auditEntry.AuditHash})
 }
 
-// VerifyAuditIntegrity: Kiểm tra tính toàn vẹn của Log
+// VerifyAuditIntegrity: Kiểm tra tính toàn vẹn của toàn bộ chuỗi Log cho một sự cố.
+// Nó lấy một audit_id bất kỳ, tìm ra sự cố cha, và xác minh toàn bộ chuỗi.
 func VerifyAuditIntegrity(c *gin.Context) {
 	auditID := c.Param("audit_id")
-	objID, _ := primitive.ObjectIDFromHex(auditID)
-
-	var audit models.IncidentAudit
-	err := database.IncidentAuditCollection.FindOne(c.Request.Context(), bson.M{"_id": objID}).Decode(&audit)
+	objID, err := primitive.ObjectIDFromHex(auditID)
 	if err != nil {
-		c.JSON(404, gin.H{"error": "Log không tồn tại"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID của audit log không hợp lệ"})
 		return
 	}
 
-	storedHash := audit.AuditHash
-	audit.GenerateAuditHash()
-	c.JSON(200, gin.H{"is_tampered": storedHash != audit.AuditHash, "stored": storedHash, "current": audit.AuditHash})
+	// 1. Tìm bản ghi audit để lấy incident_id
+	var audit models.IncidentAudit
+	err = database.IncidentAuditCollection.FindOne(c.Request.Context(), bson.M{"_id": objID}).Decode(&audit)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Log không tồn tại"})
+		return
+	}
+
+	// 2. Gọi service để kiểm tra toàn bộ chuỗi hash của sự cố liên quan
+	svc := incidents.IncidentService{}
+	isValid, message, err := svc.VerifyIncidentAuditChain(c.Request.Context(), uint(audit.IncidentID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi trong quá trình kiểm tra: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"is_intact": isValid,
+		"message":   message,
+	})
 }
 
 // UpdatePlaybookProgress:
