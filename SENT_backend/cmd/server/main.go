@@ -145,9 +145,6 @@ func main() {
 				incidentsGroup.PUT("/:id/assign", incidents.AssignIncident)                   // Chỉ Admin mới được phân công người làm
 				incidentsGroup.GET("/audit/:audit_id/verify", incidents.VerifyAuditIntegrity) // Kiểm tra tính toàn vẹn của Log
 
-				// Các chức năng phân tích bổ sung
-				incidentsGroup.POST("/:id/ai-analyze", incidents.AnalyzeIncidentAI)
-				incidentsGroup.POST("/:id/execute", incidents.ExecuteLiveAction)
 			}
 			aiGroup := protected.Group("/ai")
 			{

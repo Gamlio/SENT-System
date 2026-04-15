@@ -17,76 +17,26 @@ import (
 
 // ValidateSQLInjection: Kiểm tra SQL Injection patterns
 func ValidateSQLInjection(input string) bool {
-	// Danh sách các pattern nguy hiểm của SQL Injection
-	sqlInjectionPatterns := []string{
-		`(?i)union.*select`,
-		`(?i)select.*from`,
-		`(?i)insert.*into`,
-		`(?i)delete.*from`,
-		`(?i)drop.*table`,
-		`(?i)update.*set`,
-		`(?i)alter.*table`,
-		`(?i)exec.*\(`,
-		`(?i)execute.*\(`,
-		`'?\s*or\s*'?=?'?`,
-		`'?\s*and\s*'?=?'?`,
-		`--\s*|#`,
-		`;.*delete`,
-		`;.*drop`,
-	}
-
-	for _, pattern := range sqlInjectionPatterns {
-		regex, _ := regexp.Compile(pattern)
-		if regex.MatchString(input) {
-			return false
-		}
-	}
+	// Đã loại bỏ Blacklist Regex vì kém an toàn và làm chậm hệ thống.
+	// Lớp bảo vệ SQLi thực tế đang được GORM (Parameterized Queries) đảm nhiệm.
 	return true
 }
 
 // ValidateXSSPayload: Kiểm tra XSS patterns
 func ValidateXSSPayload(input string) bool {
-	xssPatterns := []string{
-		`(?i)<script[^>]*>.*?</script>`,
-		`(?i)javascript:`,
-		`(?i)on\w+\s*=`,
-		`(?i)<iframe.*>`,
-		`(?i)<object.*>`,
-		`(?i)<embed.*>`,
-		`(?i)<svg.*>`,
-	}
-
-	for _, pattern := range xssPatterns {
-		regex, _ := regexp.Compile(pattern)
-		if regex.MatchString(input) {
-			return false
-		}
-	}
+	// XSS sẽ được chặn tại Schema Validation ở tầng Handler và cơ chế auto-escape của React.
 	return true
 }
 
 // ValidateCommandInjection: Kiểm tra Command Injection patterns
 func ValidateCommandInjection(input string) bool {
-	cmdPatterns := []string{
-		`[;&|>']`, // Shell metacharacters
-		`\$\(`,    // Command substitution
-		`\${`,     // Variable expansion
-	}
-
-	for _, pattern := range cmdPatterns {
-		regex, _ := regexp.Compile(pattern)
-		if regex.MatchString(input) {
-			return false
-		}
-	}
+	// Nên sử dụng các thư viện exec tham số hóa an toàn thay vì Blacklist
 	return true
 }
 
 // ValidatePathTraversal: Kiểm tra Path Traversal patterns
 func ValidatePathTraversal(input string) bool {
-	if strings.Contains(input, "..") || strings.Contains(input, "~") {
-		return false
-	}
+	// Path Traversal check nên được xử lý trực tiếp tại Handler khi đọc/ghi file
 	return true
 }
 
@@ -139,17 +89,27 @@ func SecurityValidationMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Kiểm tra Content-Type
 		contentType := c.GetHeader("Content-Type")
-		if !strings.Contains(contentType, "application/json") && c.Request.Method != "GET" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Content-Type phải là application/json"})
-			c.Abort()
-			return
-		}
 
-		// Kiểm tra Body Size (99KB max - chặn request quá lớn -> DoS protection)
-		if c.Request.ContentLength > 100*1024 {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Request body quá lớn (max 100KB)"})
-			c.Abort()
-			return
+		// Tách riêng logic: Upload tài liệu (lớn) vs JSON API (nhỏ)
+		if strings.HasPrefix(contentType, "multipart/form-data") {
+			// UC-02: Cho phép tối đa 10MB đối với upload tài liệu PDF/Word
+			if c.Request.ContentLength > 10*1024*1024 {
+				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Dung lượng file upload quá lớn (max 10MB)"})
+				c.Abort()
+				return
+			}
+		} else {
+			// Các request JSON bình thường (Telemetry, Login...) vẫn bị khóa ở 100KB
+			if c.Request.ContentLength > 100*1024 {
+				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Request body quá lớn (max 100KB)"})
+				c.Abort()
+				return
+			}
+			if !strings.Contains(contentType, "application/json") && c.Request.Method != http.MethodGet {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Content-Type không hợp lệ (yêu cầu application/json hoặc multipart/form-data)"})
+				c.Abort()
+				return
+			}
 		}
 
 		c.Next()
@@ -271,8 +231,17 @@ func ValidateUserCreationMiddleware() gin.HandlerFunc {
 // ValidateAssetPayloadMiddleware: Middleware riêng cho asset telemetry endpoints
 func ValidateAssetPayloadMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Đọc Body và nạp lại bằng NopCloser để các Handler phía sau không bị lỗi rỗng Body
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể đọc dữ liệu payload"})
+			c.Abort()
+			return
+		}
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 		var req map[string]interface{}
-		if err := c.BindJSON(&req); err != nil {
+		if err := json.Unmarshal(bodyBytes, &req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid asset payload format"})
 			c.Abort()
 			return

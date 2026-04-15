@@ -72,9 +72,7 @@ func main() {
 			}
 
 			fmt.Println("🚀 Hoàn tất đồng bộ Baseline Zero Trust!")
-		case "ISOLATE":
-			// Logic cô lập máy bằng cách tắt toàn bộ kết nối mạng
-			fmt.Println("🛑 Đã nhận lệnh cô lập máy!")
+
 		}
 	})
 

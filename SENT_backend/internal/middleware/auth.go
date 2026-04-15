@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"sent_backend/internal/database"
-	"sent_backend/internal/models"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -59,7 +57,12 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		username := claims["sub"].(string)
+		username, ok := claims["sub"].(string)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token thiếu thông tin tài khoản (sub)"})
+			c.Abort()
+			return
+		}
 
 		// Lấy org_id từ token (JWT lưu số dưới dạng float64)
 		orgIDFloat, ok := claims["org_id"].(float64)
@@ -70,18 +73,19 @@ func AuthRequired() gin.HandlerFunc {
 		}
 		orgID := uint(orgIDFloat)
 
-		// 6. Truy vấn CHÍNH XÁC người dùng đó TẠI công ty đó
-		var user models.User
-		if err := database.DB.Where("username = ? AND org_id = ?", username, orgID).First(&user).Error; err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Người dùng không tồn tại"})
+		// Lấy user_id từ token
+		userIDFloat, ok := claims["user_id"].(float64)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token thiếu thông tin ID người dùng (user_id)"})
 			c.Abort()
 			return
 		}
+		userID := uint(userIDFloat)
 
-		// 7. Bơm thông tin vào Context (Chú ý các key: user_id, org_id)
-		c.Set("user_id", user.ID)
-		c.Set("username", user.Username)
-		c.Set("org_id", *user.OrgID)
+		// 6. Bơm thông tin vào Context (Bỏ qua truy vấn DB để tối ưu hiệu năng)
+		c.Set("user_id", userID)
+		c.Set("username", username)
+		c.Set("org_id", orgID)
 
 		c.Next()
 	}

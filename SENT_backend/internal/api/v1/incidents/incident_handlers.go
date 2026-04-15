@@ -147,7 +147,3 @@ func GetIncidentImage(c *gin.Context) {
 	filename := c.Param("filename")
 	c.File("./uploads/incidents/" + filename)
 }
-
-// AnalyzeIncidentAI & ExecuteLiveAction:
-func AnalyzeIncidentAI(c *gin.Context) { c.JSON(200, gin.H{"status": "AI analyzing..."}) }
-func ExecuteLiveAction(c *gin.Context) { c.JSON(200, gin.H{"status": "Executing command..."}) }

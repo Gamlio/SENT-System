@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -194,10 +197,19 @@ var assetFloodTrackerInstance = NewassetFloodTracker()
 func AssetFloodProtectionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Lấy AssetID từ request
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot read request body"})
+			c.Abort()
+			return
+		}
+		// Nạp lại body sau khi đọc để tránh làm chết các handler phía sau
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 		var req struct {
 			AssetID string `json:"asset_hwid"`
 		}
-		if err := c.BindJSON(&req); err != nil {
+		if err := json.Unmarshal(bodyBytes, &req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing AssetID in request"})
 			c.Abort()
 			return

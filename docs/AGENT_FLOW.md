@@ -117,7 +117,7 @@ Enrollment: Cài đặt lần đầu -> Trạng thái PENDING trên SOC. (Zero-T
 
 Active: Trưởng ca SOC bấm Duyệt -> Trạng thái ACTIVE. Bắt đầu phân tích log và tính Điểm Rủi ro.
 
-Response: Khi có lệnh từ SOC (Cách ly mạng, Kill Process), asset sẽ thực thi thông qua cơ chế Polling (hoặc WebSocket/MQTT trong tương lai).
+Response: Hệ thống SENT-SYSTEM CHỈ đóng vai trò phát hiện vi phạm (Read-only) và tự động tạo Incident. Quá trình xử lý thực tế (Cách ly mạng, Kill Process, Gỡ phần mềm, Rút USB...) sẽ được đội ngũ IT HD/SOC thực hiện thủ công tại máy trạm hoặc thông qua các công cụ quản trị từ xa khác (ngoài SENT-SYSTEM). Trợ lý AI chỉ đóng vai trò phân tích log và tư vấn hướng xử lý.
 
 **(Các lỗ hổng bảo mật cấp Enterprise còn tồn tại):**
 
