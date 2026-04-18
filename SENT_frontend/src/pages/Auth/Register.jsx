@@ -26,7 +26,7 @@ const Register = () => {
 
         setLoading(true);
         try {
-            const response = await axios.post('/auth/register', {
+            const response = await axios.post('auth/register', {
                 company_name: formData.company_name,
                 email: formData.email, // [MỚI]
                 username: formData.username,
