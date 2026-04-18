@@ -37,7 +37,7 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	fmt.Println("===========================================")
 	fmt.Println("   🛡️ KÍCH HOẠT SENT SENSOR (CLI MODE)")
 	fmt.Println("===========================================")
-	Current.BackendURL = "http://192.168.2.4:8000" // Thay bằng IP Server thật của bạn
+	Current.BackendURL = os.Getenv("BackendURL")
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
