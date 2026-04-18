@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # --- DATABASE ---
+  # --- DATABASE: PostgreSQL ---
   db:
     image: postgres:15-alpine
     container_name: sent_db
@@ -10,11 +10,14 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: "Thanh@123"
       POSTGRES_DB: sent_db
+    # Port 5432 chỉ mở nếu bạn muốn kết nối từ ngoài vào để debug
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-  mongodb: # THÊM MỚI
+
+  # --- DATABASE: MongoDB ---
+  mongodb:
     image: mongo:latest
     container_name: sent_mongo
     restart: always
@@ -22,34 +25,33 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
-  # --- BACKEND ---
+
+  # --- BACKEND (Golang Alpine) ---
   backend:
     build: ./SENT_backend
     container_name: sent_backend
     restart: always
-    ports:
-      - "8000:8000"
+    # Không cần mở port 8000 ra ngoài nếu đã có Nginx ở Frontend làm Proxy
+    expose:
+      - "8000"
     depends_on:
       - db
       - mongodb
+    env_file:
+      - ./SENT_backend/.env # Tự động load tất cả biến từ file .env bạn đã tạo
     environment:
       - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD="Thanh@123"
-      - DB_NAME=sent_db
-      - PORT=8000
-      - ALLOWED_ORIGINS=http://192.168.2.1
-      - MONGO_HOST=mongo
-      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGO_HOST=mongodb # Sửa lại cho khớp với tên service ở trên
+    volumes:
+      - ./SENT_backend/uploads:/app/uploads # Lưu trữ tài liệu SOC bền vững
 
-  # --- FRONTEND ---
+  # --- FRONTEND (React + Nginx Proxy) ---
   frontend:
     build: ./SENT_frontend
     container_name: sent_frontend
     restart: always
     ports:
-      - "3000:80"
+      - "80:80" # Chạy trực tiếp trên cổng 80 để không cần gõ :3000
     depends_on:
       - backend
     stdin_open: true 
