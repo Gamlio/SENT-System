@@ -18,7 +18,7 @@ services:
 
   # --- DATABASE: MongoDB ---
   mongodb:
-    image: mongo:latest
+    image: mongo:4.4
     container_name: sent_mongo
     restart: always
     ports:
