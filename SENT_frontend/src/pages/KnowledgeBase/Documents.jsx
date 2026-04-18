@@ -214,7 +214,7 @@ const Documents = () => {
                         <div className="flex-1 bg-slate-100 overflow-hidden">
                             {viewingDoc.file_name.toLowerCase().endsWith('.pdf') ? (
                                 <iframe
-                                    src={`http://localhost:8000/${viewingDoc.file_path.replace(/\\/g, '/')}`}
+                                    src={`${import.meta.env.VITE_API_URL}${viewingDoc.file_path.replace(/\\/g, '/')}`}
                                     className="w-full h-full border-none shadow-inner"
                                     title="Document Viewer"
                                 />
