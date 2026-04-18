@@ -39,7 +39,7 @@ services:
       - DB_PASSWORD="Thanh@123"
       - DB_NAME=sent_db
       - PORT=8000
-      - ALLOWED_ORIGINS=http://localhost:3000
+      - ALLOWED_ORIGINS=http://192.168.2.1
       - MONGO_HOST=mongo
       - MONGODB_URI=mongodb://mongodb:27017
 

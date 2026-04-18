@@ -82,7 +82,8 @@ func DeletePolicy(c *gin.Context) {
 // DeleteBulkPolicies (GATE): Gửi yêu cầu xóa nhiều luật
 func DeleteBulkPolicies(c *gin.Context) {
 	var req struct {
-		IDs []uint `json:"ids"`
+		IDs    []uint `json:"ids"`
+		Reason string `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
@@ -93,7 +94,7 @@ func DeleteBulkPolicies(c *gin.Context) {
 	username, _ := c.Get("username")
 
 	svc := &policyService.PolicyService{}
-	if err := svc.BulkDeletePolicyRequest(req.IDs, orgID, username.(string)); err != nil {
+	if err := svc.BulkDeletePolicyRequest(req.IDs, orgID, username.(string), req.Reason); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

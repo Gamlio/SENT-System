@@ -162,26 +162,33 @@ func (s *PolicyService) DeletePolicyRequest(id uint, orgID uint, creator string)
 }
 
 // BulkDeletePolicyRequest: Tạo yêu cầu xóa hàng loạt luật
-func (s *PolicyService) BulkDeletePolicyRequest(ids []uint, orgID uint, creator string) error {
+func (s *PolicyService) BulkDeletePolicyRequest(ids []uint, orgID uint, creator string, reason string) error {
 	if len(ids) == 0 {
 		return fmt.Errorf("danh sách ID trống")
+	}
+
+	// Nếu user không nhập reason, đặt một lý do mặc định
+	if reason == "" {
+		reason = "Yêu cầu xóa hàng loạt từ Admin"
 	}
 
 	// Gói danh sách ID vào Snapshot để Strategy sau này xử lý
 	snapshotData, _ := json.Marshal(map[string]interface{}{
 		"ids":    ids,
-		"reason": "Yêu cầu xóa hàng loạt từ Admin",
+		"reason": reason,
 	})
 
 	ticket := models.ApprovalTicket{
-		OrgID:        orgID,
-		ModuleType:   "POLICY_BULK_DELETE",
-		ActionType:   "DELETE",
-		TargetID:     0,
-		TargetName:   fmt.Sprintf("Xóa %d chính sách", len(ids)),
-		Status:       "PENDING",
-		RequestedBy:  creator,
-		SnapshotData: string(snapshotData),
+		OrgID:         orgID,
+		ModuleType:    "POLICY_BULK_DELETE",
+		ActionType:    "DELETE",
+		TargetID:      0,
+		TargetName:    fmt.Sprintf("Xóa %d chính sách", len(ids)),
+		Status:        "PENDING",
+		RequestedBy:   creator,
+		RequestReason: reason,
+		SnapshotData:  string(snapshotData),
 	}
+
 	return database.DB.Create(&ticket).Error
 }

@@ -47,12 +47,24 @@ export const usePolicies = () => {
         }
     };
 
+    // 4. XÓA NHIỀU LUẬT (CẦN PHÊ DUYỆT)
+    const deleteBulkPolicies = async (payload) => {
+        try {
+            await axios.post('/policies/bulk-delete', payload);
+            return { success: true };
+        } catch (err) {
+            console.error("Lỗi xóa nhiều chính sách:", err);
+            return { success: false, error: err.response?.data?.error || "Lỗi gửi yêu cầu xóa" };
+        }
+    };
+
     return {
         policies,
         loading,
         error,
         fetchPolicies,
         addPolicy,
-        deletePolicy
+        deletePolicy,
+        deleteBulkPolicies
     };
 };

@@ -84,7 +84,7 @@ func RegisterSMEHandler(c *gin.Context) {
 	}
 
 	// 3. Gửi Email thông báo (Dùng goroutine chạy ngầm để API phản hồi nhanh)
-	loginURL := fmt.Sprintf("http://localhost:3000/login/%s", newCompanyCode)
+	loginURL := fmt.Sprintf("http://192.168.2.1/login/%s", newCompanyCode)
 	go func() {
 		subject := "Khởi tạo thành công Không gian SOC - SENT System"
 		body := fmt.Sprintf(`

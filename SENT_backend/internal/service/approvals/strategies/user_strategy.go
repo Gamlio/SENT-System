@@ -14,19 +14,48 @@ import (
 type UserCreateStrategy struct{}
 
 func (s *UserCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	// 1. Kích hoạt tài khoản (Đổi PENDING -> APPROVED)
-	if err := tx.Model(&models.User{}).Where("id = ?", ticket.TargetID).Update("approval_status", "APPROVED").Error; err != nil {
+	// 1. Giải mã dữ liệu từ "Đơn" (Snapshot)
+	var payload models.UserPayload
+	if err := json.Unmarshal([]byte(ticket.SnapshotData), &payload); err != nil {
 		return err
 	}
 
-	// 2. Lấy thông tin User và Công ty từ DB để gửi Email
-	var user models.User
-	if err := tx.First(&user, ticket.TargetID).Error; err == nil && user.Email != "" {
+	// 2. Hash mật khẩu
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(payload.Password), 12)
+	if err != nil {
+		return err
+	}
 
-		var org models.Organization
-		tx.First(&org, user.OrgID)
+	// 3. Bây giờ mới thực sự tạo User trong hệ thống (Hệ thống luôn sạch, không có rác PENDING)
+	newUser := models.User{
+		Username:           payload.Username,
+		PasswordHash:       string(hashedPassword),
+		FullName:           payload.FullName,
+		Phone:              payload.Phone,
+		Email:              payload.Email,
+		OrgID:              &ticket.OrgID, // OrgID lấy từ Ticket
+		PermAssetView:      payload.PermAssetView,
+		PermAssetAction:    payload.PermAssetAction,
+		PermAssetDelete:    payload.PermAssetDelete,
+		PermPolicyView:     payload.PermPolicyView,
+		PermPolicyAction:   payload.PermPolicyAction,
+		PermIncidentView:   payload.PermIncidentView,
+		PermIncidentAction: payload.PermIncidentAction,
+		PermDocView:        payload.PermDocView,
+		PermDocManage:      payload.PermDocManage,
+		PermUserManage:     payload.PermUserManage,
+		PermApprovalManage: payload.PermApprovalManage,
+		ApprovalStatus:     "APPROVED", // Trạng thái là APPROVED vì đã được Sếp duyệt
+	}
 
-		// 3. Chạy ngầm tiến trình gửi Email ngay khi duyệt xong
+	if err := tx.Create(&newUser).Error; err != nil {
+		return err
+	}
+
+	// 4. Lấy thông tin Công ty từ DB để gửi Email
+	var org models.Organization
+	if err := tx.First(&org, ticket.OrgID).Error; err == nil && newUser.Email != "" {
+		// 5. Chạy ngầm tiến trình gửi Email ngay khi duyệt xong
 		go func(u models.User, companyCode string) {
 			subject := "Tài khoản nhân sự SENT SOC của bạn đã được phê duyệt"
 			body := fmt.Sprintf(`
@@ -38,20 +67,22 @@ func (s *UserCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicke
                         <p><b>Tên đăng nhập:</b> %s</p>
                         <p><b>Mật khẩu:</b> (Vui lòng liên hệ người cấp tài khoản để nhận)</p>
                     </div>
-                    <p>Bạn có thể đăng nhập và bắt đầu làm việc tại: <a href="http://localhost:3000/login/%s" style="color: #10b981; font-weight: bold;">Truy cập Dashboard</a></p>
+                    <p>Bạn có thể đăng nhập và bắt đầu làm việc tại: <a href="http://192.168.2.1/login/%s" style="color: #10b981; font-weight: bold;">Truy cập Dashboard</a></p>
                 </div>
             `, u.FullName, companyCode, u.Username, companyCode)
 
 			_ = utils.SendEmail([]string{u.Email}, subject, body)
-		}(user, org.CompanyCode)
+		}(newUser, org.CompanyCode)
 	}
 
 	return nil
 }
 
 func (s *UserCreateStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	// Nếu Sếp từ chối, đánh dấu bản ghi nháp thành REJECTED (hoặc có thể dùng lệnh Xóa luôn cũng được)
-	return tx.Model(&models.User{}).Where("id = ?", ticket.TargetID).Update("approval_status", "REJECTED").Error
+	// THEO TƯ DUY MỚI: Hệ thống SẠCH.
+	// Lúc tạo đơn (Ticket), ta chưa hề INSERT vào bảng User (không tạo rác REJECTED).
+	// Nên khi bị từ chối, ta KHÔNG CẦN LÀM GÌ trong bảng User cả.
+	return nil
 }
 
 // --- 2. CHIẾN LƯỢC CẬP NHẬT QUYỀN NHÂN SỰ ---

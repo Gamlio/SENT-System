@@ -3,22 +3,43 @@
 Hệ thống giám sát an ninh đầu cuối và quản trị chính sách tập trung, tích hợp **Trợ lý AI Copilot** hỗ trợ phân tích và phản ứng sự cố theo tiêu chuẩn SOC hiện đại.
 
 ##  Tổng quan hệ thống
-SENT (Security Endpoint Network Tracker) là một giải pháp EDR toàn diện được phát triển để phát hiện, phân tích và phản ứng với các mối đe dọa an ninh trên máy trạm. Hệ thống áp dụng mô hình **Adaptive SOC** với khả năng tự động chấm điểm rủi ro và tư vấn xử lý bằng Trí tuệ nhân tạo.
+SENT-SYSTEM (Sentinex)
+Hệ thống Quản trị An ninh tập trung (SOC) & Tuân thủ rủi ro (GRC) tích hợp Trợ lý AI.
 
-##  Kiến trúc kỹ thuật (3-Tier Architecture)
-* **Endpoint asset (Golang):** Tác tử chạy ngầm hiệu năng cao, thu thập viễn trắc (Telemetry) và thực hiện phản xạ bảo mật tại chỗ (Local Rules).
-* **Backend SOC (Golang - Gin):** Trạm điều phối trung tâm, xử lý thuật toán Risk Scoring (P1, P2, P3) và quản lý Incident War Room.
-* **AI Copilot (LLM Integration):** Sử dụng mô hình ngôn ngữ lớn (Qwen/Phi3) để phân tích log và hướng dẫn xử lý theo Playbook.
-* **Frontend (ReactJS - Tailwind):** Giao diện quản trị SOC trực quan, theo dõi trạng thái Real-time và tương tác AI.
+📌 Tổng quan
+SENT-SYSTEM là một nền tảng giám sát an ninh mạng dành cho các doanh nghiệp SME, kết hợp giữa việc thu thập dữ liệu viễn trắc (Telemetry) từ máy trạm và khả năng tư vấn của Trí tuệ nhân tạo (AI Copilot). Hệ thống giúp đội ngũ IT HD/SOC phát hiện sớm các vi phạm chính sách, lệch chuẩn Baseline và nhận được hướng dẫn xử lý sự cố theo thời gian thực.
 
-## 5 Use-cases Giám sát cốt lõi
-1.  **Malware Detection:** Phát hiện mã độc thông qua tích hợp dữ liệu từ Windows Defender.
-2.  **Security Compliance:** Kiểm tra trạng thái bản vá Windows Update và tường lửa hệ thống.
-3.  **Network Monitoring:** Giám sát các cổng mạng (Open Ports) lạ đang lắng nghe trên thiết bị.
-4.  **Software Control:** Đối soát danh mục phần mềm cài đặt với chính sách Whitelist/Blacklist của tổ chức.
-5.  **Peripheral Security:** Giám sát lịch sử kết nối thiết bị ngoại vi USB lạ.
+✨ Tính năng cốt lõi
+Giám sát thiết bị (Asset Monitoring): Thu thập thông tin phần cứng, phần mềm, trạng thái cổng mạng, USB và lưu lượng I/O theo thời gian thực.
 
-## Tính năng nổi bật
-* **Adaptive Risk Scoring:** Tự động tính toán điểm nguy hiểm dựa trên mức độ vi phạm Playbook.
-* **AI Incident Analysis:** AI tự động đọc log sự cố và đưa ra kết luận tư vấn kỹ thuật.
-* **Real-time Alerting:** Cảnh báo Popup trực tiếp tại máy trạm và đẩy thông báo về trung tâm SOC trong < 5 giây.
+Quản lý tuân thủ (Baseline & Policy): Định nghĩa cấu hình chuẩn (Baseline) và các chính sách Whitelist/Blacklist để phát hiện sai lệch an ninh.
+
+Trợ lý AI Copilot (RAG-based): Sử dụng Local LLM (Ollama) kết hợp với ngữ cảnh từ Chính sách và Playbook để tư vấn hướng xử lý sự cố cho IT HD.
+
+Quản lý sự cố (Incident Management): Quy trình xử lý sự cố chặt chẽ với cơ chế xác minh tính toàn vẹn của bằng chứng (Hash Chain).
+
+Quy trình phê duyệt (Maker-Checker): Mọi thay đổi nhạy cảm về hệ thống, tài liệu hoặc người dùng đều phải được Admin phê duyệt.
+
+Phân tích rủi ro (Risk & Trust Scoring): Tự động tính toán điểm rủi ro tức thời và điểm uy tín dài hạn cho từng thiết bị.
+
+🏗 Kiến trúc hệ thống
+Hệ thống bao gồm hai thành phần chính:
+
+SENT Backend (Golang): Trung tâm điều phối, xử lý dữ liệu viễn trắc, quản lý cơ sở dữ liệu (PostgreSQL & MongoDB) và giao tiếp với AI API.
+
+Go-SENT Agent (Golang): Bộ thu thập dữ liệu siêu nhẹ (Ninja Thin-Client) chạy trên máy trạm Windows/Linux để đẩy dữ liệu về Server.
+
+🛠 Công nghệ sử dụng
+Ngôn ngữ: Golang (Gin Framework).
+
+Cơ sở dữ liệu:
+
+PostgreSQL: Quản lý cấu hình, người dùng, chính sách (Dữ liệu quan hệ).
+
+MongoDB: Lưu trữ nhật ký sự cố, log viễn trắc, audit logs (Dữ liệu lớn).
+
+AI: Ollama API (Model: Qwen/Phi3).
+
+Bảo mật: JWT Authentication, HMAC Payload Signing, Hash Chaining.
+
+Khác: WebSockets (Real-time updates), Redis (Planned for Caching)

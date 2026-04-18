@@ -1,73 +1,63 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Trash2, X } from 'lucide-react';
 import axios from '../../../api/axios';
-import AppDialog from '../../../components/AppDialog'; // Đảm bảo đường dẫn đúng
+import AppDialog from '../../../components/AppDialog';
+import BulkDeleteModal from '../../../components/common/BulkDeleteModal';
 
-const assetBulkActions = ({ 
+const AssetsBulkActions = ({ 
     selectedassets, 
+    assets,
     clearSelection, 
     onRefresh, 
     onOpenApproveModal 
 }) => {
-    // Mang State của Dialog sang đây
-    const [deleteReason, setDeleteReason] = useState('');
     const [dialogConfig, setDialogConfig] = useState({ isOpen: false });
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
-    // Nếu không chọn máy nào thì ẩn component này đi
     if (selectedassets.length === 0) return null;
 
     const closeDialog = () => {
         setDialogConfig({ ...dialogConfig, isOpen: false });
-        setDeleteReason('');
     };
 
-    // Hàm gọi API xóa hàng loạt
     const handleBulkDeleteClick = () => {
-        setDialogConfig({
-            isOpen: true,
-            title: `Yêu cầu gỡ bỏ ${selectedassets.length} thiết bị?`,
-            message: `Hành động này sẽ ngắt kết nối và xóa dữ liệu của ${selectedassets.length} máy trạm. Vui lòng nhập lý do.`,
-            type: 'danger',
-            confirmText: 'Gửi yêu cầu xóa',
-            showInput: true,
-            onConfirm: async () => {
-                if (deleteReason.trim().length < 5) {
-                    alert("Vui lòng nhập lý do rõ ràng (ít nhất 5 ký tự).");
-                    return;
-                }
-                closeDialog();
-                try {
-                    await axios.post('/assets/bulk-request-delete', {
-                        hwids: selectedassets,
-                        reason: deleteReason 
-                    });
-                    
-                    clearSelection(); // Bỏ tick chọn toàn bộ
-                    onRefresh();      // Load lại bảng
-                    
-                    setDialogConfig({
-                        isOpen: true, 
-                        title: 'Đã gửi yêu cầu', 
-                        message: `Đơn xin gỡ bỏ ${selectedassets.length} thiết bị đã được chuyển đến Trung tâm Phê duyệt.`, 
-                        type: 'success', 
-                        isAlertOnly: true 
-                    });
-                } catch (err) {
-                    setDialogConfig({
-                        isOpen: true, 
-                        title: 'Từ chối yêu cầu', 
-                        message: err.response?.data?.error || 'Lỗi gửi yêu cầu xóa.', 
-                        type: 'warning', 
-                        isAlertOnly: true
-                    });
-                }
-            }
-        });
+        setIsBulkDeleteModalOpen(true);
     };
+
+    const handleConfirmBulkDelete = async (reason) => {
+        setIsBulkDeleteModalOpen(false);
+        try {
+            await axios.post('/assets/bulk-request-delete', {
+                hwids: selectedassets,
+                reason: reason 
+            });
+            
+            clearSelection();
+            onRefresh();
+            
+            setDialogConfig({
+                isOpen: true, 
+                title: 'Đã gửi yêu cầu', 
+                message: `Đơn xin gỡ bỏ ${selectedassets.length} thiết bị đã được chuyển đến Trung tâm Phê duyệt.`, 
+                type: 'success', 
+                isAlertOnly: true 
+            });
+        } catch (err) {
+            setDialogConfig({
+                isOpen: true, 
+                title: 'Từ chối yêu cầu', 
+                message: err.response?.data?.error || 'Lỗi gửi yêu cầu xóa.', 
+                type: 'warning', 
+                isAlertOnly: true
+            });
+        }
+    };
+
+    // Get full asset objects for the modal
+    const selectedItems = assets ? assets.filter(a => selectedassets.includes(a.hwid || a.asset_hwid)) : [];
 
     return (
         <>
-            {/* Thanh công cụ nổi */}
             <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-4 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-center gap-6 z-50 animate-in slide-in-from-bottom-5 duration-300">
                 <span className="text-sm font-bold">
                     <span className="bg-emerald-500 px-2.5 py-1 rounded-lg mr-2 text-xs font-black">
@@ -98,15 +88,20 @@ const assetBulkActions = ({
                 </button>
             </div>
 
-            {/* Hộp thoại xác nhận */}
             <AppDialog 
                 {...dialogConfig}
-                inputValue={deleteReason}
-                onInputChange={setDeleteReason}
                 onClose={closeDialog}
+            />
+
+            <BulkDeleteModal
+                isOpen={isBulkDeleteModalOpen}
+                onClose={() => setIsBulkDeleteModalOpen(false)}
+                onConfirm={handleConfirmBulkDelete}
+                items={selectedItems}
+                type="ASSET"
             />
         </>
     );
 };
 
-export default assetBulkActions;
+export default AssetsBulkActions;

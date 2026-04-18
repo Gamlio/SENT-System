@@ -12,19 +12,43 @@ import (
 // --- CHIẾN LƯỢC: ĐĂNG KÝ asset ---
 type assetEnrollStrategy struct{}
 
-func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	return tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).
-		Updates(map[string]interface{}{
-			"status":    "ACTIVE",
-			"last_seen": time.Now(), // <--- BUMP NÓ LÊN TRÊN CÙNG
-		}).Error
+type AssetEnrollPayload struct {
+	AssetHWID string `json:"asset_hwid"`
+	Hostname  string `json:"hostname"`
+	IPAddress string `json:"ip_address"`
+	SecretKey string `json:"secret_key"`
 }
+
+func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
+	// 1. Giải mã dữ liệu từ "Đơn" (Snapshot)
+	var payload AssetEnrollPayload
+	if err := json.Unmarshal([]byte(ticket.SnapshotData), &payload); err != nil {
+		// Fallback cho ticket cũ chưa dùng SnapshotData
+		return tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).
+			Updates(map[string]interface{}{
+				"status":    "ACTIVE",
+				"last_seen": time.Now(),
+			}).Error
+	}
+
+	// 2. Tạo Asset mới
+	newAsset := models.Asset{
+		AssetHWID: payload.AssetHWID,
+		Hostname:  payload.Hostname,
+		IPAddress: payload.IPAddress,
+		OrgID:     ticket.OrgID,
+		Status:    "ACTIVE", // Duyệt xong là Active luôn
+		LastSeen:  time.Now(),
+		SecretKey: payload.SecretKey,
+		ApprovedBy: ticket.ReviewedBy,
+	}
+
+	return tx.Create(&newAsset).Error
+}
+
 func (s *assetEnrollStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	return tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).
-		Updates(map[string]interface{}{
-			"status":    "REJECTED",
-			"last_seen": time.Now(), // <--- BUMP NÓ LÊN TRÊN CÙNG
-		}).Error
+	// THEO TƯ DUY MỚI: Hệ thống SẠCH, không tạo bảng Asset PENDING
+	return nil
 }
 
 // ==============================================================
@@ -32,9 +56,21 @@ func (s *assetEnrollStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicke
 // ==============================================================
 type assetDeleteStrategy struct{}
 
+type AssetDeleteSnapshot struct {
+	AssetHWID string `json:"asset_hwid"`
+	Reason    string `json:"reason"`
+}
+
 func (s *assetDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	// XÓA MỀM: Đổi trạng thái thành RETIRED, xóa SecretKey để chặn kết nối vĩnh viễn
-	err := tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).
+	// 1. Giải mã dữ liệu từ "Đơn" (Snapshot)
+	var snap AssetDeleteSnapshot
+	if err := json.Unmarshal([]byte(ticket.SnapshotData), &snap); err != nil {
+		// Fallback cho các ticket cũ chưa dùng SnapshotData
+		snap.AssetHWID = ticket.TargetName
+	}
+
+	// 2. Bây giờ mới thực sự thực thi thao tác XÓA MỀM trên Asset
+	err := tx.Model(&models.Asset{}).Where("asset_hwid = ?", snap.AssetHWID).
 		Updates(map[string]interface{}{
 			"status":     "RETIRED",
 			"secret_key": "", // Thu hồi khóa, vứt bỏ quyền truy cập
@@ -44,13 +80,15 @@ func (s *assetDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 	}
 	// Manual cascade cleanup dữ liệu telemetry Mongo
 	lifecycleService := assets.AssetLifecycleService{}
-	lifecycleService.CleanupassetTelemetry([]string{ticket.TargetName}, ticket.OrgID)
+	lifecycleService.CleanupassetTelemetry([]string{snap.AssetHWID}, ticket.OrgID)
 	return nil
 }
 
 func (s *assetDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	// BỊ TỪ CHỐI XÓA: Khôi phục máy trạm từ PENDING_DELETE về trạng thái ACTIVE
-	return tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).Update("status", "ACTIVE").Error
+	// THEO TƯ DUY MỚI: Hệ thống SẠCH.
+	// Lúc tạo đơn (Ticket), ta chưa hề đụng vào bảng Asset (không đổi thành PENDING_DELETE).
+	// Nên khi bị từ chối, ta KHÔNG CẦN ROLLBACK hay khôi phục gì cả.
+	return nil
 }
 
 // ==============================================================
@@ -85,11 +123,7 @@ func (s *assetBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approval
 }
 
 func (s *assetBulkDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	var snap BulkDeleteSnapshot
-	if err := json.Unmarshal([]byte(ticket.SnapshotData), &snap); err != nil {
-		return err
-	}
-
-	// BỊ TỪ CHỐI XÓA HÀNG LOẠT: Khôi phục toàn bộ danh sách máy về ACTIVE
-	return tx.Model(&models.Asset{}).Where("asset_hwid IN ?", snap.AssetIDs).Update("status", "ACTIVE").Error
+	// THEO TƯ DUY MỚI: Không cần rollback trạng thái về ACTIVE nữa
+	// vì trong thời gian chờ duyệt, trạng thái Asset vẫn chưa bị thay đổi.
+	return nil
 }

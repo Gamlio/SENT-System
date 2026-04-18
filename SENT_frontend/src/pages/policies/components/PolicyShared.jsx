@@ -10,13 +10,13 @@ export const StatCard = ({ icon, label, value, color, bg }) => (
         </div>
     </div>
 );
-export const PolicyItem = ({ policy, onDelete, assets }) => {
+export const PolicyItem = ({ policy, onDelete, assets, isSelected, onSelect }) => {
     const getTargetNames = () => {
         if (!policy.target_hwids || policy.target_hwids === '[]') return "Global";
         try {
             const ids = typeof policy.target_hwids === 'string' ? JSON.parse(policy.target_hwids) : policy.target_hwids;
             if (!Array.isArray(ids) || ids.length === 0) return "Global";
-            return ids.map(id => assets.find(a => a.hwid === id)?.hostname || id.substring(0, 6)).join(', ');
+            return ids.map(id => assets?.find(a => a.hwid === id)?.hostname || id.substring(0, 6)).join(', ');
         } catch (e) {
             console.error("Failed to parse target_hwids:", policy.target_hwids, e);
             return "Invalid Target";
@@ -31,8 +31,18 @@ export const PolicyItem = ({ policy, onDelete, assets }) => {
     };
 
     return (
-        <div className="p-4 flex items-center justify-between group hover:bg-slate-800/40 transition-all border-b border-slate-800/50 last:border-0">
+        <div className={`p-4 flex items-center justify-between group hover:bg-slate-800/40 transition-all border-b border-slate-800/50 last:border-0 ${isSelected ? 'bg-indigo-500/10' : ''}`}>
             <div className="flex items-center gap-5 min-w-0">
+                {onSelect && (
+                    <div className="flex items-center justify-center shrink-0">
+                        <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onSelect(policy.ID)}
+                            className="w-4 h-4 rounded border-slate-600 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900 bg-slate-800 cursor-pointer"
+                        />
+                    </div>
+                )}
                 {/* Icon loại hành động */}
                 <div className={`p-3 rounded-2xl shrink-0 shadow-lg ${policy.policy_type === 'BLACKLIST' ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
                     {policy.policy_type === 'BLACKLIST' ? <AlertTriangle size={22}/> : <CheckCircle2 size={22}/>}

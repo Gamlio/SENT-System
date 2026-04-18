@@ -23,7 +23,7 @@
 ## 🌐 Bước 3: Cài đặt Giao diện Frontend
 1.  Di chuyển vào thư mục: `cd SENT_frontend`
 2.  Cài đặt dependencies: `npm install`
-3.  Khởi chạy: `npm start` (Giao diện sẽ chạy tại `http://localhost:3000`)
+3.  Khởi chạy: `npm start` (Giao diện sẽ chạy tại `http://192.168.2.1`)
 
 ## 🛡️ Bước 4: Cài đặt Endpoint asset
 1.  Di chuyển vào thư mục: `cd SENT`

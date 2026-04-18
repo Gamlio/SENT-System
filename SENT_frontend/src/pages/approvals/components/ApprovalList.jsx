@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Check, X, Laptop, Shield, FileText, UserPlus, Trash2, Info, Edit } from 'lucide-react';
+import ApprovalTicketModal from './ApprovalTicketModal';
 
 const ApprovalList = ({ tickets, onReview, loading }) => {
-    
+    const [selectedTicket, setSelectedTicket] = useState(null);
+
     const getModuleConfig = (type) => {
         switch (type) {
-            case 'asset_ENROLL': return { label: 'Máy mới', icon: <Laptop size={16} className="text-blue-400"/>, requester: 'Thiết bị (asset)' };
-            case 'asset_DELETE': return { label: 'Gỡ máy', icon: <Trash2 size={16} className="text-red-400"/>, requester: 'Quản trị viên' };
+            case 'ASSET_ENROLL': return { label: 'Máy mới', icon: <Laptop size={16} className="text-blue-400"/>, requester: 'Thiết bị (asset)' };
+            case 'ASSET_DELETE': return { label: 'Gỡ máy', icon: <Trash2 size={16} className="text-red-400"/>, requester: 'Quản trị viên' };
+            case 'ASSET_BULK_DELETE': return { label: 'Gỡ nhiều máy', icon: <Trash2 size={16} className="text-red-400"/>, requester: 'Quản trị viên' };
             case 'POLICY_CREATE': return { label: 'Chính sách', icon: <Shield size={16} className="text-emerald-400"/>, requester: 'SOC Admin' };
             case 'DOCUMENT_UPLOAD': return { label: 'Tài liệu', icon: <FileText size={16} className="text-purple-400"/>, requester: 'Nhân viên' };
             case 'USER_CREATE': return { label: 'Nhân sự', icon: <UserPlus size={16} className="text-orange-400"/>, requester: 'CISO' };
@@ -18,12 +21,12 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
 
     const renderContent = (ticket) => {
         try {
-            const data = JSON.parse(ticket.snapshot_data);
-            if (ticket.module_type === 'USER_CREATE') return `Cấp tài khoản: ${data.full_name} (@${data.username})`;
-            if (ticket.module_type === 'USER_UPDATE') return `Đổi quyền cho: ${data.full_name} (@${data.username})`;
+            const data = JSON.parse(ticket.snapshot_data || '{}');
+            if (ticket.module_type === 'USER_CREATE') return `Cấp tài khoản: ${data.full_name || data.FullName} (@${data.username || data.Username})`;
+            if (ticket.module_type === 'USER_UPDATE') return `Đổi quyền cho: ${data.full_name || data.FullName} (@${data.username || data.Username})`;
             if (ticket.module_type === 'USER_DELETE') return `Yêu cầu Xóa tài khoản nhân sự`;
-            if (ticket.module_type === 'asset_ENROLL') return `Yêu cầu gia nhập: ${data.hostname} (${data.ip})`;
-            if (ticket.module_type === 'asset_DELETE') return `Xóa vĩnh viễn: ${ticket.target_name}`;
+            if (ticket.module_type === 'ASSET_ENROLL') return `Yêu cầu gia nhập: ${data.hostname || 'N/A'} (${data.ip_address || 'N/A'})`;
+            if (ticket.module_type === 'ASSET_DELETE' || ticket.module_type === 'ASSET_BULK_DELETE') return `Xóa tài sản: ${ticket.target_name}`;
             return ticket.target_name;
         } catch { return ticket.target_name; }
     };
@@ -47,7 +50,7 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
                     {tickets.map((t) => {
                         const config = getModuleConfig(t.module_type);
                         return (
-                            <tr key={t.id} className="hover:bg-slate-800/30 transition-colors cursor-pointer group">
+                            <tr key={t.id} onClick={() => setSelectedTicket(t)} className="hover:bg-slate-800/30 transition-colors cursor-pointer group">
                                 <td className="p-3">
                                     <div className="flex items-center gap-2">
                                         {config.icon}
@@ -56,7 +59,7 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
                                 </td>
                                 <td className="p-3">
                                     <div className="text-xs text-white font-medium">{renderContent(t)}</div>
-                                    <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">ID: {t.id} | {new Date(t.created_at).toLocaleString()}</div>
+                                    <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">ID: {t.id} | {new Date(t.created_at).toLocaleString('vi-VN')}</div>
                                 </td>
                                 <td className="p-3">
                                     <div className="flex items-center gap-2">
@@ -75,8 +78,7 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
                                 <td className="p-3 text-right">
                                     {t.status === 'PENDING' ? (
                                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition">
-                                            <button onClick={() => onReview(t.id, 'APPROVED')} title="Chấp nhận" className="p-2 bg-slate-800 text-emerald-400 hover:text-white hover:bg-emerald-600 rounded-lg transition"><Check size={14}/></button>
-                                            <button onClick={() => onReview(t.id, 'REJECTED')} title="Từ chối" className="p-2 bg-slate-800 text-red-400 hover:text-white hover:bg-red-600 rounded-lg transition"><X size={14}/></button>
+                                            <button onClick={(e) => { e.stopPropagation(); setSelectedTicket(t); }} className="px-3 py-1.5 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-lg transition text-xs font-bold">Xem chi tiết & Duyệt</button>
                                         </div>
                                     ) : (
                                         <span className="text-[10px] text-slate-500 italic">Xử lý bởi: {t.reviewed_by}</span>
@@ -87,6 +89,13 @@ const ApprovalList = ({ tickets, onReview, loading }) => {
                     })}
                 </tbody>
             </table>
+            
+            {/* Modal */}
+            <ApprovalTicketModal 
+                ticket={selectedTicket} 
+                onClose={() => setSelectedTicket(null)} 
+                onReview={onReview} 
+            />
         </div>
     );
 };

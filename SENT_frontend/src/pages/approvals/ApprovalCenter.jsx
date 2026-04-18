@@ -20,8 +20,8 @@ const ApprovalCenter = () => {
         fetchTickets(activeTab, activeStatus);
     }, [fetchTickets, activeTab, activeStatus]);
 
-    const handleReview = async (id, status) => {
-        const res = await reviewTicket(id, status);
+    const handleReview = async (id, status, reviewNote = '') => {
+        const res = await reviewTicket(id, status, reviewNote);
         if (res.success) fetchTickets(activeTab, activeStatus);
         else alert(res.error);
     };

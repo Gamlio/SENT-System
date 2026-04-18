@@ -37,9 +37,22 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 		}
 
 		// Tạo đơn phê duyệt
+		snapData, _ := json.Marshal(map[string]interface{}{
+			"hostname":   req.Hostname,
+			"ip_address": req.IPAddress,
+			"hwid":       req.AssetHWID,
+			"is_re_enroll": err == nil, // True if the device is re-enrolling
+		})
+
 		ticket := models.ApprovalTicket{
-			OrgID: orgID, ModuleType: "ASSET_ENROLL", ActionType: "ENROLL",
-			TargetName: asset.AssetHWID, Status: "PENDING", RequestedBy: "System_Enroll",
+			OrgID:         orgID,
+			ModuleType:    "ASSET_ENROLL",
+			ActionType:    "ENROLL",
+			TargetName:    asset.AssetHWID,
+			Status:        "PENDING",
+			RequestedBy:   "Hệ thống (Tự động)", // Tên người tạo đơn mặc định cho Enroll
+			RequestReason: "Thiết bị xin gia nhập hệ thống thông qua mã cài đặt",
+			SnapshotData:  string(snapData),
 		}
 		return tx.Create(&ticket).Error
 	})
@@ -48,22 +61,27 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 // CreateBulkDeleteRequest: Logic Maker-Checker cho việc xóa máy
 func (s *AssetLifecycleService) CreateBulkDeleteRequest(hwids []string, orgID uint, reason string, requester string) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
-		// 1. Chuyển trạng thái máy sang PENDING_DELETE trên giao diện
-		tx.Model(&models.Asset{}).Where("asset_hwid IN ? AND org_id = ?", hwids, orgID).Update("status", "PENDING_DELETE")
+		// THEO TƯ DUY MỚI: Không update status thành PENDING_DELETE để giữ hệ thống sạch
+		// Chỉ tạo Ticket phê duyệt
 
-		// 2. Tạo Ticket
+		// 1. Tạo Ticket
 		snap, _ := json.Marshal(map[string]interface{}{"hwids": hwids, "reason": reason})
 		ticket := models.ApprovalTicket{
-			OrgID: orgID, ModuleType: "ASSET_BULK_DELETE", ActionType: "DELETE",
-			TargetName: fmt.Sprintf("Xóa %d máy trạm", len(hwids)),
-			Status:     "PENDING", RequestedBy: requester, SnapshotData: string(snap),
+			OrgID:        orgID,
+			ModuleType:   "ASSET_BULK_DELETE",
+			ActionType:   "DELETE",
+			TargetName:   fmt.Sprintf("Xóa %d máy trạm", len(hwids)),
+			Status:       "PENDING",
+			RequestedBy:  requester,
+			RequestReason: reason,
+			SnapshotData: string(snap),
 		}
 
 		if err := tx.Create(&ticket).Error; err != nil {
 			return err
 		}
 
-		// 3. Thông báo Real-time cho Admin qua WebSocket
+		// 2. Thông báo Real-time cho Admin qua WebSocket
 		websocket.GlobalHub.BroadcastToOrg(orgID, map[string]interface{}{"type": "REFRESH_ASSET_LIST"})
 		return nil
 	})

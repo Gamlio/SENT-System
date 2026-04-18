@@ -216,7 +216,7 @@ const assets = () => {
 
             {selectedassets.length > 0 && (
                 <div className="fixed bottom-0 left-6 right-6 z-50 p-3 bg-[#0A101D] border-t border-slate-800 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] flex justify-center">
-                    <AssetsBulkActions selectedassets={selectedassets} clearSelection={() => setSelectedassets([])} onRefresh={fetchassets} onOpenApproveModal={() => { setTargetassetHwid(null); setShowAssignModal(true); }} onOpenDeleteModal={(hwids) => setDialogConfig({ isOpen: true, type: 'BULK_DELETE', hwids })}/>
+                    <AssetsBulkActions selectedassets={selectedassets} assets={assets} clearSelection={() => setSelectedassets([])} onRefresh={fetchassets} onOpenApproveModal={() => { setTargetassetHwid(null); setShowAssignModal(true); }} onOpenDeleteModal={(hwids) => setDialogConfig({ isOpen: true, type: 'BULK_DELETE', hwids })}/>
                 </div>
             )}
 

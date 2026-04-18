@@ -236,9 +236,10 @@ type ApprovalTicket struct {
 
 	Status string `json:"status" gorm:"default:'PENDING';index"` // PENDING, APPROVED, REJECTED
 
-	RequestedBy string `json:"requested_by"` // Tên người gửi đơn (hoặc "SYSTEM" nếu là asset tự gửi)
-	ReviewedBy  string `json:"reviewed_by"`  // Tên Admin đã duyệt
-	ReviewNote  string `json:"review_note"`  // Lý do từ chối (nếu có)
+	RequestedBy   string `json:"requested_by"`   // Tên người gửi đơn (hoặc "SYSTEM" nếu là asset tự gửi)
+	RequestReason string `json:"request_reason"` // Nguyên nhân/lý do làm đơn
+	ReviewedBy    string `json:"reviewed_by"`    // Tên Admin đã duyệt
+	ReviewNote    string `json:"review_note"`    // Lý do duyệt/từ chối (nếu có)
 
 	// Lưu dạng JSON để admin xem trước nội dung mà không cần join bảng phức tạp
 	SnapshotData string `json:"snapshot_data" gorm:"type:jsonb"`

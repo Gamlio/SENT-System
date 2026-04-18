@@ -87,7 +87,7 @@ func RequestDeleteAsset(c *gin.Context) {
 
 func RequestBulkDeleteAssets(c *gin.Context) {
 	var req struct {
-		AssetHWIDs []string `json:"asset_hwids"` // Chuẩn hóa tag JSON
+		AssetHWIDs []string `json:"hwids"` // Chuẩn hóa tag JSON cho khớp frontend
 		Reason     string   `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

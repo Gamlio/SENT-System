@@ -8,7 +8,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// --- 1. CHIẾN LƯỢC TẠO CHÍNH SÁCH ---
 type PolicyCreateStrategy struct{}
+
+type PolicyPayload struct {
+	Title            string   `json:"title"`
+	Category         string   `json:"category"`
+	Value            string   `json:"value"`
+	PolicyType       string   `json:"policy_type"`
+	TargetType       string   `json:"target_type"`
+	TargetAssetHWIDs []string `json:"target_asset_hwids"`
+}
 
 func (s *PolicyCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
 	// 1. Kiểm tra tính toàn vẹn: Đảm bảo Ticket có thông tin người duyệt
@@ -16,42 +26,42 @@ func (s *PolicyCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTic
 		return errors.New("thiếu thông tin người phê duyệt chính sách")
 	}
 
-	// 2. Thực hiện cập nhật "Sâu":
-	// - Đổi trạng thái sang APPROVED
-	// - Ghi danh tính người duyệt vào bản ghi Policy (Audit)
-	// - Kích hoạt luật (IsActive = true)
-	// - Chốt chặn OrgID: Chỉ cập nhật nếu Policy đó thuộc về đúng Org của Ticket
-	result := tx.Model(&models.Policy{}).
-		Where("id = ? AND org_id = ?", ticket.TargetID, ticket.OrgID).
-		Updates(map[string]interface{}{
-			"approval_status": "APPROVED",
-			"approved_by":     ticket.ReviewedBy, // Lưu lại danh tính người duyệt
-			"is_active":       true,              // Tự động kích hoạt luật sau khi duyệt
-		})
-
-	if result.Error != nil {
-		return result.Error
+	// 2. Giải mã dữ liệu từ "Đơn" (Snapshot)
+	var payload PolicyPayload
+	if err := json.Unmarshal([]byte(ticket.SnapshotData), &payload); err != nil {
+		return err
 	}
 
-	// 3. Kiểm tra xem có bản ghi nào được cập nhật không
-	if result.RowsAffected == 0 {
-		return errors.New("không tìm thấy chính sách đích hoặc sai phạm phân quyền tổ chức")
+	// 3. Bây giờ mới thực sự tạo Policy trong hệ thống
+	newPolicy := models.Policy{
+		OrgID:            ticket.OrgID,
+		Title:            payload.Title,
+		Category:         payload.Category,
+		Value:            payload.Value,
+		PolicyType:       payload.PolicyType,
+		TargetType:       payload.TargetType,
+		TargetAssetHWIDs: payload.TargetAssetHWIDs,
+		IsActive:         true,
+		ApprovalStatus:   "APPROVED",
+		CreatedBy:        ticket.RequestedBy,
+		ApprovedBy:       ticket.ReviewedBy,
+	}
+
+	if err := tx.Create(&newPolicy).Error; err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func (s *PolicyCreateStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	// Khi từ chối, ta vẫn nên lưu lại người đã từ chối để làm bằng chứng (Audit)
-	return tx.Model(&models.Policy{}).
-		Where("id = ? AND org_id = ?", ticket.TargetID, ticket.OrgID).
-		Updates(map[string]interface{}{
-			"approval_status": "REJECTED",
-			"approved_by":     ticket.ReviewedBy,
-			"is_active":       false, // Đảm bảo luật không hoạt động nếu bị từ chối
-		}).Error
+	// THEO TƯ DUY MỚI: Hệ thống SẠCH.
+	// Lúc tạo đơn (Ticket), ta chưa hề INSERT vào bảng Policy (không tạo rác PENDING).
+	// Nên khi bị từ chối, ta KHÔNG CẦN LÀM GÌ trong bảng Policy cả.
+	return nil
 }
 
+// --- 2. CHIẾN LƯỢC XÓA 1 CHÍNH SÁCH ---
 type PolicyDeleteStrategy struct{}
 
 func (s *PolicyDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
@@ -60,10 +70,11 @@ func (s *PolicyDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTic
 }
 
 func (s *PolicyDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
-	return nil // Từ chối xóa thì không làm gì cả
+	// Không làm gì cả, chính sách vẫn hoạt động bình thường
+	return nil
 }
 
-// --- XÓA NHIỀU ---
+// --- 3. CHIẾN LƯỢC XÓA NHIỀU CHÍNH SÁCH ---
 type PolicyBulkDeleteStrategy struct{}
 
 func (s *PolicyBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
@@ -80,3 +91,4 @@ func (s *PolicyBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approva
 func (s *PolicyBulkDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
 	return nil
 }
+
