@@ -15,13 +15,12 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       proxy: {
         '/api': {
-          // Bây giờ biến env đã được định nghĩa và có thể sử dụng
-          target: env.VITE_PROXY_TARGET || 'http://localhost:8000', 
+          target: env.VITE_PROXY_TARGET , 
           changeOrigin: true,
           secure: false,
         },
         '/ws': {
-          target: env.VITE_PROXY_TARGET || 'http://localhost:8000',
+          target: env.VITE_PROXY_TARGET ,
           ws: true,
         },
       },
