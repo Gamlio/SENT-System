@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"sent_backend/internal/auth"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
@@ -84,7 +85,8 @@ func RegisterSMEHandler(c *gin.Context) {
 	}
 
 	// 3. Gửi Email thông báo (Dùng goroutine chạy ngầm để API phản hồi nhanh)
-	loginURL := fmt.Sprintf("http://192.168.2.1/login/%s", newCompanyCode)
+	appURL := os.Getenv("APP_URL")
+	loginURL := fmt.Sprintf("%s/login/%s", appURL, newCompanyCode)
 	go func() {
 		subject := "Khởi tạo thành công Không gian SOC - SENT System"
 		body := fmt.Sprintf(`

@@ -67,7 +67,8 @@ func (s *UserCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicke
                         <p><b>Tên đăng nhập:</b> %s</p>
                         <p><b>Mật khẩu:</b> (Vui lòng liên hệ người cấp tài khoản để nhận)</p>
                     </div>
-                    <p>Bạn có thể đăng nhập và bắt đầu làm việc tại: <a href="http://192.168.2.1/login/%s" style="color: #10b981; font-weight: bold;">Truy cập Dashboard</a></p>
+					<p>Bạn có thể đăng nhập và bắt đầu làm việc tại:
+                    <a href="%s/login/%s" style="color: #10b981; font-weight: bold;">Truy cập Dashboard</a></p>
                 </div>
             `, u.FullName, companyCode, u.Username, companyCode)
 
