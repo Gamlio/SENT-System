@@ -11,12 +11,12 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000', 
+        target: env.VITE_PROXY_TARGET, 
         changeOrigin: true,
         secure: false,
       },
       '/ws': {
-        target: 'http://localhost:8000',
+        target: env.VITE_PROXY_TARGET,
         ws: true,
       },
     },

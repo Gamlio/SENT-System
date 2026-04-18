@@ -48,7 +48,8 @@ const Documents = () => {
 
     const handleDownloadDocument = (filePath, fileName) => {
         const formattedPath = filePath.replace(/\\/g, '/');
-        const fileUrl = `http://localhost:8000/${formattedPath}`;
+        const baseUrl = import.meta.env.VITE_API_BASE_URL;
+        const fileUrl = `${baseUrl}/${formattedPath}`;
         const link = document.createElement('a');
         link.href = fileUrl;
         link.setAttribute('download', fileName || 'Tai_Lieu.pdf'); 
