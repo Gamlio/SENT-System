@@ -83,7 +83,7 @@ func (c *AssetClient) StartHybridCommunication(hwid string, commandHandler func(
 			// Tự động chuyển đổi HTTP/HTTPS sang WS/WSS
 			wsURL := strings.Replace(config.Current.BackendURL, "http://", "ws://", 1)
 			wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
-			wsURL = fmt.Sprintf("%s/ws?hwid=%s", wsURL, hwid)
+			wsURL = fmt.Sprintf("%s/api/v1/ws?hwid=%s", wsURL, hwid)
 
 			conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 			if err != nil {

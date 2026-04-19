@@ -1,10 +1,13 @@
 package main
 
 import (
+	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"sent_backend/internal/cache"
 	"sent_backend/internal/database"
 	"sent_backend/internal/websocket"
 
@@ -29,6 +32,20 @@ func main() {
 	_ = godotenv.Load()
 	database.InitDB()
 
+	// Khởi tạo Redis để xử lý Blacklist, Revoked Tokens và Sequence Number
+	redisDB, err := strconv.Atoi(os.Getenv("REDIS_DB"))
+	if err != nil {
+		log.Fatalf("[FATAL] Lỗi cấu hình REDIS_DB: %v", err)
+	}
+
+	if err := cache.InitRedis(
+		os.Getenv("REDIS_ADDR"),
+		os.Getenv("REDIS_PASSWORD"),
+		redisDB,
+	); err != nil {
+		log.Fatalf("[FATAL] Không thể kết nối tới Redis Server: %v", err)
+	}
+
 	if mode := os.Getenv("GIN_MODE"); mode != "" {
 		gin.SetMode(mode)
 	}
@@ -37,13 +54,13 @@ func main() {
 
 	r.RedirectTrailingSlash = false
 	// ===== BẢNG MÔNG BẢO MẬT TẦNG GLOBAL =====
-	// 1. Kiểm tra Content-Type, Body Size -> Chặn DoS attacks
+	// 1. IP Blacklist check (Rẻ nhất, chặn ngay lập tức)
+	r.Use(middleware.IPBlacklistMiddleware())
+	// 2. Kiểm tra Content-Type, Body Size -> Chặn DoS attacks
 	r.Use(middleware.SecurityValidationMiddleware())
-	// 2. Rate limiting chung
+	// 3. Rate limiting chung
 	limiter := middleware.RateLimitMiddleware(10, 20)
 	r.Use(limiter)
-	// 3. IP Blacklist check
-	r.Use(middleware.IPBlacklistMiddleware())
 
 	originsEnv := os.Getenv("ALLOWED_ORIGINS")
 	var allowOrigins []string
@@ -65,7 +82,6 @@ func main() {
 	{
 
 		authGroup := v1Group.Group("/auth")
-		authGroup.Use(middleware.InputSanitizationMiddleware())
 		{
 			authGroup.POST("/login", middleware.UserLoginRateLimitMiddleware(), auth.LoginHandler)
 			authGroup.POST("/register", middleware.ValidateUserCreationMiddleware(), auth.RegisterSMEHandler)
@@ -80,7 +96,6 @@ func main() {
 
 		protected := v1Group.Group("")
 		protected.Use(middleware.AuthRequired())
-		protected.Use(middleware.InputSanitizationMiddleware())
 		{
 			protected.GET("/ws", websocket.WsHandler)
 			usersGroup := protected.Group("/users")
