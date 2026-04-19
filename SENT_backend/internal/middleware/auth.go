@@ -40,7 +40,7 @@ func AuthRequired() gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("thuật toán không khớp: %v", token.Header["alg"])
 			}
-			return []byte(os.Getenv("SECRET_KEY")), nil
+			return []byte(os.Getenv("JWT_SECRET")), nil
 		})
 
 		if err != nil || !token.Valid {

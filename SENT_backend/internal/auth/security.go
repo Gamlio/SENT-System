@@ -14,12 +14,13 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-func GenerateToken(username string, orgID uint) (string, error) { // <--- THÊM orgID VÀO ĐÂY
+func GenerateToken(username string, orgID uint, userID uint) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":    username,
-		"org_id": orgID, // <--- ĐÓNG DẤU MÃ CÔNG TY VÀO TOKEN
-		"exp":    time.Now().Add(time.Hour * 8).Unix(),
+		"sub":     username,
+		"org_id":  orgID,
+		"user_id": userID,
+		"exp":     time.Now().Add(time.Hour * 8).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(os.Getenv("SECRET_KEY")))
+	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 }

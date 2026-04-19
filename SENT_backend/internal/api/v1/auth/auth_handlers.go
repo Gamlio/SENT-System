@@ -154,7 +154,7 @@ func LoginHandler(c *gin.Context) {
 	}
 
 	// 4. Cập nhật thành công, cấp Token
-	token, _ := auth.GenerateToken(user.Username, *user.OrgID)
+	token, _ := auth.GenerateToken(user.Username, *user.OrgID, user.ID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"token":        token,

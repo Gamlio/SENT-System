@@ -345,7 +345,7 @@ Hệ thống tính điểm rủi ro động.
 │       └── processor.go          # File "điều phối" chính (Entry point)
 ├── pkg/                          # Các package dùng chung
 ├── uploads/                      # Thư mục chứa file vật lý (PDF, DOCX)
-├── .env                          # SECRET_KEY, DB_URL, PORT
+├── .env                          # JWT_SECRET, DB_URL, PORT
 ├── Dockerfile
 ├── go.mod
 └── go.sum
