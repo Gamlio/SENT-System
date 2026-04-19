@@ -19,8 +19,9 @@ export const useSocket = () => {
  */
 export const WebSocketProvider = ({ children }) => {
     const [isConnected, setIsConnected] = useState(false);
-    const socketUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
-    const listeners = useRef({}); // Cấu trúc: { eventType: [callback1, callback2], ... }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socketUrl = `${protocol}//${window.location.host}/api/v1/ws`;
+    const listeners = useRef({}); 
     const socket = useRef(null);
 
     useEffect(() => {
@@ -34,10 +35,6 @@ export const WebSocketProvider = ({ children }) => {
                 return;
             }
             
-            // 2. Khởi tạo kết nối WebSocket
-            // CẢNH BÁO BẢO MẬT: Gửi token qua query string (URL) là không an toàn vì nó có thể bị ghi lại trong logs.
-            // ĐỀ XUẤT: Backend nên được cấu hình để đọc token từ cookie hoặc một header đặc biệt.
-            // Cách dưới đây là một giải pháp tạm thời, cần được cải thiện ở backend.
             const wsUrlWithAuth = new URL(socketUrl);
             wsUrlWithAuth.searchParams.append('token', token);
 

@@ -63,7 +63,7 @@ func main() {
 
 	v1Group := r.Group("/api/v1")
 	{
-		// ===== AUTH ENDPOINTS + SECURITY LAYERS =====
+
 		authGroup := v1Group.Group("/auth")
 		authGroup.Use(middleware.InputSanitizationMiddleware())
 		{
@@ -71,7 +71,6 @@ func main() {
 			authGroup.POST("/register", middleware.ValidateUserCreationMiddleware(), auth.RegisterSMEHandler)
 		}
 
-		// ===== asset PUBLIC ENDPOINTS + FLOOD PROTECTION =====
 		assetPublicGroup := v1Group.Group("/assets")
 		{
 			assetPublicGroup.POST("/push", middleware.AssetFloodProtectionMiddleware(), middleware.ValidateAssetPayloadMiddleware(), assets.PushDataHandler)
@@ -79,12 +78,11 @@ func main() {
 			assetPublicGroup.GET("/sync-policies", assets.GetActiveEnrollmentToken, policies.SyncPoliciesForAsset)
 		}
 
-		// ===== PROTECTED ENDPOINTS (User must be authenticated) =====
 		protected := v1Group.Group("")
 		protected.Use(middleware.AuthRequired())
 		protected.Use(middleware.InputSanitizationMiddleware())
 		{
-			r.GET("/ws", websocket.WsHandler)
+			protected.GET("/ws", websocket.WsHandler)
 			usersGroup := protected.Group("/users")
 			{
 				usersGroup.GET("", users.GetUsers)
