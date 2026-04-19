@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 
 const WebSocketContext = createContext(null);
 
@@ -19,8 +19,13 @@ export const useSocket = () => {
  */
 export const WebSocketProvider = ({ children }) => {
     const [isConnected, setIsConnected] = useState(false);
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socketUrl = `${protocol}//${window.location.host}/api/v1/ws`;
+    
+    // 1. Dùng useMemo để ổn định URL, tránh reconnect liên tục
+    const socketUrl = useMemo(() => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${window.location.host}/api/v1/ws`;
+    }, []);
+
     const listeners = useRef({}); 
     const socket = useRef(null);
 
@@ -35,14 +40,15 @@ export const WebSocketProvider = ({ children }) => {
                 return;
             }
             
-            const wsUrlWithAuth = new URL(socketUrl);
-            wsUrlWithAuth.searchParams.append('token', token);
+            // 2. Tạo URL với token
+            const url = new URL(socketUrl);
+            url.searchParams.append('token', token);
 
             // Cách tiếp cận an toàn hơn (yêu cầu backend hỗ trợ):
             // socket.current = new WebSocket(socketUrl, ['Authorization', token]);
             // Backend sẽ cần đọc token từ header `Sec-WebSocket-Protocol`.
             
-            socket.current = new WebSocket(wsUrlWithAuth.toString());
+            socket.current = new WebSocket(url.toString());
 
             socket.current.onopen = () => {
                 console.log('✅ WebSocket Connected');
