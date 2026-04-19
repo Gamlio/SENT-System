@@ -32,8 +32,8 @@ services:
     container_name: sent_backend
     restart: always
     # Không cần mở port 8000 ra ngoài nếu đã có Nginx ở Frontend làm Proxy
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     depends_on:
       - db
       - mongodb

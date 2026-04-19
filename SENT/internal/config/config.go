@@ -28,7 +28,7 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 		json.Unmarshal(file, &Current)
 		// Nếu đã có SecretKey tức là đăng ký thành công rồi
 		if Current.SecretKey != "" {
-			Current.HWID = hwid // Cập nhật HWID vào bộ nhớ để các Sensor sử dụng
+			Current.HWID = hwid
 			return
 		}
 	}
@@ -37,7 +37,7 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	fmt.Println("===========================================")
 	fmt.Println("   🛡️ KÍCH HOẠT SENT SENSOR (CLI MODE)")
 	fmt.Println("===========================================")
-	Current.BackendURL = os.Getenv("BackendURL")
+	Current.BackendURL = "http://192.168.2.8:8000"
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
