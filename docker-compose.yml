@@ -48,6 +48,8 @@ services:
   # --- FRONTEND (React + Nginx Proxy) ---
   frontend:
     build: ./SENT_frontend
+    args:
+        - VITE_API_URL=/api/v1
     container_name: sent_frontend
     restart: always
     ports:
