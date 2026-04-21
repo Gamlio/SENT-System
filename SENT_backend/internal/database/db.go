@@ -4,8 +4,11 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"sent_backend/internal/cache"
 	"sent_backend/internal/models"
+	"strconv"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -109,6 +112,32 @@ func InitDB() {
 		go createMongoIndexes(context.Background()) // Dùng context mới để không bị cancel cùng với context connect
 	}
 
+	redisDBStr := os.Getenv("REDIS_DB")
+	if redisDBStr == "" {
+		redisDBStr = "0"
+	}
+	redisDB, _ := strconv.Atoi(redisDBStr)
+
+	// Logic thông minh: Ưu tiên REDIS_ADDR, nếu không có thì ghép HOST:PORT
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		host := os.Getenv("REDIS_HOST")
+		port := os.Getenv("REDIS_PORT")
+		if host != "" && port != "" {
+			redisAddr = fmt.Sprintf("%s:%s", host, port)
+		} else {
+			redisAddr = "redis:6379" // Mặc định cho Docker
+		}
+	}
+
+	if err := cache.InitRedis(
+		redisAddr,
+		os.Getenv("REDIS_PASSWORD"),
+		redisDB,
+	); err != nil {
+		log.Fatalf("[FATAL] Không thể kết nối tới Redis Server: %v", err)
+	}
+	fmt.Println("✅ Đã kết nối Redis thành công.")
 	// --- MIGRATION (Chỉ cho Postgres, dữ liệu quan hệ) ---
 	fmt.Println("⏳ Đang đồng bộ hóa PostgreSQL...")
 	DB.Config.DisableForeignKeyConstraintWhenMigrating = true

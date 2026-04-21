@@ -1,17 +1,14 @@
 package main
 
 import (
-	"log"
 	"os"
-	"strconv"
+
 	"strings"
 	"time"
 
-	"sent_backend/internal/cache"
 	"sent_backend/internal/database"
 	"sent_backend/internal/websocket"
 
-	// IMPORT CÁC PACKAGE ĐÃ CHIA NHỎ
 	"sent_backend/internal/api/v1/ai"
 	"sent_backend/internal/api/v1/approvals"
 	"sent_backend/internal/api/v1/assets"
@@ -31,20 +28,6 @@ import (
 func main() {
 	_ = godotenv.Load()
 	database.InitDB()
-
-	// Khởi tạo Redis để xử lý Blacklist, Revoked Tokens và Sequence Number
-	redisDB, err := strconv.Atoi(os.Getenv("REDIS_DB"))
-	if err != nil {
-		log.Fatalf("[FATAL] Lỗi cấu hình REDIS_DB: %v", err)
-	}
-
-	if err := cache.InitRedis(
-		os.Getenv("REDIS_ADDR"),
-		os.Getenv("REDIS_PASSWORD"),
-		redisDB,
-	); err != nil {
-		log.Fatalf("[FATAL] Không thể kết nối tới Redis Server: %v", err)
-	}
 
 	if mode := os.Getenv("GIN_MODE"); mode != "" {
 		gin.SetMode(mode)

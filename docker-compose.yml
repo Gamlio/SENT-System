@@ -2,6 +2,14 @@ version: '3.8'
 
 services:
   # --- DATABASE: PostgreSQL ---
+  redis:
+    image: redis:7-alpine  
+    container_name: sent_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
   db:
     image: postgres:15-alpine
     container_name: sent_db
@@ -15,8 +23,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-  # --- DATABASE: MongoDB ---
+  
   mongodb:
     image: mongo:4.4
     container_name: sent_mongo
@@ -25,27 +32,26 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
-
-  # --- BACKEND (Golang Alpine) ---
   backend:
     build: ./SENT_backend
     container_name: sent_backend
     restart: always
-    # Không cần mở port 8000 ra ngoài nếu đã có Nginx ở Frontend làm Proxy
+
     ports:
       - "8000:8000"
     depends_on:
       - db
       - mongodb
+      - redis
     env_file:
-      - ./SENT_backend/.env # Tự động load tất cả biến từ file .env bạn đã tạo
+      - ./SENT_backend/.env 
     environment:
       - DB_HOST=db
-      - MONGO_HOST=mongodb # Sửa lại cho khớp với tên service ở trên
+      - MONGO_HOST=mongodb
+      - REDIS_HOST=redis
     volumes:
-      - ./SENT_backend/uploads:/app/uploads # Lưu trữ tài liệu SOC bền vững
+      - ./SENT_backend/uploads:/app/uploads 
 
-  # --- FRONTEND (React + Nginx Proxy) ---
   frontend:
     build:
       context: ./SENT_frontend
@@ -62,3 +68,4 @@ services:
 volumes:
   postgres_data:
   mongo_data:
+  redis_data:
