@@ -73,6 +73,18 @@ func ChatWithPolicy(userQuestion string) (string, string, error) {
 		}
 	}
 
+	// LẤY DOCUMENTS (Tài liệu quy định/SOP)
+	var documents []models.Document
+	database.DB.Where("approval_status = ?", "APPROVED").Find(&documents)
+	docContext := "\nTÀI LIỆU QUY ĐỊNH (SOP):\n"
+	if len(documents) > 0 {
+		for _, doc := range documents {
+			docContext += fmt.Sprintf("- [%s] %s\n", doc.Category, doc.Title)
+		}
+	} else {
+		docContext += "Chưa có tài liệu quy định nào.\n"
+	}
+
 	playbookKnowledge := `
     QUY TRÌNH XỬ LÝ SỰ CỐ:
     1. Firewall Disabled (P1): Xác minh người dùng -> Bật lại -> Quét mã độc.
@@ -95,6 +107,9 @@ QUY TẮC ỨNG XỬ (TUÂN THỦ TUYỆT ĐỐI):
 <policies>
 %s
 </policies>
+<documents>
+%s
+</documents>
 <recent_incidents>
 %s
 </recent_incidents>
@@ -103,7 +118,7 @@ QUY TẮC ỨNG XỬ (TUÂN THỦ TUYỆT ĐỐI):
 </playbooks>
 </system_data>
 
-<user_question>%s</user_question>`, policyContext, incidentContext, playbookKnowledge, userQuestion)
+<user_question>%s</user_question>`, policyContext, docContext, incidentContext, playbookKnowledge, userQuestion)
 
 	// 3. GỬI REQUEST
 	reqBody := OllamaRequest{

@@ -192,3 +192,42 @@ func (s *PolicyService) BulkDeletePolicyRequest(ids []uint, orgID uint, creator 
 
 	return database.DB.Create(&ticket).Error
 }
+
+// CheckPolicyViolation: Bộ lọc thông minh so khớp dữ liệu log với Policy (Whitelist/Blacklist)
+func (s *PolicyService) CheckPolicyViolation(orgID uint, hwid string, category string, value string) (bool, string, error) {
+	policies, err := s.GetEffectivePolicies(orgID, hwid)
+	if err != nil {
+		return false, "", err
+	}
+
+	hasWhitelist := false
+	inWhitelist := false
+
+	for _, p := range policies {
+		// Chỉ kiểm tra các policy cùng danh mục (VD: SOFTWARE, USB, NETWORK)
+		if p.Category != category {
+			continue
+		}
+
+		// So khớp giá trị (không phân biệt chữ hoa chữ thường)
+		match := strings.EqualFold(strings.TrimSpace(p.Value), strings.TrimSpace(value))
+
+		if p.PolicyType == "BLACKLIST" && match {
+			return true, fmt.Sprintf("Phát hiện vi phạm Blacklist: %s", p.Title), nil
+		}
+
+		if p.PolicyType == "WHITELIST" {
+			hasWhitelist = true
+			if match {
+				inWhitelist = true
+			}
+		}
+	}
+
+	// Nếu có áp dụng Whitelist cho danh mục này mà giá trị log không khớp -> Vi phạm
+	if hasWhitelist && !inWhitelist {
+		return true, fmt.Sprintf("Vi phạm Whitelist: [%s] không được phép hoạt động", value), nil
+	}
+
+	return false, "", nil
+}
