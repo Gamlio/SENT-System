@@ -108,9 +108,7 @@ const assets = () => {
                             </h4>
                             <div className="flex items-center gap-2 mt-0.5">
                                 <span className="text-[10px] font-mono text-slate-500">{a.ip_address}</span>
-                                {a.baseline_status === 'COMPLETED' && (
-                                    <span className="text-[8px] font-black uppercase tracking-widest bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30">BASELINED</span>
-                                )}
+                                
                             </div>
                         </div>
                     </div>
@@ -186,7 +184,7 @@ const assets = () => {
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead className="sticky top-0 z-10 bg-[#111827]">
                             <tr className="border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-500">
-                                <th className="p-3 w-10 text-center"><input type="checkbox" className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" onChange={(e) => setSelectedassets(e.target.checked ? currentassets.map(a => a.hwid) : [])}/></th>
+                                <th className="p-3 w-10 text-center"><input type="checkbox" className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" onChange={(e) => setSelectedassets(e.target.checked ? currentassets.map(a => a.asset_hwid) : [])}/></th>
                                 {tableColumns.map(col => (
                                     <th key={col.key} className={`p-3 font-black ${col.className}`}>
                                         <div className="flex items-center gap-1.5 cursor-pointer hover:text-white" onClick={() => col.sortable && setSortConfig({ key: col.key, direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
@@ -199,13 +197,13 @@ const assets = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
                             {currentassets.map((asset) => (
-                                <tr key={asset.hwid} className="hover:bg-slate-800/30 transition-colors cursor-pointer group" onClick={() => navigate(`/assets/${asset.hwid}`)}>
+                                <tr key={asset.asset_hwid} className="hover:bg-slate-800/30 transition-colors cursor-pointer group" onClick={() => navigate(`/assets/${asset.asset_hwid}`)}>
                                     <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                                        <input type="checkbox" checked={selectedassets.includes(asset.hwid)} onChange={() => setSelectedassets(prev => prev.includes(asset.hwid) ? prev.filter(id => id !== asset.hwid) : [...prev, asset.hwid])} className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" />
+                                        <input type="checkbox" checked={selectedassets.includes(asset.asset_hwid)} onChange={() => setSelectedassets(prev => prev.includes(asset.asset_hwid) ? prev.filter(id => id !== asset.asset_hwid) : [...prev, asset.asset_hwid])} className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" />
                                     </td>
                                     {tableColumns.map(col => <td key={col.key} className={`p-3 ${col.className}`}>{col.render(asset)}</td>)}
                                     <td className="p-3 text-right" onClick={e => e.stopPropagation()}>
-                                        <AssetsActions asset={asset} onRefresh={fetchassets} onOpenAssignModal={() => { setTargetassetHwid(asset.hwid); setShowAssignModal(true); }} />
+                                        <AssetsActions asset={asset} onRefresh={fetchassets} onOpenAssignModal={() => { setTargetassetHwid(asset.asset_hwid); setShowAssignModal(true); }} />
                                     </td>
                                 </tr>
                             ))}

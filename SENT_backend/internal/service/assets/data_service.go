@@ -111,7 +111,6 @@ func (s *AssetDataService) GetAssetList(orgID uint) []map[string]interface{} {
 			"department_tag":    a.DepartmentTag,
 			"device_type":       a.DeviceType,
 			"is_zero_trust":     a.IsZeroTrust,
-			"baseline_status":   a.BaselineStatus,
 			"user_id":           a.UserID, // ID của người quản lý
 		}
 

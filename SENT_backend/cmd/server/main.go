@@ -97,7 +97,6 @@ func main() {
 				assetsGroup.GET("/:hwid/logs", assets.GetAssetLogs)
 				assetsGroup.GET("/active-token", assets.GetActiveEnrollmentToken)
 				assetsGroup.POST("/generate-token", assets.GenerateEnrollmentToken)
-				assetsGroup.POST("/:hwid/trigger-baseline", assets.TriggerBaseline)
 				assetsGroup.PUT("/:hwid/assign", assets.AssignManager)
 				assetsGroup.PUT("/:hwid/device-type", assets.UpdateDeviceType)
 				assetsGroup.PUT("/:hwid/department", assets.UpdateDepartment)

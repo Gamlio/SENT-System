@@ -178,8 +178,6 @@ func HandleSoftwareBaseline(asset models.Asset, data interface{}) {
 	if len(pubItems) > 0 {
 		tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(pubItems, 200)
 	}
-	tx.Model(&asset).Updates(map[string]interface{}{"baseline_status": "COMPLETED", "is_zero_trust": true})
-	tx.Commit()
 }
 
 func VerifySoftware(rec assetSoftwareRecord, asset models.Asset) bool {

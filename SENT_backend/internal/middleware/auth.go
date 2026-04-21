@@ -42,7 +42,12 @@ func AuthRequired() gin.HandlerFunc {
 			}
 		}
 
-		// 2. Nếu tìm không thấy -> Từ chối truy cập
+		// 2. Hỗ trợ cho kết nối WebSocket: Lấy token từ Query Parameter nếu Header trống
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
+
+		// 3. Nếu tìm không thấy -> Từ chối truy cập
 		if tokenString == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Yêu cầu mã xác thực (Token không được để trống)"})
 			c.Abort()

@@ -36,8 +36,6 @@ func ProcessassetData(payload AssetPayload) {
 
 	// 2. PHÂN LUỒNG XUỐNG CÁC MODULE CHUYÊN TRÁCH
 	switch payload.LogType {
-	case "software_baseline":
-		dataassets.HandleSoftwareBaseline(asset, payload.Data)
 	case "software":
 		dataassets.ProcessSoftware(asset, payload.Data)
 	case "usb":
@@ -59,12 +57,4 @@ func ProcessassetData(payload AssetPayload) {
 		"type": "ASSET_UPDATE",
 		"hwid": payload.AssetID,
 	})
-
-	// Nếu là Baseline xong, báo tin riêng
-	if payload.LogType == "software_baseline" {
-		websocket.GlobalHub.BroadcastToOrg(asset.OrgID, map[string]interface{}{
-			"type": "BASELINE_COMPLETED",
-			"hwid": payload.AssetID,
-		})
-	}
 }

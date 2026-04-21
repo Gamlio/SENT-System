@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, ShieldCheck, Terminal, Lock, Usb, Cpu, Server, Briefcase, UserX, Trash2, X, Fingerprint, UserCheck } from 'lucide-react';
+import { MoreVertical, Cpu, Server, Briefcase, UserX, Trash2, X, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AppDialog from '../../../components/AppDialog';
 import axios from '../../../api/axios'; // Đảm bảo đường dẫn axios chuẩn
@@ -35,7 +35,7 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
         if (isLoadingType) return; // Ngăn chặn người dùng bấm nhiều lần (Race condition)
         setIsLoadingType(true);
         try {
-            await axios.put(`/assets/${asset.hwid}/device-type`, { device_type: type });
+            await axios.put(`/assets/${asset.asset_hwid}/device-type`, { device_type: type });
             setShowTypeModal(false);
             setDialogConfig({
                 isOpen: true,
@@ -60,14 +60,14 @@ const handleDeleteasset = () => {
         setDialogConfig({
             isOpen: true,
             title: 'Yêu cầu gỡ bỏ máy trạm?',
-            message: `Bạn đang gửi yêu cầu gỡ bỏ hệ thống giám sát trên máy ${asset.hostname} (${asset.hwid}). Thao tác này cần SOC Admin phê duyệt.`,
+            message: `Bạn đang gửi yêu cầu gỡ bỏ hệ thống giám sát trên máy ${asset.hostname} (${asset.asset_hwid}). Thao tác này cần SOC Admin phê duyệt.`,
             type: 'danger',
             isAlertOnly: false,
             confirmText: 'Gửi yêu cầu xóa',
             onConfirm: async () => {
                 closeDialog();
                 try {
-                    await axios.post(`/assets/${asset.hwid}/request-delete`);
+                    await axios.post(`/assets/${asset.asset_hwid}/request-delete`, {});
                     // Gọi API thành công -> Bật Dialog báo thành công
                     setDialogConfig({
                         isOpen: true,
@@ -86,24 +86,6 @@ const handleDeleteasset = () => {
                         type: 'warning',
                         isAlertOnly: true
                     });
-                }
-            }
-        });
-    };
-
-    const handleTriggerBaseline = async () => {
-        setDialogConfig({
-            isOpen: true,
-            title: 'Thiết lập Zero Trust?',
-            message: 'Hệ thống sẽ ra lệnh cho asset quét toàn bộ phần mềm và USB hiện tại để làm danh sách Whitelist mặc định.',
-            type: 'info',
-            onConfirm: async () => {
-                closeDialog();
-                try {
-                    await axios.post(`/assets/${asset.hwid}/trigger-baseline`);
-                    alert("Đã gửi lệnh quét tới máy trạm qua WebSocket!");
-                } catch (err) {
-                    alert("Lỗi khi gửi lệnh.");
                 }
             }
         });
@@ -133,13 +115,6 @@ const handleDeleteasset = () => {
                         className="w-full text-left px-3 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-slate-800 hover:text-indigo-400 flex items-center gap-2.5 transition border-l-2 border-indigo-500/0 hover:border-indigo-500"
                     >
                         <UserCheck size={14} /> Assign Owner
-                    </button>
-
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setIsOpen(false); handleTriggerBaseline(); }}
-                        className="w-full text-left px-3 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-slate-800 hover:text-emerald-400 flex items-center gap-2.5 transition"
-                    >
-                        <Fingerprint size={14} /> Run Baseline
                     </button>
 
                     <button

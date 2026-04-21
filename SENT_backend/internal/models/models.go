@@ -121,7 +121,6 @@ type Asset struct {
 	LastIncidentAt             *time.Time        `json:"last_incident_at"`
 	LastTrustRecoveryAppliedAt *time.Time        `json:"last_trust_recovery_applied_at"`
 	IsZeroTrust                bool              `gorm:"default:false" json:"is_zero_trust"`
-	BaselineStatus             string            `gorm:"default:'NONE'" json:"baseline_status"`
 	SecretKey                  string            `json:"-"`
 	// [MỚI] ĐỒNG BỘ: Lưu người đã cấp phép máy trạm này
 	ApprovedBy string `json:"approved_by"`

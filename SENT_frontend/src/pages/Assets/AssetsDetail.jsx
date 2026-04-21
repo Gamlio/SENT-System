@@ -63,9 +63,7 @@ const AssetDetail = () => {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                    <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${asset.baseline_status === 'COMPLETED' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
-                        <Fingerprint size={10}/> {asset.baseline_status || 'NO BASELINE'}
-                    </div>
+                    
                     <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
                         <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></div> {isOnline ? 'ONLINE' : 'OFFLINE'}
                     </div>

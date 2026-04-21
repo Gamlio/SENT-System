@@ -43,33 +43,6 @@ func main() {
 	// Từ đoạn này trở xuống giữ nguyên...
 	client := transport.GetAssetClient()
 
-	// [QUAN TRỌNG]: Bật kênh nhận lệnh WebSocket
-	client.StartHybridCommunication(AssetHWID, func(cmdType string, cmdData interface{}) {
-		fmt.Printf("🎯 [LỆNH] Nhận yêu cầu: %s\n", cmdType)
-
-		switch cmdType {
-		case "TRIGGER_BASELINE":
-			fmt.Println("🔄 Lệnh hệ thống: Đang thiết lập lại Baseline toàn diện...")
-
-			// Duyệt qua tất cả Sensor đã đăng ký trong Registry
-			for _, sensor := range collector.Registry {
-				// Lấy dữ liệu mới nhất từ Sensor
-				sensorData, err := sensor.Collect()
-				if err != nil {
-					fmt.Printf("❌ Lỗi thu thập Baseline cho %s: %v\n", sensor.Name(), err)
-					continue
-				}
-
-				// Gửi dữ liệu dưới dạng Baseline (_baseline)
-				client.SendBaseline(AssetHWID, hostname, sensor.Name(), sensorData)
-				fmt.Printf("✅ Đã cập nhật Baseline cho module: %s\n", sensor.Name())
-			}
-
-			fmt.Println("🚀 Hoàn tất đồng bộ Baseline Zero Trust!")
-
-		}
-	})
-
 	// 2. Khởi tạo danh sách các module thu thập (Plugins)
 	collector.InitCollectors()
 	fmt.Printf(" [INFO] Đã nạp %d module cảm biến...\n", len(collector.Registry))
@@ -98,7 +71,7 @@ func runSensors(client *transport.AssetClient, hwid, hostname string, runHeavy b
 		data, err := sensor.Collect()
 		if err == nil && data != nil {
 			go func(logType string, logData interface{}) {
-				client.SendPayload(hwid, hostname, logType, logData, false)
+				client.SendPayload(hwid, hostname, logType, logData)
 			}(sensor.Name(), data)
 		}
 	}
