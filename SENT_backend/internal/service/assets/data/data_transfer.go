@@ -10,9 +10,8 @@ import (
 	"time"
 )
 
-// Cache lưu giá trị cũ để tính toán Delta (tốc độ)
-var ioCache = make(map[string]models.AssetIOActivity)
-var ioMutex sync.Mutex
+// Sử dụng sync.Map thay cho Mutex để loại bỏ thắt cổ chai (Lock Contention)
+var ioCache sync.Map
 
 // init: Khởi chạy một goroutine để dọn dẹp cache định kỳ, chống rò rỉ bộ nhớ.
 func init() {
@@ -28,35 +27,39 @@ func init() {
 
 // cleanupExpiredCache: Xóa các entry trong ioCache của các máy trạm không hoạt động quá 5 phút.
 func cleanupExpiredCache() {
-	ioMutex.Lock()
-	defer ioMutex.Unlock()
-
 	threshold := 5 * time.Minute
-	for hwid, record := range ioCache {
+	ioCache.Range(func(key, value interface{}) bool {
+		record := value.(models.AssetIOActivity)
 		if time.Since(record.Timestamp) > threshold {
-			delete(ioCache, hwid)
+			ioCache.Delete(key)
 		}
-	}
+		return true // Tiếp tục lặp
+	})
 }
 
 func ProcessDataTransfer(asset models.Asset, data interface{}) {
+	// LOẠI BỎ CHAI CỔ CPU TỪ MARSHALLING: Ép kiểu trực tiếp từ json.RawMessage
+	var bytes []byte
+	if raw, ok := data.(json.RawMessage); ok {
+		bytes = raw
+	} else {
+		return // Dữ liệu không hợp lệ
+	}
+
 	var current models.AssetIOActivity
-	bytes, _ := json.Marshal(data)
 	if err := json.Unmarshal(bytes, &current); err != nil {
 		return
 	}
-	// Gán timestamp hiện tại vì payload từ agent không chứa thông tin này.
-	// Đây là mốc thời gian để logic dọn dẹp cache hoạt động.
 	current.Timestamp = time.Now()
 
-	ioMutex.Lock()
-	lastRecord, exists := ioCache[asset.AssetHWID]
-	ioCache[asset.AssetHWID] = current // Cập nhật giá trị mới nhất vào cache
-	ioMutex.Unlock()
+	// Đọc từ Concurrent Map không cần Lock
+	val, exists := ioCache.Load(asset.AssetHWID)
+	ioCache.Store(asset.AssetHWID, current)
 
 	if !exists {
 		return // Lần đầu tiên chỉ lưu cache để lấy mốc so sánh
 	}
+	lastRecord := val.(models.AssetIOActivity)
 
 	// 1. TÍNH TOÁN DELTA (Lượng dữ liệu phát sinh trong 30 giây qua)
 	diffSent := current.NetBytesSent - lastRecord.NetBytesSent

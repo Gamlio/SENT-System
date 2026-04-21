@@ -168,9 +168,9 @@ const AssetDetail = () => {
                         {/* Mình bọc css cho các thẻ con bên trong giãn 100% height */}
                         <div className="h-full w-full [&>div]:h-full [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none">
                             {activeTab === 'LOGS' && <AssetsLogs logs={logs} />}
-                            {activeTab === 'SOFTWARE' && <AssetsSoftware software={asset.software || []} />}
-                            {activeTab === 'USB' && <AssetsUSB usbLogs={asset.usb_logs || []} />}
-                            {activeTab === 'PORTS' && <AssetsPort portLogs={asset.open_ports || []} />}
+                            {activeTab === 'SOFTWARE' && <AssetsSoftware hwid={hwid} />}
+                            {activeTab === 'USB' && <AssetsUSB hwid={hwid} />}
+                            {activeTab === 'PORTS' && <AssetsPort hwid={hwid} />}
                         </div>
                     </div>
                 </div>

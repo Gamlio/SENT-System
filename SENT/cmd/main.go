@@ -8,7 +8,6 @@ import (
 
 	"github.com/shirou/gopsutil/v3/host"
 
-	// Bổ sung import config, utils, và transport
 	"SENT/internal/collector"
 	"SENT/internal/config"
 	"SENT/internal/transport"
@@ -38,11 +37,6 @@ func main() {
 	hostname = fmt.Sprintf("%s-Virtual", hostname)
 
 	fmt.Printf("\n 🛡️ SENT asset V4.0 (Ninja Thin-Client) | HOST: %s\n", hostname)
-
-	// =========================================================================
-	// [QUAN TRỌNG] ĐÂY LÀ CHỖ BẠN BỊ THIẾU
-	// Phải gọi hàm này để nó dừng lại bắt nhập Token nếu chưa có file config!
-	// =========================================================================
 	ipAddress := utils.GetOutboundIP()
 	config.LoadOrBootstrap(AssetHWID, hostname, ipAddress)
 
@@ -80,28 +74,31 @@ func main() {
 	collector.InitCollectors()
 	fmt.Printf(" [INFO] Đã nạp %d module cảm biến...\n", len(collector.Registry))
 
-	// Chu kỳ quét mặc định 30 giây
-	ticker := time.NewTicker(30 * time.Second)
+	// Tách chu kỳ quét để tối ưu I/O Disk & CPU
+	fastTicker := time.NewTicker(30 * time.Second) // Các module nhẹ (Network, USB, AV)
+	slowTicker := time.NewTicker(5 * time.Minute)  // Các module nặng (Software Hash, Inventory)
 
-	for range ticker.C {
-		fmt.Printf("\n[+] Đang quét hệ thống lúc: %s\n", time.Now().Format("15:04:05"))
+	for {
+		select {
+		case <-fastTicker.C:
+			runSensors(client, AssetHWID, hostname, false)
+		case <-slowTicker.C:
+			runSensors(client, AssetHWID, hostname, true)
+		}
+	}
+}
 
-		// 3. DUYỆT QUA TẤT CẢ CÁC SENSOR ĐÃ ĐĂNG KÝ
-		for _, sensor := range collector.Registry {
-			data, err := sensor.Collect()
-			if err != nil {
-				log.Printf("⚠️ [WARNING] Sensor '%s' gặp lỗi: %v", sensor.Name(), err)
-				// Nếu data là nil do lỗi nghiêm trọng, bỏ qua không gửi để tránh lỗi Backend
-				if data == nil {
-					continue
-				}
-			}
+func runSensors(client *transport.AssetClient, hwid, hostname string, runHeavy bool) {
+	for _, sensor := range collector.Registry {
+		isHeavy := sensor.Name() == "software" || sensor.Name() == "inventory"
+		if isHeavy && !runHeavy {
+			continue // Bỏ qua quét nặng nếu không tới chu kỳ
+		}
 
+		data, err := sensor.Collect()
+		if err == nil && data != nil {
 			go func(logType string, logData interface{}) {
-				status := client.SendPayload(AssetHWID, hostname, logType, logData, false)
-				if status == "ISOLATED" {
-					fmt.Println("🚨 [CẢNH BÁO] Máy trạm đã bị Server đưa vào khu vực Cách ly mạng!")
-				}
+				client.SendPayload(hwid, hostname, logType, logData, false)
 			}(sensor.Name(), data)
 		}
 	}

@@ -8,6 +8,7 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
     const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const [showTypeModal, setShowTypeModal] = useState(false);
+    const [isLoadingType, setIsLoadingType] = useState(false);
     const menuRef = useRef(null);
     const [dialogConfig, setDialogConfig] = useState({
         isOpen: false,
@@ -31,6 +32,8 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
 
     // Gọi API cập nhật phân loại
    const handleChangeType = async (type) => {
+        if (isLoadingType) return; // Ngăn chặn người dùng bấm nhiều lần (Race condition)
+        setIsLoadingType(true);
         try {
             await axios.put(`/assets/${asset.hwid}/device-type`, { device_type: type });
             setShowTypeModal(false);
@@ -46,6 +49,8 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
             setDialogConfig({
                 isOpen: true, title: 'Lỗi cập nhật', message: 'Không thể cập nhật phân loại thiết bị.', type: 'danger', isAlertOnly: true
             });
+        } finally {
+            setIsLoadingType(false);
         }
     };
 const handleDeleteasset = () => {
@@ -169,7 +174,7 @@ const handleDeleteasset = () => {
                         </div>
                         
                         <div className="p-4 space-y-3">
-                            <button onClick={() => handleChangeType('SERVER')} className={`w-full flex flex-col p-4 rounded-2xl border transition group relative overflow-hidden ${asset.device_type === 'SERVER' ? 'bg-purple-500/20 border-purple-500' : 'border-slate-700 bg-slate-800/50 hover:bg-purple-500/10 hover:border-purple-500/50'}`}>
+                            <button disabled={isLoadingType} onClick={() => handleChangeType('SERVER')} className={`w-full flex flex-col p-4 rounded-2xl border transition group relative overflow-hidden ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${asset.device_type === 'SERVER' ? 'bg-purple-500/20 border-purple-500' : 'border-slate-700 bg-slate-800/50 hover:bg-purple-500/10 hover:border-purple-500/50'}`}>
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-purple-500/20 text-purple-400 rounded-lg"><Server size={20}/></div>
                                     <div className="text-left">
@@ -179,7 +184,7 @@ const handleDeleteasset = () => {
                                 </div>
                             </button>
 
-                            <button onClick={() => handleChangeType('IT_ADMIN')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${asset.device_type === 'IT_ADMIN' ? 'bg-blue-500/20 border-blue-500' : 'border-slate-700 bg-slate-800/50 hover:bg-blue-500/10 hover:border-blue-500/50'}`}>
+                            <button disabled={isLoadingType} onClick={() => handleChangeType('IT_ADMIN')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${asset.device_type === 'IT_ADMIN' ? 'bg-blue-500/20 border-blue-500' : 'border-slate-700 bg-slate-800/50 hover:bg-blue-500/10 hover:border-blue-500/50'}`}>
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg"><Briefcase size={20}/></div>
                                     <div className="text-left">
@@ -189,7 +194,7 @@ const handleDeleteasset = () => {
                                 </div>
                             </button>
 
-                            <button onClick={() => handleChangeType('OFFICE')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${(!asset.device_type || asset.device_type === 'OFFICE') ? 'bg-slate-700 border-slate-500' : 'border-slate-700 bg-slate-800/50 hover:bg-slate-700'}`}>
+                            <button disabled={isLoadingType} onClick={() => handleChangeType('OFFICE')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${(!asset.device_type || asset.device_type === 'OFFICE') ? 'bg-slate-700 border-slate-500' : 'border-slate-700 bg-slate-800/50 hover:bg-slate-700'}`}>
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-slate-600 text-white rounded-lg"><Cpu size={20}/></div>
                                     <div className="text-left">
@@ -199,7 +204,7 @@ const handleDeleteasset = () => {
                                 </div>
                             </button>
 
-                            <button onClick={() => handleChangeType('GUEST')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${asset.device_type === 'GUEST' ? 'bg-stone-500/20 border-stone-500' : 'border-slate-700 bg-slate-800/50 hover:bg-stone-500/10 hover:border-stone-500/50'}`}>
+                            <button disabled={isLoadingType} onClick={() => handleChangeType('GUEST')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${asset.device_type === 'GUEST' ? 'bg-stone-500/20 border-stone-500' : 'border-slate-700 bg-slate-800/50 hover:bg-stone-500/10 hover:border-stone-500/50'}`}>
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-stone-500/20 text-stone-400 rounded-lg"><UserX size={20}/></div>
                                     <div className="text-left">

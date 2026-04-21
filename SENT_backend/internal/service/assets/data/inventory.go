@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
@@ -12,14 +13,26 @@ import (
 )
 
 func ProcessInventory(asset models.Asset, data interface{}) {
-	invData, ok := data.(map[string]interface{})
-	if !ok || database.AssetInventoryCollection == nil {
+	if database.AssetInventoryCollection == nil {
+		return
+	}
+
+	var bytes []byte
+	if raw, ok := data.(json.RawMessage); ok {
+		bytes = raw
+	} else {
+		return
+	}
+
+	var invData map[string]interface{}
+	if err := json.Unmarshal(bytes, &invData); err != nil {
 		return
 	}
 
 	assetAssetHWID := asset.AssetHWID
 	update := bson.M{"$set": bson.M{
 		"asset_hwid": assetAssetHWID,
+		"org_id":     asset.OrgID, // TÍCH HỢP ORG_ID CHỐNG IDOR MONGODB
 		"os_info":    fmt.Sprintf("%v", invData["os_info"]),
 		"cpu_model":  fmt.Sprintf("%v", invData["cpu_model"]),
 		"updated_at": time.Now(),
@@ -29,5 +42,5 @@ func ProcessInventory(asset models.Asset, data interface{}) {
 		update["$set"].(bson.M)["ram_total_gb"] = int(ramFloat)
 	}
 
-	_, _ = database.AssetInventoryCollection.UpdateOne(context.TODO(), bson.M{"asset_hwid": assetAssetHWID}, update, options.Update().SetUpsert(true))
+	_, _ = database.AssetInventoryCollection.UpdateOne(context.TODO(), bson.M{"asset_hwid": assetAssetHWID, "org_id": asset.OrgID}, update, options.Update().SetUpsert(true))
 }

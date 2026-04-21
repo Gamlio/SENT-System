@@ -12,8 +12,9 @@ type PortSensor struct{}
 
 // 2. Cấu trúc JSON chuẩn gửi về Backend
 type PortRecord struct {
-	OpenPorts []OpenPortInfo `json:"open_ports"`
-	IPAddress string         `json:"ip_address"`
+	OpenPorts   []OpenPortInfo `json:"open_ports"`
+	IPAddress   string         `json:"ip_address"`
+	FirewallOff bool           `json:"firewall_off"`
 }
 
 // 3. Khai báo tên định danh của Log
@@ -58,8 +59,17 @@ func (s *PortSensor) Collect() (interface{}, error) {
 		}
 	}
 
+	// Gộp log Firewall vào đây theo mong đợi của Backend
+	fwSensor := &FirewallSensor{}
+	fwData, _ := fwSensor.Collect()
+	isFwOff := false
+	if fwRec, ok := fwData.(FirewallRecord); ok {
+		isFwOff = fwRec.FirewallOff
+	}
+
 	return PortRecord{
-		OpenPorts: openPorts,
-		IPAddress: utils.GetOutboundIP(), // Gọi hàm từ package utils
+		OpenPorts:   openPorts,
+		IPAddress:   utils.GetOutboundIP(), // Gọi hàm từ package utils
+		FirewallOff: isFwOff,
 	}, nil
 }

@@ -20,7 +20,13 @@ type assetTelemetryRecord struct {
 }
 
 func ProcessPorts(asset models.Asset, data interface{}) {
-	bytes, _ := json.Marshal(data)
+	var bytes []byte
+	if raw, ok := data.(json.RawMessage); ok {
+		bytes = raw
+	} else {
+		return
+	}
+
 	var payload assetTelemetryRecord
 	if err := json.Unmarshal(bytes, &payload); err != nil {
 		return
@@ -30,13 +36,14 @@ func ProcessPorts(asset models.Asset, data interface{}) {
 	}
 
 	incSvc := &incidents.IncidentService{}
-	incomingPortsMap := make(map[int]bool)
+	var activePorts []int
 
 	for _, incomingPort := range payload.OpenPorts {
-		incomingPortsMap[incomingPort.Port] = true
-		filter := bson.M{"asset_hwid": asset.AssetHWID, "port": incomingPort.Port}
+		activePorts = append(activePorts, incomingPort.Port)
+		filter := bson.M{"asset_hwid": asset.AssetHWID, "org_id": asset.OrgID, "port": incomingPort.Port}
 		update := bson.M{"$set": bson.M{
 			"asset_hwid":   asset.AssetHWID,
+			"org_id":       asset.OrgID,
 			"port":         incomingPort.Port,
 			"process_name": incomingPort.ProcessName,
 			"status":       "OPEN",
@@ -52,16 +59,13 @@ func ProcessPorts(asset models.Asset, data interface{}) {
 		}
 	}
 
-	cursor, err := database.OpenPortCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "status": "OPEN"})
-	if err != nil {
-		return
-	}
-	var activeDBPorts []models.OpenPort
-	cursor.All(context.TODO(), &activeDBPorts)
-
-	for _, dbPort := range activeDBPorts {
-		if !incomingPortsMap[dbPort.Port] {
-			_, _ = database.OpenPortCollection.UpdateOne(context.TODO(), bson.M{"_id": dbPort.ID}, bson.M{"$set": bson.M{"status": "CLOSED"}})
-		}
+	// TỐI ƯU ĐÓNG TRẠNG THÁI:
+	if len(activePorts) > 0 {
+		_, _ = database.OpenPortCollection.UpdateMany(context.TODO(), bson.M{
+			"asset_hwid": asset.AssetHWID,
+			"org_id":     asset.OrgID,
+			"status":     "OPEN",
+			"port":       bson.M{"$nin": activePorts},
+		}, bson.M{"$set": bson.M{"status": "CLOSED"}})
 	}
 }

@@ -66,15 +66,9 @@ func EnforceSoftwarePolicy() {
 		// So sánh cả tên gốc (ví dụ: utorrent.exe) và tên đã loại bỏ .exe (ví dụ: utorrent)
 		procNameLower := strings.ToLower(name)
 		if blacklistMap[procNameLower] || blacklistMap[strings.TrimSuffix(procNameLower, ".exe")] {
-			log.Printf("PHÁT HIỆN VI PHẠM: Tiến trình '%s' (PID: %d) nằm trong blacklist. Đang chấm dứt...", name, p.Pid)
-
-			// Chấm dứt tiến trình
-			if err := p.Terminate(); err != nil {
-				log.Printf("Lỗi khi chấm dứt tiến trình '%s': %v", name, err)
-			} else {
-				log.Printf("Đã chấm dứt thành công tiến trình '%s'.", name)
-				// Tại đây, có thể gửi một cảnh báo tức thời về backend
-			}
+			// Chỉ giám sát (Audit mode), không tiêu diệt tiến trình để tránh gián đoạn hệ thống
+			log.Printf("⚠️ CẢNH BÁO: Phát hiện tiến trình '%s' (PID: %d) nằm trong danh sách cấm đang hoạt động.", name, p.Pid)
+			// Ghi chú: Có thể mở rộng để gọi API gửi alert P1 về backend tại đây.
 		}
 	}
 }

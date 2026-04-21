@@ -6,8 +6,11 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
@@ -15,12 +18,45 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if _, err := exec.LookPath("dpkg-query"); err == nil {
-		return getLinuxSoftware(ctx, "dpkg-query -W -f='${Package}|${Version}|${Maintainer}\n'", runningProcs)
-	} else if _, err := exec.LookPath("rpm"); err == nil {
-		return getLinuxSoftware(ctx, "rpm -qa --queryformat '%{NAME}|%{VERSION}|%{VENDOR}\n'", runningProcs)
+	var allSoftware []SoftwareRecord
+
+	if _, err := exec.LookPath("/usr/bin/dpkg-query"); err == nil {
+		allSoftware, _ = getLinuxSoftware(ctx, "/usr/bin/dpkg-query -W -f='${Package}|${Version}|${Maintainer}\n'", runningProcs)
+	} else if _, err := exec.LookPath("/usr/bin/rpm"); err == nil {
+		allSoftware, _ = getLinuxSoftware(ctx, "/usr/bin/rpm -qa --queryformat '%{NAME}|%{VERSION}|%{VENDOR}\n'", runningProcs)
 	}
-	return []SoftwareRecord{}, nil // Không có package manager nào được tìm thấy, trả về rỗng, không phải lỗi
+
+	// Bổ sung: Bắt các App qua Snap/Flatpak hoặc Binary chạy trực tiếp
+	procs, _ := process.Processes()
+	processedNames := make(map[string]bool)
+	for _, sw := range allSoftware {
+		processedNames[strings.ToLower(sw.SoftwareName)] = true
+	}
+
+	for _, p := range procs {
+		exePath, err := p.Exe()
+		if err != nil || exePath == "" || strings.HasPrefix(exePath, "/usr/lib/") || strings.HasPrefix(exePath, "/sbin/") {
+			continue
+		}
+
+		name, _ := p.Name()
+		lowerName := strings.ToLower(name)
+		if processedNames[lowerName] {
+			continue
+		}
+
+		allSoftware = append(allSoftware, SoftwareRecord{
+			SoftwareName:    name,
+			Version:         "Unknown",
+			Publisher:       "Running Binary",
+			InstallLocation: filepath.Dir(exePath),
+			Status:          "PORTABLE",
+			IsRunning:       true,
+		})
+		processedNames[lowerName] = true
+	}
+
+	return allSoftware, nil
 }
 
 func getLinuxSoftware(ctx context.Context, cmdStr string, runningProcs map[string]bool) ([]SoftwareRecord, error) {

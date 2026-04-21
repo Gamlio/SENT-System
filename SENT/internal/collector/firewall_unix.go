@@ -18,7 +18,7 @@ func (s *FirewallSensor) Collect() (interface{}, error) {
 
 	switch runtime.GOOS {
 	case "linux":
-		cmd := exec.CommandContext(ctx, "ufw", "status")
+		cmd := exec.CommandContext(ctx, "/usr/sbin/ufw", "status")
 		out, err := cmd.Output()
 		if err == nil && strings.Contains(strings.ToLower(string(out)), "inactive") {
 			return FirewallRecord{FirewallOff: true}, nil

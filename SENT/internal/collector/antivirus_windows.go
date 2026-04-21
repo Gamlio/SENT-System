@@ -4,38 +4,23 @@ package collector
 
 import (
 	"context"
+	"os/exec"
+	"strings"
 	"time"
-
-	"github.com/StackExchange/wmi"
 )
 
 // Collect: Thu thập trạng thái mã độc / trình diệt virus on Windows
 func (s *AntivirusSensor) Collect() (interface{}, error) {
-	// [FIX-WMI-HANG] Đặt timeout 5 giây cho các lệnh OS và truy vấn WMI
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	type MSFT_MpThreat struct {
-		RollupStatus uint32
-	}
-	var threats []MSFT_MpThreat
-	q := wmi.CreateQuery(&threats, "WHERE RollupStatus = 1")
-	// Thay thế wmi.QueryWithContext bằng cơ chế timeout thủ công để tương thích ngược.
-	errChan := make(chan error, 1)
-	go func() {
-		// Sử dụng hàm wmi.Query cũ hơn bên trong goroutine
-		errChan <- wmi.Query(q, &threats, ".", `ROOT\Microsoft\Windows\Defender`)
-	}()
+	// [TỐI ƯU HIỆU SUẤT] Sử dụng WMI Command-line (WMIC) nhanh hơn Powershell
+	cmd := exec.CommandContext(ctx, "wmic", "/namespace:\\\\root\\Microsoft\\Windows\\Defender", "path", "MSFT_MpThreat", "where", "RollupStatus=1", "get", "ThreatID")
 
-	select {
-	case err := <-errChan:
-		// Truy vấn WMI hoàn tất (thành công hoặc lỗi)
-		if err == nil && len(threats) > 0 {
-			return AntivirusRecord{HasThreat: true}, nil
-		}
-		// Nếu có lỗi hoặc không có threat, sẽ rơi xuống return mặc định bên dưới.
-	case <-ctx.Done():
-		// Truy vấn bị timeout, cũng rơi xuống return mặc định.
+	out, err := cmd.Output()
+	// Nếu output có chứa "ThreatID", tức là Defender đang báo cáo mã độc (RollupStatus=1)
+	if err == nil && strings.Contains(string(out), "ThreatID") {
+		return AntivirusRecord{HasThreat: true}, nil
 	}
 	return AntivirusRecord{HasThreat: false}, nil
 }

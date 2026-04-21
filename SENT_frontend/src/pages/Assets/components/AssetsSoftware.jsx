@@ -1,26 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Package, Search, ChevronLeft, ChevronRight, Activity, AlertTriangle, Fingerprint } from 'lucide-react';
+import axios from '../../../api/axios';
 
-const assetSoftware = ({ software }) => {
+const assetSoftware = ({ hwid }) => {
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
+    const [data, setData] = useState([]);
+    const [totalItems, setTotalItems] = useState(0);
     const itemsPerPage = 6;
 
     useEffect(() => setPage(1), [search]);
 
-    const filtered = (software || []).filter(s => 
-        s.software_name?.toLowerCase().includes(search.toLowerCase()) ||
-        s.publisher?.toLowerCase().includes(search.toLowerCase())
-    );
+    const fetchData = useCallback(async () => {
+        if (!hwid) return;
+        try {
+            const res = await axios.get(`/assets/${hwid}/software`, {
+                params: { page, limit: itemsPerPage, search }
+            });
+            setData(res.data.items || []);
+            setTotalItems(res.data.total || 0);
+        } catch (err) {
+            console.error(err);
+        }
+    }, [hwid, page, search]);
 
-    const totalPages = Math.ceil(filtered.length / itemsPerPage);
-    const displayedItems = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+    // Sử dụng debounce cho ô tìm kiếm
+    useEffect(() => {
+        const timer = setTimeout(() => fetchData(), 300);
+        return () => clearTimeout(timer);
+    }, [fetchData]);
+
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
 
     return (
         <div className="bg-[#1e293b] rounded-3xl border border-slate-800 shadow-xl overflow-hidden flex flex-col h-[520px]">
             <div className="p-4 border-b border-slate-800 bg-slate-800/20 flex justify-between items-center">
                 <h3 className="text-xs font-black text-slate-500 uppercase flex items-center gap-2 tracking-widest">
-                    <Package size={14} className="text-blue-400"/> Phần mềm ({filtered.length})
+                    <Package size={14} className="text-blue-400"/> Phần mềm ({totalItems})
                 </h3>
                 <div className="relative w-40">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -33,13 +49,13 @@ const assetSoftware = ({ software }) => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                {displayedItems.length === 0 ? (
+                {data.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-slate-500">
                         <Package size={32} className="mb-2 opacity-20"/>
                         <p className="text-xs font-bold">Không tìm thấy phần mềm</p>
                     </div>
                 ) : (
-                    displayedItems.map((s, idx) => (
+                    data.map((s, idx) => (
                         <div key={idx} className={`p-3 rounded-xl border flex flex-col gap-2 transition group ${s.status === 'GHOST_REGISTRY' ? 'bg-red-500/5 border-red-500/20' : 'bg-slate-900/50 border-slate-800 hover:border-slate-600'}`}>
                             <div className="flex justify-between items-start">
                                 <div className="flex items-center gap-2">

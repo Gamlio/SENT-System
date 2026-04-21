@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,6 +58,12 @@ func (c *AssetClient) SendPayload(hwid, hostname, logType string, data interface
 	signature := utils.SignPayload(jsonPayload, config.Current.SecretKey)
 	req.Header.Set("X-Sent-Signature", signature)
 
+	// Bổ sung header chống Replay Attack
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	sequence := strconv.FormatInt(time.Now().UnixNano(), 10)
+	req.Header.Set("X-Sent-Timestamp", timestamp)
+	req.Header.Set("X-Sent-Sequence", sequence)
+
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		log.Printf("Lỗi kết nối tới server (%s): %v", logType, err)
@@ -85,7 +92,14 @@ func (c *AssetClient) StartHybridCommunication(hwid string, commandHandler func(
 			wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
 			wsURL = fmt.Sprintf("%s/api/v1/ws?hwid=%s", wsURL, hwid)
 
-			conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+			// Bổ sung bảo mật cho WebSocket
+			headers := http.Header{}
+			timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+			headers.Set("X-Sent-Timestamp", timestamp)
+			headers.Set("X-Sent-Sequence", strconv.FormatInt(time.Now().UnixNano(), 10))
+			headers.Set("X-Sent-Signature", utils.SignPayload([]byte(hwid+timestamp), config.Current.SecretKey))
+
+			conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
 			if err != nil {
 				time.Sleep(5 * time.Second) // Thử lại sau 5s nếu không kết nối được
 				continue
@@ -95,8 +109,9 @@ func (c *AssetClient) StartHybridCommunication(hwid string, commandHandler func(
 
 			for {
 				var msg struct {
-					Type string      `json:"type"`
-					Data interface{} `json:"data"`
+					Type      string      `json:"type"`
+					Data      interface{} `json:"data"`
+					Signature string      `json:"signature"`
 				}
 
 				err := conn.ReadJSON(&msg)
@@ -104,6 +119,16 @@ func (c *AssetClient) StartHybridCommunication(hwid string, commandHandler func(
 					log.Println("⚠️ Mất kết nối WebSocket, đang kết nối lại...")
 					conn.Close()
 					break
+				}
+
+				// Kiểm tra tính toàn vẹn của phản hồi (Chống MitM)
+				if msg.Signature != "" {
+					dataBytes, _ := json.Marshal(msg.Data)
+					expectedSig := utils.SignPayload(dataBytes, config.Current.SecretKey)
+					if msg.Signature != expectedSig {
+						log.Println("🚨 CẢNH BÁO BẢO MẬT: Phát hiện lệnh điều khiển có chữ ký không hợp lệ. Đã từ chối thực thi!")
+						continue
+					}
 				}
 
 				// Chuyển lệnh nhận được ngược lại cho main.go xử lý

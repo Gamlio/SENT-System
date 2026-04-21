@@ -20,7 +20,6 @@ func InitCollectors() {
 	Register(&USBSensor{})
 	Register(&PortSensor{})
 	Register(&InventorySensor{})
-	Register(&FirewallSensor{})
 	Register(&AntivirusSensor{})
 	Register(&DataTransferSensor{})
 }

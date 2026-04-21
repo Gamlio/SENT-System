@@ -18,7 +18,7 @@ func (s *AntivirusSensor) Collect() (interface{}, error) {
 
 	switch runtime.GOOS {
 	case "darwin":
-		cmd := exec.CommandContext(ctx, "spctl", "--status")
+		cmd := exec.CommandContext(ctx, "/usr/sbin/spctl", "--status")
 		out, err := cmd.Output()
 		// Gatekeeper bị tắt là một rủi ro bảo mật.
 		if err == nil && strings.Contains(strings.ToLower(string(out)), "disabled") {
@@ -27,11 +27,8 @@ func (s *AntivirusSensor) Collect() (interface{}, error) {
 		return AntivirusRecord{HasThreat: false}, nil
 
 	case "linux":
-		cmd := exec.CommandContext(ctx, "systemctl", "is-active", "clamav-daemon")
-		out, err := cmd.Output()
-		if err != nil || !strings.Contains(string(out), "active") {
-			return AntivirusRecord{HasThreat: true}, nil
-		}
+		// Dịch vụ clamav-daemon không chạy KHÔNG CÓ NGHĨA là máy đang bị nhiễm mã độc.
+		// Bỏ logic báo False Positive này để tránh spam rác về SOC.
 		return AntivirusRecord{HasThreat: false}, nil
 	}
 	return AntivirusRecord{HasThreat: false}, nil // Hệ điều hành không hỗ trợ

@@ -1,27 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Usb, Search, ChevronLeft, ChevronRight, Fingerprint, Tag } from 'lucide-react';
+import axios from '../../../api/axios';
 
-const assetUSB = ({ usbLogs }) => {
+const assetUSB = ({ hwid }) => {
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
+    const [data, setData] = useState([]);
+    const [totalItems, setTotalItems] = useState(0);
     const itemsPerPage = 6; 
 
     useEffect(() => setPage(1), [search]);
 
-    const filtered = (usbLogs || []).filter(u => 
-        u.device_name?.toLowerCase().includes(search.toLowerCase()) || 
-        u.vid?.toLowerCase().includes(search.toLowerCase()) ||
-        u.pid?.toLowerCase().includes(search.toLowerCase())
-    );
+    const fetchData = useCallback(async () => {
+        if (!hwid) return;
+        try {
+            const res = await axios.get(`/assets/${hwid}/usb`, {
+                params: { page, limit: itemsPerPage, search }
+            });
+            setData(res.data.items || []);
+            setTotalItems(res.data.total || 0);
+        } catch (err) {
+            console.error(err);
+        }
+    }, [hwid, page, search]);
 
-    const totalPages = Math.ceil(filtered.length / itemsPerPage);
-    const displayedItems = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+    useEffect(() => {
+        const timer = setTimeout(() => fetchData(), 300);
+        return () => clearTimeout(timer);
+    }, [fetchData]);
+
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
 
     return (
         <div className="bg-[#1e293b] rounded-3xl border border-slate-800 shadow-xl overflow-hidden flex flex-col h-[520px]">
             <div className="p-4 border-b border-slate-800 bg-slate-800/20 flex justify-between items-center">
                 <h3 className="text-xs font-black text-slate-500 uppercase flex items-center gap-2 tracking-widest">
-                    <Usb size={14} className="text-emerald-400"/> Lịch sử USB ({filtered.length})
+                    <Usb size={14} className="text-emerald-400"/> Lịch sử USB ({totalItems})
                 </h3>
                 <div className="relative w-36">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -34,13 +48,13 @@ const assetUSB = ({ usbLogs }) => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                {displayedItems.length === 0 ? (
+                {data.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-slate-500">
                         <Usb size={32} className="mb-2 opacity-20"/>
                         <p className="text-xs font-bold">Chưa ghi nhận USB nào</p>
                     </div>
                 ) : (
-                    displayedItems.map((usb, idx) => (
+                    data.map((usb, idx) => (
                         <div key={idx} className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition-colors group">
                             <div className="flex gap-3 items-center mb-2">
                                 <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg shrink-0">

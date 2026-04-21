@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -16,7 +15,7 @@ import (
 // Khai báo các biểu thức chính quy (Regex) ở cấp package để biên dịch một lần duy nhất.
 // Đây là một tối ưu hiệu suất quan trọng, tránh việc biên dịch lại regex trong các vòng lặp.
 var (
-	reLinuxUSB   = regexp.MustCompile(`ID ([a-f0-9]{4}):([a-f0-9]{4}) (.*)`)
+	reLinuxUSB   = regexp.MustCompile(`Bus (\d{3}) Device (\d{3}): ID ([a-f0-9]{4}):([a-f0-9]{4}) (.*)`)
 	reWindowsVID = regexp.MustCompile(`VID_([A-Za-z0-9]{4})`)
 	reWindowsPID = regexp.MustCompile(`PID_([A-Za-z0-9]{4})`)
 )
@@ -49,53 +48,50 @@ func (s *USBSensor) Collect() (interface{}, error) {
 	defer cancel()
 
 	if runtime.GOOS == "windows" {
-		psCommand := `
-			$usb = Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -match '^USB' -and $_.Status -eq 'OK' }
-			if ($usb.Count -eq 0) { Write-Output "[]"; exit }
-			$usb | Select-Object Name, PNPDeviceID | ConvertTo-Json -Compress
-		`
-		cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", psCommand)
+		// [TỐI ƯU HIỆU SUẤT] Sử dụng WMIC định dạng danh sách (List Format)
+		cmd := exec.CommandContext(ctx, "wmic", "path", "Win32_PnPEntity", "where", "PNPDeviceID like 'USB%' and Status='OK'", "get", "Name,PNPDeviceID", "/format:list")
 		output, err := cmd.Output()
 		if err != nil {
-			return nil, fmt.Errorf("lỗi thực thi lệnh PowerShell: %w", err)
+			return nil, fmt.Errorf("lỗi thực thi lệnh wmic: %w", err)
 		}
 
-		jsonStr := strings.TrimSpace(string(output))
-		if len(jsonStr) > 0 && jsonStr[0] != '[' {
-			jsonStr = "[" + jsonStr + "]" // Ép thành mảng nếu chỉ có 1 thiết bị
-		}
+		var currentName, currentPNP string
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if strings.HasPrefix(line, "Name=") {
+				currentName = strings.TrimPrefix(line, "Name=")
+			} else if strings.HasPrefix(line, "PNPDeviceID=") {
+				currentPNP = strings.TrimPrefix(line, "PNPDeviceID=")
 
-		var rawList []map[string]interface{}
-		if err := json.Unmarshal([]byte(jsonStr), &rawList); err != nil {
-			return nil, fmt.Errorf("lỗi parse JSON từ PowerShell: %w", err)
-		}
+				// Bóc tách VID, PID, Serial từ PNPDeviceID
+				vid, pid, serial := parseWindowsUSBID(currentPNP)
 
-		for _, dev := range rawList {
-			name := fmt.Sprintf("%v", dev["Name"])
-			pnpID := fmt.Sprintf("%v", dev["PNPDeviceID"])
+				hash := generateDeviceHash(vid, pid, serial)
 
-			// Bóc tách VID, PID, Serial từ PNPDeviceID
-			// Ví dụ: USB\VID_045E&PID_07A5\6&3412312&0&2
-			vid, pid, serial := parseWindowsUSBID(pnpID)
+				usbList = append(usbList, USBRecord{
+					DeviceName:   currentName,
+					DeviceID:     currentPNP,
+					VID:          vid,
+					PID:          pid,
+					SerialNumber: serial,
+					DeviceHash:   hash,
+					EventType:    "plugged",
+				})
 
-			hash := generateDeviceHash(vid, pid, serial)
-
-			usbList = append(usbList, USBRecord{
-				DeviceName:   name,
-				DeviceID:     pnpID,
-				VID:          vid,
-				PID:          pid,
-				SerialNumber: serial,
-				DeviceHash:   hash,
-				EventType:    "plugged",
-			})
+				currentName = ""
+				currentPNP = ""
+			}
 		}
 		return usbList, nil
 	}
 
 	if runtime.GOOS == "linux" {
 		// Sử dụng lsusb trên Linux (Định dạng: Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub)
-		cmd := exec.CommandContext(ctx, "lsusb")
+		cmd := exec.CommandContext(ctx, "/usr/bin/lsusb")
 		output, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("lỗi thực thi lsusb: %w", err)
@@ -110,11 +106,25 @@ func (s *USBSensor) Collect() (interface{}, error) {
 			// Dùng Regex global đã khai báo sẵn, không biên dịch lại
 			matches := reLinuxUSB.FindStringSubmatch(line)
 
-			if len(matches) >= 4 {
-				vid := matches[1]
-				pid := matches[2]
-				name := strings.TrimSpace(matches[3])
-				serial := "N/A" // lsusb mặc định không hiện serial, cần udevadm nếu muốn sâu hơn
+			if len(matches) >= 6 {
+				bus := matches[1]
+				dev := matches[2]
+				vid := matches[3]
+				pid := matches[4]
+				name := strings.TrimSpace(matches[5])
+				serial := "N/A"
+
+				// Thử lấy Serial Number bằng udevadm (Công cụ mặc định trên mọi Linux distro hiện đại)
+				udevCmd := exec.CommandContext(ctx, "/usr/bin/udevadm", "info", "--query=property", fmt.Sprintf("--name=/dev/bus/usb/%s/%s", bus, dev))
+				udevOut, udevErr := udevCmd.Output()
+				if udevErr == nil {
+					for _, uLine := range strings.Split(string(udevOut), "\n") {
+						if strings.HasPrefix(uLine, "ID_SERIAL_SHORT=") {
+							serial = strings.TrimPrefix(uLine, "ID_SERIAL_SHORT=")
+							break
+						}
+					}
+				}
 
 				hash := generateDeviceHash(vid, pid, serial)
 
@@ -134,7 +144,7 @@ func (s *USBSensor) Collect() (interface{}, error) {
 
 	if runtime.GOOS == "darwin" {
 		// macOS: Dùng system_profiler xuất ra JSON
-		cmd := exec.CommandContext(ctx, "system_profiler", "SPUSBDataType", "-json")
+		cmd := exec.CommandContext(ctx, "/usr/sbin/system_profiler", "SPUSBDataType", "-json")
 		output, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("lỗi thực thi system_profiler: %w", err)

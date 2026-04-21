@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,9 +27,10 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	file, err := os.ReadFile(CONFIG_FILE)
 	if err == nil {
 		json.Unmarshal(file, &Current)
-		// Nếu đã có SecretKey tức là đăng ký thành công rồi
 		if Current.SecretKey != "" {
 			Current.HWID = hwid
+			// Giải mã SecretKey khi nạp vào RAM
+			Current.SecretKey = deobfuscateKey(Current.SecretKey, hwid)
 			return
 		}
 	}
@@ -74,11 +76,17 @@ func enrollToServer(token, hwid, hostname, ipAddress string) bool {
 	json.NewDecoder(resp.Body).Decode(&result)
 
 	Current.EnrollToken = token
-	Current.SecretKey = result["secret_key"].(string)
+
+	// Mã hóa (Obfuscate) SecretKey trước khi lưu xuống đĩa
+	rawSecret := result["secret_key"].(string)
+	Current.SecretKey = obfuscateKey(rawSecret, hwid)
 
 	// Lưu xuống đĩa cứng
 	data, _ := json.MarshalIndent(Current, "", "  ")
-	os.WriteFile(CONFIG_FILE, data, 0644)
+	os.WriteFile(CONFIG_FILE, data, 0600)
+
+	// Khôi phục lại SecretKey gốc trên RAM cho các thao tác tiếp theo
+	Current.SecretKey = rawSecret
 
 	fmt.Println("✅ Đăng ký thành công! Máy trạm đang chờ SOC phê duyệt (Status: PENDING).")
 	time.Sleep(2 * time.Second)
@@ -98,4 +106,21 @@ func GetPolicyURL() string {
 // GetSecretKey returns the secret key used for signing requests.
 func GetSecretKey() string {
 	return Current.SecretKey
+}
+
+// Mã hóa XOR cơ bản để tránh lưu SecretKey dưới dạng Plaintext
+func obfuscateKey(secret, hwid string) string {
+	b := []byte(secret)
+	for i := range b {
+		b[i] ^= hwid[i%len(hwid)]
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func deobfuscateKey(obfuscated, hwid string) string {
+	b, _ := base64.StdEncoding.DecodeString(obfuscated)
+	for i := range b {
+		b[i] ^= hwid[i%len(hwid)]
+	}
+	return string(b)
 }

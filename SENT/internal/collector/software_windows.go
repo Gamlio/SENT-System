@@ -5,14 +5,17 @@ package collector
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"golang.org/x/sys/windows/registry"
 )
 
 func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 	var softwareList []SoftwareRecord
 	newMetas := make(map[string]FileMetadata) // Map lưu các file cần update hash
+	processedExes := make(map[string]bool)
 	paths := []string{
 		`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`,
 		`SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`,
@@ -75,11 +78,17 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 								// File has not changed, use the cached hash.
 								fileHash = oldMeta.Hash
 							}
+							processedExes[strings.ToLower(exePath)] = true
 						}
 					}
 				}
 
 				isRunning := isProcessRunning(displayName, runningProcs)
+
+				// Nếu app đang chạy thực tế, không thể coi là GHOST_REGISTRY dù thiếu thư mục cài đặt
+				if status == "GHOST_REGISTRY" && isRunning {
+					status = "INSTALLED"
+				}
 
 				softwareList = append(softwareList, SoftwareRecord{
 					SoftwareName:    displayName,
@@ -92,6 +101,44 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 				})
 			}
 			sk.Close()
+		}
+	}
+
+	// Bổ sung: Bắt các Portable Binaries / Malware đang chạy ngầm nhưng trốn Registry
+	procs, _ := process.Processes()
+	for _, p := range procs {
+		exePath, err := p.Exe()
+		if err != nil || exePath == "" {
+			continue
+		}
+
+		lowerExe := strings.ToLower(exePath)
+		if processedExes[lowerExe] || strings.HasPrefix(lowerExe, `c:\windows\`) {
+			continue // Bỏ qua file đã xử lý hoặc System Process gốc để tránh Spam
+		}
+
+		if fileInfo, err := os.Stat(exePath); err == nil {
+			fileHash := ""
+			oldMeta, found := GetFileMetadata(exePath)
+			if !found || fileInfo.ModTime() != oldMeta.ModTime || fileInfo.Size() != oldMeta.Size {
+				if hash, err := calculateSHA256(exePath); err == nil {
+					fileHash = hash
+					newMetas[exePath] = FileMetadata{ModTime: fileInfo.ModTime(), Size: fileInfo.Size(), Hash: hash}
+				}
+			} else {
+				fileHash = oldMeta.Hash
+			}
+			name, _ := p.Name()
+			softwareList = append(softwareList, SoftwareRecord{
+				SoftwareName:    name,
+				Version:         "Unknown",
+				Publisher:       "Running Binary",
+				InstallLocation: filepath.Dir(exePath),
+				FileHash:        fileHash,
+				Status:          "PORTABLE",
+				IsRunning:       true,
+			})
+			processedExes[lowerExe] = true
 		}
 	}
 

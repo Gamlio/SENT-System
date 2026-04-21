@@ -33,7 +33,14 @@ type softwareViolation struct {
 }
 
 func ProcessSoftware(asset models.Asset, data interface{}) {
-	bytes, _ := json.Marshal(data)
+	// TỐI ƯU HIỆU NĂNG: Không dùng json.Marshal, lấy trực tiếp mảng byte
+	var bytes []byte
+	if raw, ok := data.(json.RawMessage); ok {
+		bytes = raw
+	} else {
+		return
+	}
+
 	var records []assetSoftwareRecord
 	if err := json.Unmarshal(bytes, &records); err != nil {
 		return
@@ -44,16 +51,17 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 
 	incSvc := &incidents.IncidentService{}
 
-	incomingSoftwareMap := make(map[string]bool)
 	var violations []softwareViolation // Slice để thu thập tất cả vi phạm từ payload này
+	var activeHashes []string
 
 	for _, rec := range records {
-		uniqueKey := rec.SoftwareName + "_" + rec.FileHash
-		incomingSoftwareMap[uniqueKey] = true
+		activeHashes = append(activeHashes, rec.FileHash)
 
-		filter := bson.M{"asset_hwid": asset.AssetHWID, "software_name": rec.SoftwareName, "file_hash": rec.FileHash}
+		// TÍCH HỢP ORG_ID CHỐNG GHI ĐÈ CHÉO TỔ CHỨC
+		filter := bson.M{"asset_hwid": asset.AssetHWID, "org_id": asset.OrgID, "software_name": rec.SoftwareName, "file_hash": rec.FileHash}
 		update := bson.M{"$set": bson.M{
 			"asset_hwid":       asset.AssetHWID,
+			"org_id":           asset.OrgID,
 			"software_name":    rec.SoftwareName,
 			"version":          rec.Version,
 			"publisher":        rec.Publisher,
@@ -120,48 +128,56 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 		incSvc.TriggerSecurityEvent(context.TODO(), asset, highestAlertType, title, descriptionBuilder.String(), highestPriority)
 	}
 
-	// CHIỀU ĐÓNG (DIFFING): Tìm các phần mềm vừa bị tắt
-	cursor, err := database.SoftwareCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "is_running": true})
-	if err != nil {
-		return
-	}
-	var activeSoftwares []models.SoftwareItem
-	cursor.All(context.TODO(), &activeSoftwares)
-
-	for _, dbSoft := range activeSoftwares {
-		uniqueKey := dbSoft.SoftwareName + "_" + dbSoft.FileHash
-		if !incomingSoftwareMap[uniqueKey] {
-			_, _ = database.SoftwareCollection.UpdateOne(context.TODO(), bson.M{"_id": dbSoft.ID}, bson.M{"$set": bson.M{"is_running": false}})
-		}
+	// [TỐI ƯU DIFFING] Thay vì kéo toàn bộ DB lên RAM rồi lặp (N+1 Query), sử dụng Bulk Update với $nin
+	if len(activeHashes) > 0 {
+		_, _ = database.SoftwareCollection.UpdateMany(context.TODO(), bson.M{
+			"asset_hwid": asset.AssetHWID,
+			"org_id":     asset.OrgID,
+			"is_running": true,
+			"file_hash":  bson.M{"$nin": activeHashes},
+		}, bson.M{"$set": bson.M{"is_running": false}})
 	}
 }
 
 // Xử lý nạp Baseline ban đầu
 func HandleSoftwareBaseline(asset models.Asset, data interface{}) {
-	bytes, _ := json.Marshal(data)
+	var bytes []byte
+	if raw, ok := data.(json.RawMessage); ok {
+		bytes = raw
+	} else {
+		return
+	}
+
 	var records []assetSoftwareRecord
 	if err := json.Unmarshal(bytes, &records); err != nil {
 		return
 	}
 
 	if database.SoftwareCollection != nil {
-		_, _ = database.SoftwareCollection.DeleteMany(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID})
+		_, _ = database.SoftwareCollection.DeleteMany(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "org_id": asset.OrgID})
 	}
 
-	// Whitelist vẫn lưu ở Postgres
-	tx := database.DB.Begin()
+	// [GIẢM TẢI DB] Chuyển SQL Loop thành Insert Batch
+	var hashItems []models.WhitelistItem
+	var pubItems []models.WhitelistItem
+
 	for _, rec := range records {
-		tx.Create(&models.WhitelistItem{
+		hashItems = append(hashItems, models.WhitelistItem{
 			OrgID: asset.OrgID, AssetHWID: asset.AssetHWID, Type: "SOFTWARE_HASH", Value: rec.FileHash, Description: "Baseline: " + rec.SoftwareName,
 		})
 
 		if rec.Publisher != "Unsigned" && rec.Publisher != "" {
-			tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.WhitelistItem{
+			pubItems = append(pubItems, models.WhitelistItem{
 				OrgID: asset.OrgID, AssetHWID: asset.AssetHWID, Type: "PUBLISHER", Value: rec.Publisher, Description: "Trusted Publisher",
 			})
 		}
 	}
 
+	tx := database.DB.Begin()
+	tx.CreateInBatches(hashItems, 200) // Chunk size 200 an toàn cho Postgres
+	if len(pubItems) > 0 {
+		tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(pubItems, 200)
+	}
 	tx.Model(&asset).Updates(map[string]interface{}{"baseline_status": "COMPLETED", "is_zero_trust": true})
 	tx.Commit()
 }

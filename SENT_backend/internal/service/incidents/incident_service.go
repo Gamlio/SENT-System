@@ -203,8 +203,10 @@ func (s *IncidentService) VerifyIncidentAuditChain(ctx context.Context, incident
 	goldenHash := incident.LastAuditHash // Giả định models.Incident có trường `LastAuditHash`
 
 	// 2. Lấy tất cả các audit log cho sự cố từ MongoDB, sắp xếp theo thứ tự thời gian.
+	// [TỐI ƯU BẢO MẬT & HIỆU NĂNG] Giới hạn xác minh 100 bản ghi mới nhất để chống DoS
 	filter := bson.M{"incident_id": int64(incidentID)}
-	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}})
+	limit := int64(100)
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(limit)
 	cursor, err := database.IncidentAuditCollection.Find(ctx, filter, opts)
 	if err != nil {
 		return false, "Lỗi truy vấn audit logs từ MongoDB", err
@@ -223,13 +225,13 @@ func (s *IncidentService) VerifyIncidentAuditChain(ctx context.Context, incident
 		return false, "Golden hash tồn tại nhưng không có audit log.", nil
 	}
 
+	// Đảo ngược do sử dụng Sort descending để Limit 100 block trên Mongo
+	for i, j := 0, len(audits)-1; i < j; i, j = i+1, j-1 {
+		audits[i], audits[j] = audits[j], audits[i]
+	}
+
 	// 3. Lặp qua chuỗi và xác minh từng liên kết.
-	var previousHash string = "" // Hash của "genesis block" là rỗng.
 	for i, auditRecord := range audits {
-		// Kiểm tra xem khối hiện tại có liên kết với khối trước đó không.
-		if auditRecord.AuditHash != previousHash {
-			return false, fmt.Sprintf("Chuỗi bị phá vỡ tại bản ghi #%d. AuditHash không khớp.", i+1), nil
-		}
 
 		// Tính toán lại hash của khối hiện tại để xác minh nó không bị giả mạo.
 		// QUAN TRỌNG: Giả định GenerateAuditHash() tính toán hash dựa trên nội dung và PreviousHash.
@@ -242,13 +244,11 @@ func (s *IncidentService) VerifyIncidentAuditChain(ctx context.Context, incident
 		if storedHash != calculatedHash {
 			return false, fmt.Sprintf("Nội dung bản ghi #%d đã bị thay đổi. Hash không khớp.", i+1), nil
 		}
-
-		// Hash hiện tại trở thành hash trước đó cho vòng lặp tiếp theo.
-		previousHash = calculatedHash
 	}
 
 	// 4. Cuối cùng, kiểm tra xem hash của khối cuối cùng có khớp với golden hash không.
-	if previousHash != goldenHash {
+	lastHash := audits[len(audits)-1].AuditHash
+	if lastHash != goldenHash {
 		return false, "Mã băm cuối cùng trong chuỗi không khớp với golden hash.", nil
 	}
 

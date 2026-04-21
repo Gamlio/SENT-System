@@ -24,7 +24,13 @@ type assetUSBRecord struct {
 }
 
 func ProcessUSB(asset models.Asset, data interface{}) {
-	bytes, _ := json.Marshal(data)
+	var bytes []byte
+	if raw, ok := data.(json.RawMessage); ok {
+		bytes = raw
+	} else {
+		return
+	}
+
 	var records []assetUSBRecord
 	if err := json.Unmarshal(bytes, &records); err != nil {
 		return
@@ -34,14 +40,14 @@ func ProcessUSB(asset models.Asset, data interface{}) {
 	}
 
 	incSvc := &incidents.IncidentService{}
-
-	incomingUsbMap := make(map[string]bool)
+	var activeHashes []string
 
 	for _, rec := range records {
-		incomingUsbMap[rec.DeviceHash] = true
-		filter := bson.M{"asset_hwid": asset.AssetHWID, "device_hash": rec.DeviceHash}
+		activeHashes = append(activeHashes, rec.DeviceHash)
+		filter := bson.M{"asset_hwid": asset.AssetHWID, "org_id": asset.OrgID, "device_hash": rec.DeviceHash}
 		update := bson.M{"$set": bson.M{
 			"asset_hwid":    asset.AssetHWID,
+			"org_id":        asset.OrgID,
 			"device_name":   rec.DeviceName,
 			"device_id":     rec.DeviceID,
 			"vid":           rec.VID,
@@ -61,16 +67,13 @@ func ProcessUSB(asset models.Asset, data interface{}) {
 		)
 	}
 
-	cursor, err := database.USBCollection.Find(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "event_type": "CONNECTED"})
-	if err != nil {
-		return
-	}
-	var connectedUSBs []models.USBLog
-	cursor.All(context.TODO(), &connectedUSBs)
-
-	for _, dbUsb := range connectedUSBs {
-		if !incomingUsbMap[dbUsb.DeviceHash] {
-			_, _ = database.USBCollection.UpdateOne(context.TODO(), bson.M{"_id": dbUsb.ID}, bson.M{"$set": bson.M{"event_type": "DISCONNECTED"}})
-		}
+	// TỐI ƯU CẬP NHẬT TRẠNG THÁI DISCONNECT
+	if len(activeHashes) > 0 {
+		_, _ = database.USBCollection.UpdateMany(context.TODO(), bson.M{
+			"asset_hwid":  asset.AssetHWID,
+			"org_id":      asset.OrgID,
+			"event_type":  "CONNECTED",
+			"device_hash": bson.M{"$nin": activeHashes},
+		}, bson.M{"$set": bson.M{"event_type": "DISCONNECTED"}})
 	}
 }
