@@ -17,6 +17,7 @@ import AIChatPage from './pages/AIChat/AIChatPage.jsx';
 import ApprovalCenter from './pages/approvals/ApprovalCenter.jsx';
 import PolicyCenter from './pages/policies/PolicyCenter.jsx'; 
 import IncidentDetail from './pages/IncidentReport/IncidentDetail.jsx';
+import BehaviorManager from './pages/Behaviors/BehaviorManager.jsx';
 import Documents from './pages/KnowledgeBase/Documents.jsx';     
 import UserManagement from './pages/User/UserManagement.jsx';   
 
@@ -85,7 +86,7 @@ function App() {
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/incidents" element={<ProtectedRoute requiredPermission="incident_view"><IncidentList /></ProtectedRoute>} />
                     <Route path="/incidents/:id" element={<IncidentDetail />} />
-                    
+                    <Route path="/behaviors" element={<ProtectedRoute requiredPermission="incident_view"><BehaviorManager /></ProtectedRoute>} />
                     <Route path="/approvals" element={<ProtectedRoute requiredPermission="approval_manage"><ApprovalCenter /></ProtectedRoute>} />
 
                     {/* Compliance & Knowledge Base Routes */}

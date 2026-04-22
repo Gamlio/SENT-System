@@ -33,14 +33,13 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 				AssetHWID: req.AssetHWID, Hostname: req.Hostname, IPAddress: req.IPAddress,
 				OrgID: orgID, Status: "PENDING", LastSeen: time.Now(), SecretKey: secretKey,
 			}
-			tx.Create(&asset)
 		}
 
 		// Tạo đơn phê duyệt
 		snapData, _ := json.Marshal(map[string]interface{}{
-			"hostname":   req.Hostname,
-			"ip_address": req.IPAddress,
-			"hwid":       req.AssetHWID,
+			"hostname":     req.Hostname,
+			"ip_address":   req.IPAddress,
+			"hwid":         req.AssetHWID,
 			"is_re_enroll": err == nil, // True if the device is re-enrolling
 		})
 
@@ -67,14 +66,14 @@ func (s *AssetLifecycleService) CreateBulkDeleteRequest(hwids []string, orgID ui
 		// 1. Tạo Ticket
 		snap, _ := json.Marshal(map[string]interface{}{"hwids": hwids, "reason": reason})
 		ticket := models.ApprovalTicket{
-			OrgID:        orgID,
-			ModuleType:   "ASSET_BULK_DELETE",
-			ActionType:   "DELETE",
-			TargetName:   fmt.Sprintf("Xóa %d máy trạm", len(hwids)),
-			Status:       "PENDING",
-			RequestedBy:  requester,
+			OrgID:         orgID,
+			ModuleType:    "ASSET_BULK_DELETE",
+			ActionType:    "DELETE",
+			TargetName:    fmt.Sprintf("Xóa %d máy trạm", len(hwids)),
+			Status:        "PENDING",
+			RequestedBy:   requester,
 			RequestReason: reason,
-			SnapshotData: string(snap),
+			SnapshotData:  string(snap),
 		}
 
 		if err := tx.Create(&ticket).Error; err != nil {

@@ -2,8 +2,6 @@ package incidents
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/scoring"
@@ -74,46 +72,13 @@ func (s *IncidentService) TriggerSecurityEvent(ctx context.Context, asset models
 		}
 	}
 
-	var correlatedIncident models.Incident
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		// Tìm sự cố tương tự trong cửa sổ 24h[cite: 9]
-		timeWindow := time.Now().Add(-DefaultCorrelationWindow)
-		err := tx.Where("asset_hwid = ? AND type = ? AND status IN ('Open', 'Investigating') AND updated_at > ?",
-			asset.AssetHWID, alertType, timeWindow).First(&correlatedIncident).Error
-
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			correlatedIncident = models.Incident{
-				OrgID:       asset.OrgID,
-				AssetHWID:   asset.AssetHWID,
-				Type:        alertType,
-				Priority:    finalPriority,
-				Severity:    s.getSeverityByPriority(finalPriority),
-				Status:      "Open",
-				Description: fmt.Sprintf("Hệ thống tự động phát hiện: %s", title),
-			}
-			if err := tx.Create(&correlatedIncident).Error; err != nil {
-				return err
-			}
-
-			// Ghi log Audit OPEN vào MongoDB[cite: 9]
-			audit := models.IncidentAudit{
-				IncidentID: int64(correlatedIncident.ID), // Đồng bộ int64 cho Mongo[cite: 5]
-				UserID:     nil,
-				ActionType: "OPEN",
-				Content:    "Hệ thống tự động khởi tạo hồ sơ sự cố.",
-				NewStatus:  "Open",
-				IPAddress:  "0.0.0.0", // Mặc định nếu không có IP Sensor
-				CreatedAt:  time.Now(),
-			}
-			return s.createAndChainAudit(ctx, tx, &audit)
-		}
-		return nil
-	})
+	// [CHUYỂN DỊCH BEHAVIOR-CENTRIC]
+	// Đã TẮT tính năng tự động tạo Incident trong PostgreSQL.
+	// Giờ đây mọi vi phạm chỉ được lưu dưới dạng Alert (Hành vi) trong MongoDB.
+	// Việc tạo Sự cố (Incident) sẽ được thực hiện thông qua API Escalate (Nâng cấp) do Admin/AI quyết định.
 
 	// 4. Gọi Engine tính điểm v6.0[cite: 9, 10]
-	if err == nil {
-		scoring.RecalculateRiskScore(asset.AssetHWID)
-	}
+	scoring.RecalculateRiskScore(asset.AssetHWID)
 }
 
 // AutoResolveIncident: Tự động đóng Case nếu asset báo cáo trạng thái đã an toàn

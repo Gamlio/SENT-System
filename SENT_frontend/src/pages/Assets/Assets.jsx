@@ -197,13 +197,16 @@ const assets = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
                             {currentassets.map((asset) => (
-                                <tr key={asset.asset_hwid} className="hover:bg-slate-800/30 transition-colors cursor-pointer group" onClick={() => navigate(`/assets/${asset.asset_hwid}`)}>
+                                <tr key={asset.hwid || asset.asset_hwid} className="hover:bg-slate-800/30 transition-colors cursor-pointer group" onClick={() => navigate(`/assets/${asset.hwid || asset.asset_hwid}`)}>
                                     <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                                        <input type="checkbox" checked={selectedassets.includes(asset.asset_hwid)} onChange={() => setSelectedassets(prev => prev.includes(asset.asset_hwid) ? prev.filter(id => id !== asset.asset_hwid) : [...prev, asset.asset_hwid])} className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" />
+                                        <input type="checkbox" checked={selectedassets.includes(asset.hwid || asset.asset_hwid)} onChange={() => {
+                                            const id = asset.hwid || asset.asset_hwid;
+                                            setSelectedassets(prev => prev.includes(id) ? prev.filter(itemId => itemId !== id) : [...prev, id]);
+                                        }} className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" />
                                     </td>
                                     {tableColumns.map(col => <td key={col.key} className={`p-3 ${col.className}`}>{col.render(asset)}</td>)}
                                     <td className="p-3 text-right" onClick={e => e.stopPropagation()}>
-                                        <AssetsActions asset={asset} onRefresh={fetchassets} onOpenAssignModal={() => { setTargetassetHwid(asset.asset_hwid); setShowAssignModal(true); }} />
+                                        <AssetsActions asset={asset} onRefresh={fetchassets} onOpenAssignModal={() => { setTargetassetHwid(asset.hwid || asset.asset_hwid); setShowAssignModal(true); }} />
                                     </td>
                                 </tr>
                             ))}

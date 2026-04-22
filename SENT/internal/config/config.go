@@ -93,14 +93,13 @@ func enrollToServer(token, hwid, hostname, ipAddress string) bool {
 	return true
 }
 
-// GetHWID returns the agent's hardware ID.
 func GetHWID() string {
 	return Current.HWID
 }
 
 // GetPolicyURL returns the full URL to the policy sync endpoint on the server.
 func GetPolicyURL() string {
-	return Current.BackendURL + "/api/v1/agent/policies"
+	return Current.BackendURL + "/api/v1/policies"
 }
 
 // GetSecretKey returns the secret key used for signing requests.

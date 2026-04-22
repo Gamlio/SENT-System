@@ -9,7 +9,6 @@ import (
 )
 
 // SignPayload creates an HMAC-SHA256 signature for a given payload.
-// This is used to authenticate requests from the agent to the backend.
 func SignPayload(payload []byte, secretKey string) string {
 	mac := hmac.New(sha256.New, []byte(secretKey))
 	mac.Write(payload)

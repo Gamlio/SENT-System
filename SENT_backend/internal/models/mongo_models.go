@@ -107,10 +107,11 @@ type IncidentAudit struct {
 	Images     string             `bson:"images" json:"images" binding:"max=1000"`
 
 	// --- [MỚI] AUDIT TRAIL FIELDS ---
-	IPAddress    string `bson:"ip_address" json:"ip_address"`       // Lưu IP của người thao tác
-	EvidenceData string `bson:"evidence_data" json:"evidence_data"` // JSON kết quả Baseline Scan hoặc Log
-	AuditHash    string `bson:"audit_hash" json:"audit_hash"`       // Mã băm niêm phong bản ghi
-	IsImmutable  bool   `bson:"is_immutable" json:"is_immutable"`   // Đánh dấu log không được phép xóa sửa
+	IPAddress    string `bson:"ip_address" json:"ip_address"` // Lưu IP của người thao tác
+	EvidenceData string `bson:"evidence_data" json:"evidence_data"`
+	PreviousHash string `bson:"previous_hash" json:"previous_hash"`
+	AuditHash    string `bson:"audit_hash" json:"audit_hash"`     // Mã băm niêm phong bản ghi
+	IsImmutable  bool   `bson:"is_immutable" json:"is_immutable"` // Đánh dấu log không được phép xóa sửa
 }
 
 // Hàm Helper để tạo Mã băm niêm phong (Chống sửa trực tiếp trong DB)
@@ -121,8 +122,8 @@ func (act *IncidentAudit) GenerateAuditHash() {
 	}
 
 	// Ép kiểu Unix() cũng là int64, đồng bộ luôn cho sếp!
-	dataStr := fmt.Sprintf("%v|%v|%s|%d|%s|%s",
-		act.IncidentID, uid, act.ActionType, act.CreatedAt.Unix(), act.Content, act.EvidenceData)
+	dataStr := fmt.Sprintf("%v|%v|%s|%d|%s|%s|%s",
+		act.IncidentID, uid, act.ActionType, act.CreatedAt.Unix(), act.Content, act.EvidenceData, act.PreviousHash)
 
 	hash := sha256.Sum256([]byte(dataStr))
 	act.AuditHash = hex.EncodeToString(hash[:])

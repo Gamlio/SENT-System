@@ -23,27 +23,18 @@ func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 	// 1. Giải mã dữ liệu từ "Đơn" (Snapshot)
 	var payload AssetEnrollPayload
 	if err := json.Unmarshal([]byte(ticket.SnapshotData), &payload); err != nil {
-		// Fallback cho ticket cũ chưa dùng SnapshotData
-		return tx.Model(&models.Asset{}).Where("asset_hwid = ?", ticket.TargetName).
-			Updates(map[string]interface{}{
-				"status":    "ACTIVE",
-				"last_seen": time.Now(),
-			}).Error
+		return err
 	}
 
-	// 2. Tạo Asset mới
-	newAsset := models.Asset{
-		AssetHWID: payload.AssetHWID,
-		Hostname:  payload.Hostname,
-		IPAddress: payload.IPAddress,
-		OrgID:     ticket.OrgID,
-		Status:    "ACTIVE", // Duyệt xong là Active luôn
-		LastSeen:  time.Now(),
-		SecretKey: payload.SecretKey,
-		ApprovedBy: ticket.ReviewedBy,
-	}
-
-	return tx.Create(&newAsset).Error
+	// CẬP NHẬT bản ghi đã có từ lúc Enroll thay vì tạo mới
+	return tx.Model(&models.Asset{}).
+		Where("asset_hwid = ? AND org_id = ?", payload.AssetHWID, ticket.OrgID).
+		Updates(map[string]interface{}{
+			"status":      "ACTIVE",
+			"approved_by": ticket.ReviewedBy,
+			"last_seen":   time.Now(),
+			"secret_key":  payload.SecretKey,
+		}).Error
 }
 
 func (s *assetEnrollStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {

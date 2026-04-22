@@ -23,6 +23,7 @@ const Sidebar = () => {
         { path: '/docs', icon: <FileText size={18}/>, label: 'Tài liệu', show: user.permissions?.doc_view },
         { path: '/users', icon: <User size={18}/>, label: 'Nhân sự', show: user.permissions?.user_manage },
         { path: '/incidents', icon: <AlertTriangle size={18}/>, label: 'Sự cố', show: user.permissions?.incident_view },
+        { path: '/behaviors', icon: <AlertTriangle size={18}/>, label: 'Hành vi', show: user.permissions?.incident_view },
         { path: '/approvals', icon: <ClipboardCheck size={18}/>, label: 'Phê duyệt', show: user.permissions?.approval_manage }
     ];
 

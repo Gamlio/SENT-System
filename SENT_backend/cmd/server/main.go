@@ -13,6 +13,9 @@ import (
 	"sent_backend/internal/api/v1/approvals"
 	"sent_backend/internal/api/v1/assets"
 	"sent_backend/internal/api/v1/auth"
+
+	// Dùng bí danh behaviorAPI để tránh xung đột/lỗi cache module
+	"sent_backend/internal/api/v1/behavior"
 	"sent_backend/internal/api/v1/dashboard"
 	"sent_backend/internal/api/v1/docs"
 	"sent_backend/internal/api/v1/incidents"
@@ -140,6 +143,11 @@ func main() {
 				incidentsGroup.PUT("/:id/assign", incidents.AssignIncident)                   // Chỉ Admin mới được phân công người làm
 				incidentsGroup.GET("/audit/:audit_id/verify", incidents.VerifyAuditIntegrity) // Kiểm tra tính toàn vẹn của Log
 
+			}
+			behaviorGroup := protected.Group("/behaviors")
+			{
+				behaviorGroup.GET("", behavior.GetBehaviors)               // Xem danh sách hành vi vi phạm (Alerts)
+				behaviorGroup.POST("/escalate", incidents.EscalateHandler) // Nâng cấp Alert lên Incident
 			}
 			aiGroup := protected.Group("/ai")
 			{

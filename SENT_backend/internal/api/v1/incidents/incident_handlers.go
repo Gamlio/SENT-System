@@ -1,7 +1,9 @@
 package incidents
 
 import (
+	"html"
 	"net/http"
+	"path/filepath"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
@@ -30,8 +32,10 @@ func GetIncidentDetail(c *gin.Context) {
 	idStr := c.Param("id")
 	id, _ := strconv.Atoi(idStr)
 
+	orgID := c.GetUint("org_id") // [FIX] Lấy OrgID từ context
+
 	svc := incidents.IncidentService{}
-	incident, audits, err := svc.GetIncidentDetail(c.Request.Context(), uint(id))
+	incident, audits, err := svc.GetIncidentDetail(c.Request.Context(), uint(id), orgID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy sự cố"})
 		return
@@ -54,8 +58,9 @@ func AssignIncident(c *gin.Context) {
 	}
 
 	adminID := c.GetUint("user_id")
+	orgID := c.GetUint("org_id")
 	svc := incidents.IncidentService{}
-	if err := svc.AssignIncident(c.Request.Context(), uint(incidentID), req.AssigneeID, adminID); err != nil {
+	if err := svc.AssignIncident(c.Request.Context(), uint(incidentID), req.AssigneeID, adminID, orgID); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
@@ -76,6 +81,7 @@ func CloseIncident(c *gin.Context) {
 	}
 
 	userID := c.GetUint("user_id")
+	orgID := c.GetUint("org_id")
 	svc := incidents.IncidentService{}
 
 	// FIX: Ép kiểu uint sang int64 để khớp với model MongoDB
@@ -91,7 +97,7 @@ func CloseIncident(c *gin.Context) {
 		IPAddress:    c.ClientIP(),
 	}
 
-	if err := svc.CloseIncidentWorkflow(c.Request.Context(), auditEntry); err != nil {
+	if err := svc.CloseIncidentWorkflow(c.Request.Context(), auditEntry, orgID); err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
@@ -118,7 +124,8 @@ func VerifyAuditIntegrity(c *gin.Context) {
 
 	// 2. Gọi service để kiểm tra toàn bộ chuỗi hash của sự cố liên quan
 	svc := incidents.IncidentService{}
-	isValid, message, err := svc.VerifyIncidentAuditChain(c.Request.Context(), uint(audit.IncidentID))
+	orgID := c.GetUint("org_id")
+	isValid, message, err := svc.VerifyIncidentAuditChain(c.Request.Context(), uint(audit.IncidentID), orgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi trong quá trình kiểm tra: " + err.Error()})
 		return
@@ -134,16 +141,41 @@ func VerifyAuditIntegrity(c *gin.Context) {
 func UpdatePlaybookProgress(c *gin.Context) {
 	idStr := c.Param("id")
 	id, _ := strconv.Atoi(idStr)
+	orgID := c.GetUint("org_id")
 	var req struct {
 		Progress string `json:"progress"`
 	}
 	c.ShouldBindJSON(&req)
-	database.DB.Model(&models.Incident{}).Where("id = ?", id).Update("playbook_progress", req.Progress)
+	safeProgress := html.EscapeString(req.Progress)
+	database.DB.Model(&models.Incident{}).Where("id = ? AND org_id = ?", id, orgID).Update("playbook_progress", safeProgress)
 	c.JSON(200, gin.H{"message": "Updated"})
 }
 
 // GetIncidentImage:
 func GetIncidentImage(c *gin.Context) {
-	filename := c.Param("filename")
+	filename := filepath.Base(c.Param("filename"))
 	c.File("./uploads/incidents/" + filename)
+}
+
+// EscalateHandler: Nâng cấp Hành vi (Alert) thành Sự cố (Incident)
+func EscalateHandler(c *gin.Context) {
+	var req struct {
+		AlertID string `json:"alert_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu thông tin alert_id"})
+		return
+	}
+
+	adminID := c.GetUint("user_id")
+	orgID := c.GetUint("org_id")
+	svc := incidents.IncidentService{}
+
+	incident, err := svc.EscalateToIncident(c.Request.Context(), req.AlertID, adminID, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Đã nâng cấp hành vi thành sự cố thành công", "incident": incident})
 }

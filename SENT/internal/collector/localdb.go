@@ -22,8 +22,6 @@ type FileMetadata struct {
 	Hash    string    `json:"hash"`
 }
 
-// InitLocalDB initializes the local BoltDB database.
-// This should be called once when the agent starts.
 func InitLocalDB(agentDataPath string) error {
 	var err error
 	dbPath := filepath.Join(agentDataPath, "agent_cache.db") // Renamed for clarity
