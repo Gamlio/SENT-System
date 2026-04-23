@@ -21,7 +21,7 @@ func main() {
 		if r := recover(); r != nil {
 			fmt.Printf("\n🚨 [LỖI NGHIÊM TRỌNG]: %v\n", r)
 		}
-		log.Println("Agent đang tự động khởi động lại hoặc thoát do lỗi...")
+		log.Println("SENT đang tự động khởi động lại hoặc thoát do lỗi...")
 	}()
 
 	// [QUAN TRỌNG] Kiểm tra quyền Admin/Root trước khi làm bất cứ điều gì

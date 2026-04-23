@@ -2,6 +2,7 @@ package strategies
 
 import (
 	"encoding/json"
+	"fmt"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/assets"
 	"time"
@@ -16,7 +17,7 @@ type AssetEnrollPayload struct {
 	AssetHWID string `json:"asset_hwid"`
 	Hostname  string `json:"hostname"`
 	IPAddress string `json:"ip_address"`
-	SecretKey string `json:"secret_key"`
+	// SecretKey string `json:"secret_key"` // Không cần thiết, key đã được lưu lúc enroll
 }
 
 func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
@@ -27,14 +28,23 @@ func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 	}
 
 	// CẬP NHẬT bản ghi đã có từ lúc Enroll thay vì tạo mới
-	return tx.Model(&models.Asset{}).
+	result := tx.Model(&models.Asset{}).
 		Where("asset_hwid = ? AND org_id = ?", payload.AssetHWID, ticket.OrgID).
 		Updates(map[string]interface{}{
 			"status":      "ACTIVE",
 			"approved_by": ticket.ReviewedBy,
 			"last_seen":   time.Now(),
-			"secret_key":  payload.SecretKey,
-		}).Error
+			// "secret_key":  payload.SecretKey, // Không cập nhật lại secret key ở bước này
+		})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("không tìm thấy máy trạm PENDING với HWID %s để phê duyệt", payload.AssetHWID)
+	}
+	return nil
 }
 
 func (s *assetEnrollStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {

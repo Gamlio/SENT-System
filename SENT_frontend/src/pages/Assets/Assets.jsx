@@ -9,7 +9,8 @@ import { useassets, getTimeAgo } from './hooks/useAssets';
 import { useUsers } from '../User/hooks/useUsers'; 
 import AssetsActions from './components/AssetsActions';
 import GenerateTokenButton from './components/GenerateTokenButton';
-import AssetsBulkActions from './components/AssetsBulkActions';import { useSocketSubscription } from '../../context/useSocketSubscription';
+import AssetsBulkActions from './components/AssetsBulkActions';
+import { useSocketSubscription } from '../../context/useSocketSubscription';
 import axios from '../../api/axios';
 
 const riskScoringLevels = [
@@ -19,7 +20,8 @@ const riskScoringLevels = [
     { label: 'Nguy Hiểm', value: 'Critical', color: '#be123c', icon: <ShieldAlert /> },
 ];
 
-const assetStatusTag = React.memo(({ status }) => {
+// [FIX] React yêu cầu Custom Component phải viết hoa chữ cái đầu tiên
+const AssetStatusTag = React.memo(({ status }) => {
     const isOnline = status === 'online';
     return (
         <div className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 w-max ${
@@ -52,7 +54,7 @@ const RiskScoreDisplay = React.memo(({ score }) => {
     );
 });
 
-const assets = () => {
+const Assets = () => {
     const navigate = useNavigate();
     const {
         currentassets = [], searchQuery, setSearchQuery, 
@@ -147,7 +149,7 @@ const assets = () => {
             key: 'last_seen', label: 'Status / Seen', className: 'w-[15%]', sortable: true,
             render: (a) => (
                 <div className="flex flex-col gap-1">
-                    <assetStatusTag status={a.status} />
+                    <AssetStatusTag status={a.status} />
                     <span className="text-slate-500 text-[9px] font-mono uppercase tracking-widest truncate">{getTimeAgo(a.last_seen, a.status)}</span>
                 </div>
             )
@@ -197,16 +199,16 @@ const assets = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
                             {currentassets.map((asset) => (
-                                <tr key={asset.hwid || asset.asset_hwid} className="hover:bg-slate-800/30 transition-colors cursor-pointer group" onClick={() => navigate(`/assets/${asset.hwid || asset.asset_hwid}`)}>
+                                <tr key={asset.asset_hwid} className="hover:bg-slate-800/30 transition-colors cursor-pointer group" onClick={() => navigate(`/assets/${asset.asset_hwid}`)}>
                                     <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                                        <input type="checkbox" checked={selectedassets.includes(asset.hwid || asset.asset_hwid)} onChange={() => {
-                                            const id = asset.hwid || asset.asset_hwid;
+                                        <input type="checkbox" checked={selectedassets.includes(asset.asset_hwid)} onChange={() => {
+                                            const id = asset.asset_hwid;
                                             setSelectedassets(prev => prev.includes(id) ? prev.filter(itemId => itemId !== id) : [...prev, id]);
                                         }} className="w-3.5 h-3.5 rounded border-slate-700 bg-[#050B14] accent-indigo-500" />
                                     </td>
                                     {tableColumns.map(col => <td key={col.key} className={`p-3 ${col.className}`}>{col.render(asset)}</td>)}
                                     <td className="p-3 text-right" onClick={e => e.stopPropagation()}>
-                                        <AssetsActions asset={asset} onRefresh={fetchassets} onOpenAssignModal={() => { setTargetassetHwid(asset.hwid || asset.asset_hwid); setShowAssignModal(true); }} />
+                                        <AssetsActions asset={asset} onRefresh={fetchassets} onOpenAssignModal={() => { setTargetassetHwid(asset.asset_hwid); setShowAssignModal(true); }} />
                                     </td>
                                 </tr>
                             ))}
@@ -250,4 +252,4 @@ const assets = () => {
     );
 };
 
-export default assets;
+export default Assets;

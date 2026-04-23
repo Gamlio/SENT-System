@@ -43,7 +43,7 @@ func (s *USBSensor) Name() string {
 func (s *USBSensor) Collect() (interface{}, error) {
 	var usbList []USBRecord
 
-	// [FIX-WMI-HANG] Đặt timeout 10 giây cho các lệnh OS để tránh treo Agent
+	// [FIX-WMI-HANG] Đặt timeout 10 giây cho các lệnh OS để tránh treo SENT
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

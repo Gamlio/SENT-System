@@ -74,11 +74,11 @@ func RequestDeleteAsset(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 
 	svc := &assetSvc.AssetLifecycleService{}
-	if err := svc.CreateBulkDeleteRequest([]string{hwid}, orgID, "Admin yêu cầu gỡ bỏ", username.(string)); err != nil {
+	if err := svc.CreateDeleteRequest(hwid, orgID, "Admin yêu cầu gỡ bỏ", username.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Đã gửi yêu cầu gỡ bỏ"})
+	c.JSON(http.StatusOK, gin.H{"message": "Đã gửi yêu cầu gỡ bỏ máy trạm " + hwid})
 }
 
 func RequestBulkDeleteAssets(c *gin.Context) {

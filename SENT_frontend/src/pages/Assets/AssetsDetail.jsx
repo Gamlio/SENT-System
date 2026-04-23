@@ -30,7 +30,10 @@ const AssetDetail = () => {
     }, [hwid]);
 
     useEffect(() => { fetchDetail(true); }, [fetchDetail]);
-    useSocketSubscription(['REFRESH_DATA', 'asset_UPDATE'], (data) => { if (data?.hwid === hwid) fetchDetail(); });
+    
+    useSocketSubscription(['REFRESH_DATA', 'asset_UPDATE'], (data) => { 
+        if (data?.hwid === hwid || data?.asset_hwid === hwid) fetchDetail(); 
+    });
 
     const handleUpdateDepartment = async (tag) => {
         try {
@@ -59,7 +62,7 @@ const AssetDetail = () => {
                     <div className="h-6 w-px bg-slate-800"></div>
                     <Monitor size={16} className={isOnline ? 'text-emerald-400' : 'text-slate-500'}/>
                     <h1 className="text-sm font-black text-white uppercase tracking-widest">{asset.hostname}</h1>
-                    <span className="text-[10px] text-slate-500 font-mono bg-[#050B14] px-1.5 py-0.5 rounded border border-slate-800">{asset.hwid}</span>
+                    <span className="text-[10px] text-slate-500 font-mono bg-[#050B14] px-1.5 py-0.5 rounded border border-slate-800">{asset.asset_hwid}</span>
                 </div>
                 
                 <div className="flex items-center gap-3">

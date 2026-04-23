@@ -9,7 +9,7 @@ export const useassetBulkActions = (fetchassets) => {
     // Hàm chọn tất cả máy trạm trên trang hiện tại
     const handleSelectAll = (currentassets, isChecked) => {
         if (isChecked) {
-            setSelectedassets(currentassets.map(a => a.hwid));
+            setSelectedassets(currentassets.map(a => a.asset_hwid));
         } else {
             setSelectedassets([]);
         }

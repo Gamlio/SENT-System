@@ -12,7 +12,7 @@ import (
 	"SENT/internal/utils"
 )
 
-// AssetClient quản lý các kết nối mạng của Agent
+// AssetClient quản lý các kết nối mạng của SENT
 type AssetClient struct {
 	HTTPClient *http.Client
 }
@@ -40,7 +40,7 @@ func (c *AssetClient) SendPayload(hwid, hostname, logType string, data interface
 		return "ERROR"
 	}
 
-	req, err := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/assets/data", bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequest("POST", config.Current.BackendURL+"/api/v1/assets/push", bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		return "ERROR"
 	}

@@ -14,7 +14,7 @@ import (
 )
 
 func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
-	// [FIX-WMI-HANG] Đặt timeout 15 giây cho các lệnh OS để tránh treo Agent
+	// [FIX-WMI-HANG] Đặt timeout 15 giây cho các lệnh OS để tránh treo SENT
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

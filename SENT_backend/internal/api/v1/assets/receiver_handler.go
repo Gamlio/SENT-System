@@ -31,7 +31,7 @@ type assetPayload struct {
 
 // PushDataHandler: Cổng tiếp nhận duy nhất
 func PushDataHandler(c *gin.Context) {
-	// Lấy toàn bộ body gốc để xác thực chữ ký (Agent ký trên toàn bộ payload)
+	// Lấy toàn bộ body gốc để xác thực chữ ký (SENT ký trên toàn bộ payload)
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể đọc dữ liệu yêu cầu"})

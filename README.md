@@ -27,7 +27,7 @@ Hệ thống bao gồm hai thành phần chính:
 
 SENT Backend (Golang): Trung tâm điều phối, xử lý dữ liệu viễn trắc, quản lý cơ sở dữ liệu (PostgreSQL & MongoDB) và giao tiếp với AI API.
 
-Go-SENT Agent (Golang): Bộ thu thập dữ liệu siêu nhẹ (Ninja Thin-Client) chạy trên máy trạm Windows/Linux để đẩy dữ liệu về Server.
+Go-SENT  (Golang): Bộ thu thập dữ liệu siêu nhẹ (Ninja Thin-Client) chạy trên máy trạm Windows/Linux để đẩy dữ liệu về Server.
 
 🛠 Công nghệ sử dụng
 Ngôn ngữ: Golang (Gin Framework).

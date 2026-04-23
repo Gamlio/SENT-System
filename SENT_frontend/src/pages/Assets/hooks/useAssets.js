@@ -15,7 +15,9 @@ export const useassets = () => {
     const fetchassets = useCallback(async () => {
         try {
             const res = await axios.get('/assets');
-            setassets(res.data || []);
+            // Lọc bỏ các máy trạm đã bị xóa mềm (trạng thái RETIRED)
+            const activeAssets = (res.data || []).filter(asset => asset.status !== 'RETIRED');
+            setassets(activeAssets);
         } catch (err) {
             console.error("Lỗi lấy danh sách máy trạm:", err);
         }
@@ -65,10 +67,6 @@ export const useassets = () => {
 
                 // Xử lý riêng cho IP Address (Chuyển về số để so sánh chuẩn)
                 if (sortConfig.key === 'ip_address') {
-                    const ipToNum = (ip) => {
-                        if (!ip || ip === '::1' || ip === '127.0.0.1') return 0;
-                        return Number(ip.split('.').map(d => ("000" + d).slice(-3)).join(""));
-                    };
                     aValue = ipToNum(aValue);
                     bValue = ipToNum(bValue);
                 }
@@ -117,7 +115,8 @@ export const useassets = () => {
         searchQuery, setSearchQuery,
         currentPage, setCurrentPage, totalPages,
         sortConfig, setSortConfig, // Xuất hàm setSortConfig ra ngoài để UI dùng
-        statusChartData, osChartData, onlineCount, offlineCount, fetchassets
+        statusChartData, osChartData, onlineCount, offlineCount, fetchassets,
+        assets // [FIX] Bổ sung biến assets để ngoài giao diện Assets.jsx hiển thị đúng Tổng số lượng
     };
 };
 
