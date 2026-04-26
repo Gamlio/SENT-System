@@ -25,13 +25,11 @@ func main() {
 		log.Println("SENT đang tự động khởi động lại hoặc thoát do lỗi...")
 	}()
 
-	// Nạp biến môi trường từ file .env
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("⚠️  Cảnh báo: Không tìm thấy file .env, sử dụng cấu hình mặc định.")
 	}
 
-	// [QUAN TRỌNG] Kiểm tra quyền Admin/Root trước khi làm bất cứ điều gì
 	if !utils.IsAdmin() {
 		log.Fatal("FATAL: asset yêu cầu quyền Administrator/Root để hoạt động. Vui lòng chạy lại bằng 'Run as Administrator' hoặc 'sudo'.")
 	}

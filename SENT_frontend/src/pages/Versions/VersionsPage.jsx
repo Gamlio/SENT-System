@@ -1,6 +1,6 @@
 import React from 'react';
 import { Cpu, RefreshCcw, Plus } from 'lucide-react';
-import { useVersions } from './useVersions';
+import { useVersions } from './hooks/useVersions';
 import VersionCard from './component/VersionCard';
 
 const VersionsPage = () => {

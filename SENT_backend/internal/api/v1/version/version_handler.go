@@ -24,7 +24,7 @@ func GitHubWebhookHandler(c *gin.Context) {
 	requestToken := c.GetHeader("X-Internal-Token")
 
 	if requestToken == "" || requestToken != secretToken {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized webhook request"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: Invalid Secret Token"})
 		return
 	}
 
