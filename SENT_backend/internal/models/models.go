@@ -243,3 +243,14 @@ type ApprovalTicket struct {
 	// Lưu dạng JSON để admin xem trước nội dung mà không cần join bảng phức tạp
 	SnapshotData string `json:"snapshot_data" gorm:"type:jsonb"`
 }
+type SentVersion struct {
+	ID          uint      `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	Tag         string    `gorm:"index" json:"tag"`      // v4.0, v4.1...
+	Platform    string    `gorm:"index" json:"platform"` // windows, linux, mac
+	DownloadURL string    `json:"download_url"`          // Link từ GitHub Release
+	Checksum    string    `json:"checksum"`              // SHA256 để đảm bảo an toàn
+	IsLatest    bool      `gorm:"default:false" json:"is_latest"`
+	IsActive    bool      `gorm:"default:true" json:"is_active"`
+	ReleaseNote string    `json:"release_note"`
+}

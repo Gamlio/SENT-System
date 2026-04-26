@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { 
     LayoutDashboard, Monitor, MessageSquare, FileText, 
     ShieldCheck, ChevronLeft, ChevronRight, 
-    User, ClipboardCheck, AlertTriangle, Cpu
+    User, ClipboardCheck, AlertTriangle, Cpu, Package
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -24,7 +24,8 @@ const Sidebar = () => {
         { path: '/users', icon: <User size={18}/>, label: 'Nhân sự', show: user.permissions?.user_manage },
         { path: '/incidents', icon: <AlertTriangle size={18}/>, label: 'Sự cố', show: user.permissions?.incident_view },
         { path: '/behaviors', icon: <AlertTriangle size={18}/>, label: 'Hành vi', show: user.permissions?.incident_view },
-        { path: '/approvals', icon: <ClipboardCheck size={18}/>, label: 'Phê duyệt', show: user.permissions?.approval_manage }
+        { path: '/approvals', icon: <ClipboardCheck size={18}/>, label: 'Phê duyệt', show: user.permissions?.approval_manage },
+        { path: '/versions', icon: <Package size={18}/>, label: 'Phần mềm', show: true }
     ];
 
     return (

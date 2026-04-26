@@ -5,7 +5,7 @@ import { WebSocketProvider } from './context/WebSocketContext';
 import Sidebar from './components/Sidebar.jsx';
 import Navbar from './components/Navbar.jsx';
 import Profile from './components/Profile.jsx';
-
+import VersionsPage from './pages/Versions/VersionsPage.jsx';
 import Login from './pages/Auth/Login.jsx';
 import Register from './pages/Auth/Register.jsx';
 import Dashboard from './pages/Dashboard/Dashboard.jsx';
@@ -73,14 +73,11 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/login/:companyCode" element={<Login />} />
                     <Route path="/register" element={<Register />} />
-                    
                     {/* Protected Routes */}
                     {/* Core Routes */}
                     <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                     <Route path="/chat-ai" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-                    
-                    
                     <Route path="/assets" element={<ProtectedRoute requiredPermission="asset_view"><AssetList /></ProtectedRoute>} />
                     <Route path="/assets/:hwid" element={<ProtectedRoute requiredPermission="asset_view"><AssetDetail /></ProtectedRoute>} /> 
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
@@ -97,6 +94,9 @@ function App() {
                     
                     {/* System Admin Routes */}
                     <Route path="/users" element={<ProtectedRoute requiredPermission="user_manage"><UserManagement /></ProtectedRoute>} />
+
+                    {/* Software Management Routes */}
+                    <Route path="/versions" element={<ProtectedRoute><VersionsPage /></ProtectedRoute>} />
                 </Routes>
             </WebSocketProvider>
         </Router>

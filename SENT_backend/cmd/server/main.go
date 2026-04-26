@@ -21,6 +21,7 @@ import (
 	"sent_backend/internal/api/v1/incidents"
 	"sent_backend/internal/api/v1/policies"
 	"sent_backend/internal/api/v1/users"
+	"sent_backend/internal/api/v1/version"
 	"sent_backend/internal/middleware"
 
 	"github.com/gin-contrib/cors"
@@ -79,6 +80,10 @@ func main() {
 			assetPublicGroup.POST("/enroll", middleware.AssetEnrollRateLimitMiddleware(), assets.EnrollAsset)
 			assetPublicGroup.GET("/sync-policies", assets.GetActiveEnrollmentToken, policies.SyncPoliciesForAsset)
 		}
+
+		// --- API Public cho Version & Webhook CI/CD ---
+		v1Group.GET("/versions", version.GetVersions)
+		v1Group.POST("/webhooks/github/release", version.GitHubWebhookHandler)
 
 		protected := v1Group.Group("")
 		protected.Use(middleware.AuthRequired())

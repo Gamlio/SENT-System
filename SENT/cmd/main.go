@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/shirou/gopsutil/v3/host"
 
 	"SENT/internal/collector"
@@ -23,6 +24,12 @@ func main() {
 		}
 		log.Println("SENT đang tự động khởi động lại hoặc thoát do lỗi...")
 	}()
+
+	// Nạp biến môi trường từ file .env
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("⚠️  Cảnh báo: Không tìm thấy file .env, sử dụng cấu hình mặc định.")
+	}
 
 	// [QUAN TRỌNG] Kiểm tra quyền Admin/Root trước khi làm bất cứ điều gì
 	if !utils.IsAdmin() {
@@ -48,24 +55,52 @@ func main() {
 	fmt.Printf(" [INFO] Đã nạp %d module cảm biến...\n", len(collector.Registry))
 
 	// Tách chu kỳ quét để tối ưu I/O Disk & CPU
-	fastTicker := time.NewTicker(30 * time.Second) // Các module nhẹ (Network, USB, AV)
-	slowTicker := time.NewTicker(5 * time.Minute)  // Các module nặng (Software Hash, Inventory)
+	usbTicker := time.NewTicker(5 * time.Second)   // Tạm thời Polling nhanh cho USB (chờ nâng cấp Event-driven)
+	fastTicker := time.NewTicker(30 * time.Second) // Các module nhẹ (Network, AV, Firewall)
+	slowTicker := time.NewTicker(5 * time.Minute)  // Các module nặng (Software Hash)
+	hourlyTicker := time.NewTicker(1 * time.Hour)  // Inventory (Ít thay đổi)
+
+	// Gửi toàn bộ trạng thái Baseline ngay lần đầu Agent khởi động
+	runSensors(client, AssetHWID, hostname, "inventory")
+	runSensors(client, AssetHWID, hostname, "software")
+	runSensors(client, AssetHWID, hostname, "fast")
+	runSensors(client, AssetHWID, hostname, "usb")
 
 	for {
 		select {
+		case <-usbTicker.C:
+			runSensors(client, AssetHWID, hostname, "usb")
 		case <-fastTicker.C:
-			runSensors(client, AssetHWID, hostname, false)
+			runSensors(client, AssetHWID, hostname, "fast")
 		case <-slowTicker.C:
-			runSensors(client, AssetHWID, hostname, true)
+			runSensors(client, AssetHWID, hostname, "software")
+		case <-hourlyTicker.C:
+			runSensors(client, AssetHWID, hostname, "inventory")
 		}
 	}
 }
 
-func runSensors(client *transport.AssetClient, hwid, hostname string, runHeavy bool) {
+func runSensors(client *transport.AssetClient, hwid, hostname string, group string) {
 	for _, sensor := range collector.Registry {
-		isHeavy := sensor.Name() == "software" || sensor.Name() == "inventory"
-		if isHeavy && !runHeavy {
-			continue // Bỏ qua quét nặng nếu không tới chu kỳ
+		name := sensor.Name()
+
+		// Phân loại nhóm chu kỳ quét
+		var expectedGroup string
+		switch name {
+		case "inventory":
+			expectedGroup = "inventory"
+		case "software":
+			expectedGroup = "software"
+		case "usb":
+			expectedGroup = "usb"
+		default:
+			// Các module còn lại (port, data_transfer, antivirus, firewall)
+			expectedGroup = "fast"
+		}
+
+		// Chỉ kích hoạt sensor nếu đúng chu kỳ của nhóm
+		if expectedGroup != group {
+			continue
 		}
 
 		data, err := sensor.Collect()

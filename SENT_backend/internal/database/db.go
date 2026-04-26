@@ -153,6 +153,7 @@ func InitDB() {
 		&models.Document{},
 		&models.UserPermission{},
 		&models.WhitelistItem{},
+		&models.SentVersion{},
 	)
 	if err != nil {
 		panic("🔥 LỖI MIGRATION: " + err.Error())

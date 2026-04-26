@@ -27,6 +27,10 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	file, err := os.ReadFile(CONFIG_FILE)
 	if err == nil {
 		json.Unmarshal(file, &Current)
+
+		// Đảm bảo BackendURL luôn được cập nhật từ biến môi trường kể cả khi đã có file config cũ
+		updateBackendURL()
+
 		if Current.SecretKey != "" {
 			Current.HWID = hwid
 			// Giải mã SecretKey khi nạp vào RAM
@@ -36,10 +40,11 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	}
 
 	// Nếu chưa đăng ký, tiến hành Bootstrap
+	updateBackendURL()
+
 	fmt.Println("===========================================")
 	fmt.Println("   🛡️ KÍCH HOẠT SENT SENSOR (CLI MODE)")
 	fmt.Println("===========================================")
-	Current.BackendURL = "http://192.168.2.4"
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -105,6 +110,16 @@ func GetPolicyURL() string {
 // GetSecretKey returns the secret key used for signing requests.
 func GetSecretKey() string {
 	return Current.SecretKey
+}
+
+func updateBackendURL() {
+	envURL := os.Getenv("SENT_BACKEND_URL")
+	if envURL != "" {
+		Current.BackendURL = envURL
+	} else {
+		// Fallback về domain của bạn nếu không tìm thấy trong .env
+		Current.BackendURL = "https://sent.com.vn"
+	}
 }
 
 // Mã hóa XOR cơ bản để tránh lưu SecretKey dưới dạng Plaintext

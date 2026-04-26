@@ -8,5 +8,3 @@ pkg/
 asset_history.log
 *.json
 package-lock.json
-/bin/
-/dist/
