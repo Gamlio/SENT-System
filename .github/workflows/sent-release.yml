@@ -20,9 +20,12 @@ jobs:
         # ĐÂY LÀ BÍ QUYẾT: Bạn dùng lệnh 'cd SENT' để chuyển vào đúng thư mục phần mềm
         run: |
           cd SENT
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ../dist/SENT_windows.exe main.go
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../dist/SENT_linux main.go
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ../dist/SENT_mac main.go
+          go mod tidy # Đảm bảo tải đủ thư viện
+          mkdir -p ../dist # Tạo thư mục chứa file build
+
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ../dist/SENT_windows.exe ./cmd/main.go
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../dist/SENT_linux ./cmd/main.go
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ../dist/SENT_mac ./cmd/main.go
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
