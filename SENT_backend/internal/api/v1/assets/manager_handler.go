@@ -3,6 +3,7 @@ package assets
 import (
 	"net/http"
 	assetSvc "sent_backend/internal/service/assets"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,11 +20,22 @@ func GetStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
-// GetAssets (GATE) - Đổi Getassets -> GetAssets
 func GetAssets(c *gin.Context) {
 	orgID := c.GetUint("org_id")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	search := c.Query("search")
+	status := c.Query("status")
+
 	svc := &assetSvc.AssetDataService{}
-	c.JSON(http.StatusOK, svc.GetAssetList(orgID))
+	total, items := svc.GetAssetList(orgID, page, limit, search, status) // Đẩy search và status xuống service
+
+	c.JSON(http.StatusOK, gin.H{
+		"total": total,
+		"page":  page,
+		"limit": limit,
+		"items": items,
+	})
 }
 
 // GetAssetDetail (GATE) - Đổi GetassetDetail -> GetAssetDetail

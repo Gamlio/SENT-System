@@ -1,27 +1,55 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from '../../../api/axios';
 import { useSocketSubscription } from '../../../context/useSocketSubscription'; 
 
 
 export const useassets = () => {
     const [assets, setassets] = useState([]);
+    const [total, setTotal] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [sortConfig, setSortConfig] = useState({ key: 'last_seen', direction: 'desc' });
+    const [stats, setStats] = useState({ online: 0, offline: 0, total: 0 });
     
     const itemsPerPage = 8; 
+
+    // Xử lý Debounce cho ô Search (Đợi 500ms sau khi ngừng gõ mới gọi API)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery);
+            setCurrentPage(1); // Về trang 1 khi thay đổi từ khóa
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     // Bọc fetchassets vào useCallback để tránh re-render vô hạn
     const fetchassets = useCallback(async () => {
         try {
-            const res = await axios.get('/assets');
+            // Gọi API với các tham số phân trang và tìm kiếm (Server-Side)
+            const res = await axios.get('/assets', {
+                params: {
+                    page: currentPage,
+                    limit: itemsPerPage,
+                    search: debouncedSearch
+                }
+            });
             // Lọc bỏ các máy trạm đã bị xóa mềm (trạng thái RETIRED)
-            const activeAssets = (res.data || []).filter(asset => asset.status !== 'RETIRED');
+            const activeAssets = (res.data.items || []).filter(asset => asset.status !== 'RETIRED');
             setassets(activeAssets);
+            setTotal(res.data.total || 0);
+
+            // Lấy thêm thống kê tổng quan cho biểu đồ
+            const statsRes = await axios.get('/assets/stats');
+            setStats({
+                total: statsRes.data.total || 0,
+                online: statsRes.data.online || 0,
+                offline: (statsRes.data.total || 0) - (statsRes.data.online || 0)
+            });
         } catch (err) {
             console.error("Lỗi lấy danh sách máy trạm:", err);
         }
-    }, []);
+    }, [currentPage, debouncedSearch]);
 
     useEffect(() => {
         fetchassets();
@@ -38,66 +66,12 @@ export const useassets = () => {
         }
     });
     
-    // --- PIPELINE XỬ LÝ DỮ LIỆU ---
-    const processedassets = useMemo(() => {
-        // A. Lọc tìm kiếm
-        let result = [...assets]; // Tạo bản sao để không ảnh hưởng state gốc
-
-        if (searchQuery) {
-            const lowerQuery = searchQuery.toLowerCase();
-            result = result.filter(asset => 
-                (asset.hostname && asset.hostname.toLowerCase().includes(lowerQuery)) ||
-                (asset.ip_address && asset.ip_address.includes(lowerQuery)) ||
-                (asset.manager?.full_name && asset.manager.full_name.toLowerCase().includes(lowerQuery)) ||
-                (asset.manager?.phone && asset.manager.phone.includes(lowerQuery))
-            );
-        }
-
-        // B. Sắp xếp (Sorting)
-        if (sortConfig.key) {
-            result.sort((a, b) => {
-                let aValue = a[sortConfig.key];
-                let bValue = b[sortConfig.key];
-
-                // Xử lý riêng cho cột Manager (Object lồng nhau)
-                if (sortConfig.key === 'manager') {
-                    aValue = a.manager?.full_name || '';
-                    bValue = b.manager?.full_name || '';
-                }
-
-                // Xử lý riêng cho IP Address (Chuyển về số để so sánh chuẩn)
-                if (sortConfig.key === 'ip_address') {
-                    aValue = ipToNum(aValue);
-                    bValue = ipToNum(bValue);
-                }
-
-                // Xử lý riêng cho Thời gian
-                if (sortConfig.key === 'last_seen') {
-                    aValue = new Date(aValue).getTime();
-                    bValue = new Date(bValue).getTime();
-                }
-
-                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
-
-        return result;
-    }, [assets, searchQuery, sortConfig]); // Khi assets, search, hoặc sort thay đổi thì tính toán lại
-
-    // C. Phân trang (Pagination) dựa trên danh sách đã sắp xếp
-    const totalPages = Math.ceil(processedassets.length / itemsPerPage);
-    const indexOfLastItem = currentPage * itemsPerPage;
-    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    const currentassets = processedassets.slice(indexOfFirstItem, indexOfLastItem);
-
-    // Reset về trang 1 khi thay đổi bộ lọc
-    useEffect(() => { setCurrentPage(1); }, [searchQuery, sortConfig, assets.length]);
+    // C. Phân trang (Pagination) - Tính toán từ Total của Backend
+    const totalPages = Math.ceil(total / itemsPerPage);
 
     // D. Dữ liệu biểu đồ
-    const onlineCount = assets.filter(a => a.status === 'online').length;
-    const offlineCount = assets.length - onlineCount;
+    const onlineCount = stats.online;
+    const offlineCount = stats.offline;
     
     const statusChartData = [
         { name: 'Online', value: onlineCount, color: '#10b981' },
@@ -105,13 +79,13 @@ export const useassets = () => {
     ];
 
     const osChartData = [
-        { name: 'Win 10', count: assets.length > 0 ? Math.ceil(assets.length * 0.6) : 0 },
-        { name: 'Win 11', count: assets.length > 0 ? Math.floor(assets.length * 0.3) : 0 },
-        { name: 'macOS', count: assets.length > 0 ? Math.floor(assets.length * 0.1) : 0 },
+        { name: 'Win 10', count: stats.total > 0 ? Math.ceil(stats.total * 0.6) : 0 },
+        { name: 'Win 11', count: stats.total > 0 ? Math.floor(stats.total * 0.3) : 0 },
+        { name: 'macOS', count: stats.total > 0 ? Math.floor(stats.total * 0.1) : 0 },
     ];
 
     return {
-        currentassets, // Dữ liệu đã được Lọc + Sắp xếp + Cắt trang
+        currentassets: assets, // Trả trực tiếp dữ liệu từ backend đã phân trang
         searchQuery, setSearchQuery,
         currentPage, setCurrentPage, totalPages,
         sortConfig, setSortConfig, // Xuất hàm setSortConfig ra ngoài để UI dùng

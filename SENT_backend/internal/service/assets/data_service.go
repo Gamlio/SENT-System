@@ -83,10 +83,27 @@ func (s *AssetDataService) attachAssetTelemetry(asset *models.Asset) {
 	}
 }
 
-// GetAssetList: Đã tối ưu - LOẠI BỎ truy vấn N+1
-func (s *AssetDataService) GetAssetList(orgID uint) []map[string]interface{} {
+// GetAssetList: Đã tối ưu - LOẠI BỎ truy vấn N+1 VÀ ÁP DỤNG PHÂN TRANG (Server-side Pagination)
+func (s *AssetDataService) GetAssetList(orgID uint, page int, limit int, search string, status string) (int64, []map[string]interface{}) {
 	var assets []models.Asset
-	database.DB.Preload("Manager").Where("org_id = ?", orgID).Find(&assets) // Preload Manager để lấy thông tin người quản lý
+	var total int64
+
+	query := database.DB.Model(&models.Asset{}).Where("org_id = ?", orgID)
+
+	// 1. Áp dụng Filter & Search (SQL WHERE) dùng ILIKE cho PostgreSQL (không phân biệt hoa thường)
+	if search != "" {
+		query = query.Where("hostname ILIKE ? OR ip_address ILIKE ? OR asset_hwid ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	// 2. Đếm tổng số lượng máy trạm (SAU KHI ĐÃ LỌC)
+	query.Count(&total)
+
+	// 3. Tính toán Offset và Truy vấn với Order By (Sắp xếp thiết bị hoạt động gần nhất lên đầu)
+	offset := (page - 1) * limit
+	query.Preload("Manager").Order("last_seen DESC").Limit(limit).Offset(offset).Find(&assets)
 
 	var result []map[string]interface{}
 	threshold := time.Now().Add(-2 * time.Minute)
@@ -123,7 +140,7 @@ func (s *AssetDataService) GetAssetList(orgID uint) []map[string]interface{} {
 		}
 		result = append(result, res)
 	}
-	return result
+	return total, result
 }
 
 // GetAssetDetail: Tối ưu tìm kiếm theo asset_hwid chuẩn hóa
