@@ -26,6 +26,27 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 		allSoftware, _ = getLinuxSoftware(ctx, "/usr/bin/rpm -qa --queryformat '%{NAME}|%{VERSION}|%{VENDOR}\n'", runningProcs)
 	}
 
+	// Bổ sung quét các ứng dụng Flatpak
+	flatpakCmd := exec.CommandContext(ctx, "flatpak", "list", "--columns=name,version,application")
+	if out, err := flatpakCmd.Output(); err == nil {
+		lines := strings.Split(string(out), "\n")
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			parts := strings.Split(line, "\t") // Flatpak phân tách bằng tab
+			if len(parts) >= 2 {
+				allSoftware = append(allSoftware, SoftwareRecord{
+					SoftwareName: strings.TrimSpace(parts[0]),
+					Version:      strings.TrimSpace(parts[1]),
+					Publisher:    "Flatpak",
+					Status:       "INSTALLED",
+					IsRunning:    isProcessRunning(parts[0], runningProcs),
+				})
+			}
+		}
+	}
+
 	// Bổ sung: Bắt các App qua Snap/Flatpak hoặc Binary chạy trực tiếp
 	procs, _ := process.Processes()
 	processedNames := make(map[string]bool)

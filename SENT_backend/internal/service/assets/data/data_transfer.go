@@ -46,44 +46,55 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) {
 		return // Dữ liệu không hợp lệ
 	}
 
-	var current models.AssetIOActivity
-	if err := json.Unmarshal(bytes, &current); err != nil {
+	// 1. ĐỊNH NGHĨA STRUCT KHỚP VỚI AGENT MỚI
+	var payload struct {
+		TotalNetSent uint64 `json:"total_net_sent"`
+		TotalNetRecv uint64 `json:"total_net_recv"`
+		TopProcesses []struct {
+			Name      string `json:"name"`
+			BytesSent uint64 `json:"bytes_sent"`
+		} `json:"top_processes"`
+	}
+
+	if err := json.Unmarshal(bytes, &payload); err != nil {
 		return
 	}
-	current.Timestamp = time.Now()
+
+	// Tạo record hiện tại để lưu cache
+	current := models.AssetIOActivity{
+		Timestamp:    time.Now(),
+		NetBytesSent: payload.TotalNetSent,
+	}
 
 	// Đọc từ Concurrent Map không cần Lock
 	val, exists := ioCache.Load(asset.AssetHWID)
 	ioCache.Store(asset.AssetHWID, current)
 
 	if !exists {
-		return // Lần đầu tiên chỉ lưu cache để lấy mốc so sánh
+		return
 	}
 	lastRecord := val.(models.AssetIOActivity)
 
-	// 1. TÍNH TOÁN DELTA (Lượng dữ liệu phát sinh trong 30 giây qua)
+	// 1. TÍNH TOÁN DELTA
 	diffSent := current.NetBytesSent - lastRecord.NetBytesSent
-	diffWrite := current.DiskBytesWritten - lastRecord.DiskBytesWritten
 
-	// 2. NGƯỠNG CẢNH BÁO (Ví dụ: Gửi > 500MB hoặc Ghi > 1GB trong 30 giây)
-	// Đây mới là con số phản ánh hoạt động "truyền tải/lưu trữ dữ liệu lớn" thực tế
-	isNetworkSpike := diffSent > 500*1024*1024
-	isDiskSpike := diffWrite > 1024*1024*1024
+	// 2. NGƯỠNG CẢNH BÁO
+	isNetworkSpike := diffSent > 500*1024*1024 // 500MB
 
-	if isNetworkSpike || isDiskSpike {
-		// 3. CHỈ LƯU VÀO MongoDB KHI CÓ BẤT THƯỜNG
-		current.AssetHWID = asset.AssetHWID
-
-		// 4. KÍCH HOẠT SỰ CỐ (Chỉ hiển thị ở phần Incidents)
+	if isNetworkSpike {
 		incSvc := &incidents.IncidentService{}
-		reason := "Phát hiện lưu lượng mạng đột biến (Nghi vấn rò rỉ dữ liệu)"
-		if isDiskSpike {
-			reason = "Phát hiện ghi đĩa khối lượng lớn (Nghi vấn mã hóa Ransomware hoặc Copy dữ liệu)"
+
+		// Trích xuất tên ứng dụng ngốn mạng nhất từ TopProcesses
+		topApp := "Unknown"
+		if len(payload.TopProcesses) > 0 {
+			topApp = payload.TopProcesses[0].Name
 		}
 
+		reason := fmt.Sprintf("Lưu lượng mạng đột biến. Ứng dụng khả nghi: %s", topApp)
+
 		incSvc.TriggerSecurityEvent(context.TODO(), asset,
-			"Data Exfiltration/Intensive I/O",
-			"[P1] Hoạt động I/O bất thường",
+			"Data Exfiltration",
+			"[P1] Hoạt động mạng bất thường",
 			fmt.Sprintf("%s. Lượng dữ liệu: %d MB/30s", reason, diffSent/1024/1024),
 			"P1",
 		)

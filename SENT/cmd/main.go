@@ -25,6 +25,8 @@ func main() {
 		log.Println("SENT đang tự động khởi động lại hoặc thoát do lỗi...")
 	}()
 
+	defer collector.CloseLocalDB() // Đảm bảo nhả file agent_cache.db.lock khi thoát
+
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("⚠️  Cảnh báo: Không tìm thấy file .env, sử dụng cấu hình mặc định.")
@@ -39,7 +41,16 @@ func main() {
 	AssetHWID := hInfo.HostID
 
 	hostname, _ := os.Hostname()
-	hostname = fmt.Sprintf("%s-Virtual", hostname)
+
+	// 2. Kiểm tra tính toàn vẹn của chính file chạy
+	exePath, err := os.Executable()
+	if err == nil {
+		hash, err := utils.CalculateSHA256(exePath) // Cần expose hàm calculateSHA256 ra utils
+		if err == nil {
+			fmt.Printf(" [SEC] Mã toàn vẹn của SENT Agent: %s\n", hash)
+			// TODO: Ở bản cập nhật Backend tới, có thể gửi mã hash này lên để SOC xác minh
+		}
+	}
 
 	fmt.Printf("\n 🛡️ SENT asset V4.0 (Ninja Thin-Client) | HOST: %s\n", hostname)
 	ipAddress := utils.GetOutboundIP()

@@ -12,9 +12,44 @@ import (
 
 // GetVersions: Lấy danh sách cho Frontend
 func GetVersions(c *gin.Context) {
-	var versions []models.SentVersion
-	database.DB.Order("created_at desc").Find(&versions)
-	c.JSON(http.StatusOK, versions)
+	var rawVersions []models.SentVersion
+	database.DB.Order("created_at desc").Find(&rawVersions)
+
+	// Gộp dữ liệu theo Tag để khớp với giao diện VersionCard.jsx
+	type VersionDisplay struct {
+		Tag           string            `json:"tag"`
+		Links         map[string]string `json:"links"`
+		IsLatest      bool              `json:"is_latest"`
+		ReleaseNote   string            `json:"release_note"`
+		ReleaseDate   string            `json:"release_date"`
+		ChecksumShort string            `json:"checksum_short"`
+	}
+
+	grouped := make(map[string]*VersionDisplay)
+	result := make([]*VersionDisplay, 0)
+
+	for _, v := range rawVersions {
+		if _, ok := grouped[v.Tag]; !ok {
+			checksumShort := v.Checksum
+			if len(checksumShort) > 8 {
+				checksumShort = checksumShort[:8]
+			}
+
+			vd := &VersionDisplay{
+				Tag:           v.Tag,
+				Links:         make(map[string]string),
+				IsLatest:      v.IsLatest,
+				ReleaseNote:   v.ReleaseNote,
+				ReleaseDate:   v.CreatedAt.Format("2006-01-02"),
+				ChecksumShort: checksumShort,
+			}
+			grouped[v.Tag] = vd
+			result = append(result, vd) // Đảm bảo giữ nguyên thứ tự sắp xếp từ DB
+		}
+		grouped[v.Tag].Links[v.Platform] = v.DownloadURL
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GitHubWebhookHandler: Nhận lệnh từ GitHub Actions

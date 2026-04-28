@@ -25,7 +25,8 @@ type FileMetadata struct {
 func InitLocalDB(agentDataPath string) error {
 	var err error
 	dbPath := filepath.Join(agentDataPath, "agent_cache.db") // Renamed for clarity
-	db, err = bbolt.Open(dbPath, 0600, &bbolt.Options{Timeout: 1 * time.Second})
+	// Tăng timeout lên 3s để hệ thống kịp nhả khóa bbolt nếu lần tắt trước bị lỗi
+	db, err = bbolt.Open(dbPath, 0600, &bbolt.Options{Timeout: 3 * time.Second})
 	if err != nil {
 		return err
 	}

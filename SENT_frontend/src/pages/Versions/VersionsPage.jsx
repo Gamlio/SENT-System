@@ -1,7 +1,7 @@
 import React from 'react';
 import { Cpu, RefreshCcw, Plus } from 'lucide-react';
 import { useVersions } from './hooks/useVersions';
-import VersionCard from './component/VersionCard';
+import VersionCard from './components/VersionCard';
 
 const VersionsPage = () => {
     const { versions, loading, refresh } = useVersions();

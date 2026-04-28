@@ -7,7 +7,7 @@ export const useVersions = () => {
 
     const fetchVersions = async () => {
         try {
-            const res = await axios.get('/api/v1/versions');
+            const res = await axios.get('/versions');
             setVersions(res.data);
         } catch (err) {
             console.error("Lỗi tải phiên bản:", err);

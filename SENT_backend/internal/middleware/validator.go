@@ -144,7 +144,7 @@ func ValidateAssetPayloadMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Phân tích bằng struct cụ thể để tối ưu CPU và RAM
 		var req struct {
-			HWID    string `json:"hwid"`
+			HWID    string `json:"asset_hwid"`
 			LogType string `json:"log_type"`
 		}
 

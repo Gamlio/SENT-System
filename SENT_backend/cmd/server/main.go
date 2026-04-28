@@ -38,7 +38,7 @@ func main() {
 	}
 
 	r := gin.New()
-
+	r.Use(gin.Logger())
 	r.RedirectTrailingSlash = false
 	// ===== BẢNG MÔNG BẢO MẬT TẦNG GLOBAL =====
 	// 1. IP Blacklist check (Rẻ nhất, chặn ngay lập tức)
@@ -83,7 +83,7 @@ func main() {
 
 		// --- API Public cho Version & Webhook CI/CD ---
 		v1Group.GET("/versions", version.GetVersions)
-		v1Group.POST("/webhooks/github/release", version.GitHubWebhookHandler)
+		v1Group.POST("/internal/update-version", version.GitHubWebhookHandler)
 
 		protected := v1Group.Group("")
 		protected.Use(middleware.AuthRequired())

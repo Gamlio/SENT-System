@@ -29,13 +29,7 @@ type OpenPortInfo struct {
 
 // 4. Đưa logic cũ vào hàm Collect()
 func (s *PortSensor) Collect() (interface{}, error) {
-	connections, err := psnet.Connections("tcp")
-	if err != nil {
-		return nil, err
-	}
-	var openPorts []OpenPortInfo
-
-	// Snapshot toàn bộ process một lần duy nhất để tối ưu hiệu năng đối chiếu
+	// BƯỚC 1: Chụp ảnh nhanh toàn bộ tiến trình TRƯỚC (Tránh Race Condition)
 	procs, _ := process.Processes()
 	procMap := make(map[int32]string)
 	for _, p := range procs {
@@ -44,14 +38,32 @@ func (s *PortSensor) Collect() (interface{}, error) {
 		}
 	}
 
+	// BƯỚC 2: Quét kết nối TCP
+	connections, err := psnet.Connections("tcp")
+	if err != nil {
+		return nil, err
+	}
+
+	var openPorts []OpenPortInfo
+	seenPorts := make(map[uint32]bool) // Tránh trùng lặp nếu 1 ứng dụng mở nhiều luồng trên cùng 1 Port
+
 	for _, conn := range connections {
+		// Chỉ lấy các cổng đang chờ kết nối (LISTEN)
 		if conn.Status == "LISTEN" {
-			procName := "system" // Mặc định là system nếu không tìm thấy PID hoặc có lỗi
+			if seenPorts[conn.Laddr.Port] {
+				continue
+			}
+			seenPorts[conn.Laddr.Port] = true
+
+			procName := "system"
 			if conn.Pid > 0 {
 				if name, exists := procMap[conn.Pid]; exists && name != "" {
 					procName = name
+				} else {
+					procName = "unknown (dead/hidden)"
 				}
 			}
+
 			openPorts = append(openPorts, OpenPortInfo{
 				Port:        conn.Laddr.Port,
 				ProcessName: procName,
@@ -59,7 +71,7 @@ func (s *PortSensor) Collect() (interface{}, error) {
 		}
 	}
 
-	// Gộp log Firewall vào đây theo mong đợi của Backend
+	// Gộp log Firewall
 	fwSensor := &FirewallSensor{}
 	fwData, _ := fwSensor.Collect()
 	isFwOff := false

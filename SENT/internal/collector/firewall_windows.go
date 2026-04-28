@@ -3,25 +3,31 @@
 package collector
 
 import (
-	"context"
-	"os/exec"
-	"strings"
-	"time"
+	"golang.org/x/sys/windows/registry"
 )
 
-// Collect: Thu thập trạng thái firewall on Windows
+// Collect: Thu thập trạng thái firewall trên Windows không dùng netsh
 func (s *FirewallSensor) Collect() (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// 3 Profile chính của Windows Defender Firewall
+	profiles := []string{"DomainProfile", "StandardProfile", "PublicProfile"}
+	isOff := false
 
-	// [TỐI ƯU HIỆU SUẤT] Sử dụng 'netsh' thay cho PowerShell để tránh khởi tạo Engine nặng
-	cmd := exec.CommandContext(ctx, "netsh", "advfirewall", "show", "allprofiles", "state")
+	for _, profile := range profiles {
+		keyPath := `SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\` + profile
+		k, err := registry.OpenKey(registry.LOCAL_MACHINE, keyPath, registry.QUERY_VALUE)
+		if err != nil {
+			continue // Bỏ qua nếu không đọc được quyền
+		}
 
-	out, err := cmd.Output()
-	outputStr := strings.ToLower(string(out))
-	// Đếm số lượng profile đang có State = ON (Domain, Private, Public)
-	if err == nil && strings.Count(outputStr, "on") < 3 {
-		return FirewallRecord{FirewallOff: true}, nil
+		val, _, err := k.GetIntegerValue("EnableFirewall")
+		k.Close()
+
+		// val == 0 nghĩa là Tường lửa đang TẮT ở profile này
+		if err == nil && val == 0 {
+			isOff = true
+			break // Chỉ cần 1 profile tắt là hệ thống có rủi ro
+		}
 	}
-	return FirewallRecord{FirewallOff: false}, nil
+
+	return FirewallRecord{FirewallOff: isOff}, nil
 }

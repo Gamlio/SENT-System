@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -90,47 +92,37 @@ func (s *USBSensor) Collect() (interface{}, error) {
 	}
 
 	if runtime.GOOS == "linux" {
-		// Sử dụng lsusb trên Linux (Định dạng: Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub)
-		cmd := exec.CommandContext(ctx, "/usr/bin/lsusb")
-		output, err := cmd.Output()
-		if err != nil {
-			return nil, fmt.Errorf("lỗi thực thi lsusb: %w", err)
-		}
+		// [TỐI ƯU HIỆU SUẤT] Bỏ gọi exec.Command, đọc trực tiếp từ SysFS
+		devices, err := filepath.Glob("/sys/bus/usb/devices/*")
+		if err == nil {
+			for _, devPath := range devices {
+				// Chỉ đọc các thiết bị gốc (có chứa file idVendor)
+				if _, err := os.Stat(filepath.Join(devPath, "idVendor")); os.IsNotExist(err) {
+					continue
+				}
 
-		lines := strings.Split(string(output), "\n")
-		for _, line := range lines {
-			if line == "" {
-				continue
-			}
+				vidBytes, _ := os.ReadFile(filepath.Join(devPath, "idVendor"))
+				pidBytes, _ := os.ReadFile(filepath.Join(devPath, "idProduct"))
+				serialBytes, _ := os.ReadFile(filepath.Join(devPath, "serial"))
+				productBytes, _ := os.ReadFile(filepath.Join(devPath, "product"))
 
-			// Dùng Regex global đã khai báo sẵn, không biên dịch lại
-			matches := reLinuxUSB.FindStringSubmatch(line)
+				vid := strings.TrimSpace(string(vidBytes))
+				pid := strings.TrimSpace(string(pidBytes))
+				serial := strings.TrimSpace(string(serialBytes))
+				name := strings.TrimSpace(string(productBytes))
 
-			if len(matches) >= 6 {
-				bus := matches[1]
-				dev := matches[2]
-				vid := matches[3]
-				pid := matches[4]
-				name := strings.TrimSpace(matches[5])
-				serial := "N/A"
-
-				// Thử lấy Serial Number bằng udevadm (Công cụ mặc định trên mọi Linux distro hiện đại)
-				udevCmd := exec.CommandContext(ctx, "/usr/bin/udevadm", "info", "--query=property", fmt.Sprintf("--name=/dev/bus/usb/%s/%s", bus, dev))
-				udevOut, udevErr := udevCmd.Output()
-				if udevErr == nil {
-					for _, uLine := range strings.Split(string(udevOut), "\n") {
-						if strings.HasPrefix(uLine, "ID_SERIAL_SHORT=") {
-							serial = strings.TrimPrefix(uLine, "ID_SERIAL_SHORT=")
-							break
-						}
-					}
+				if serial == "" {
+					serial = "N/A"
+				}
+				if name == "" {
+					name = "Unknown USB Device"
 				}
 
 				hash := generateDeviceHash(vid, pid, serial)
 
 				usbList = append(usbList, USBRecord{
 					DeviceName:   name,
-					DeviceID:     line, // Lưu nguyên dòng log làm ID thô
+					DeviceID:     fmt.Sprintf("USB\\VID_%s&PID_%s", vid, pid), // Chuẩn hóa ID
 					VID:          vid,
 					PID:          pid,
 					SerialNumber: serial,

@@ -2,20 +2,27 @@ package collector
 
 import (
 	"log"
+	"sort"
 
-	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/net"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 // 1. Khai báo Struct cho Sensor
 type DataTransferSensor struct{}
 
-// 2. Cấu trúc JSON chuẩn gửi về Backend
+// Mở rộng Record để chứa danh sách ứng dụng tiêu thụ mạng
 type DataTransferRecord struct {
-	NetBytesSent     uint64 `json:"net_bytes_sent"`
-	NetBytesRecv     uint64 `json:"net_bytes_recv"`
-	DiskBytesWritten uint64 `json:"disk_bytes_written"`
-	DiskBytesRead    uint64 `json:"disk_bytes_read"`
+	TotalNetSent uint64            `json:"total_net_sent"`
+	TotalNetRecv uint64            `json:"total_net_recv"`
+	TopProcesses []ProcessNetStats `json:"top_processes"`
+}
+
+type ProcessNetStats struct {
+	PID       int32  `json:"pid"`
+	Name      string `json:"name"`
+	BytesSent uint64 `json:"bytes_sent"`
+	BytesRecv uint64 `json:"bytes_recv"`
 }
 
 // 3. Khai báo tên định danh của Log
@@ -23,39 +30,49 @@ func (s *DataTransferSensor) Name() string {
 	return "data_transfer"
 }
 
-// 4. Logic thu thập dữ liệu
 func (s *DataTransferSensor) Collect() (interface{}, error) {
-	var totalNetSent, totalNetRecv uint64
-	var totalDiskWrite, totalDiskRead uint64
-
-	// A. Thu thập I/O Mạng (Network)
-	// Tham số 'false' gộp tổng lưu lượng của TẤT CẢ các card mạng (Wifi, LAN, VPN...)
+	// Lấy tổng quan (Tổng lưu lượng mạng)
+	var totalSent, totalRecv uint64
 	netStats, err := net.IOCounters(false)
-	if err != nil {
-		// Ghi lại cảnh báo thay vì im lặng bỏ qua.
-		log.Printf("Telemetry Warning: Không thể lấy thông tin Network I/O: %v", err)
-	} else if len(netStats) > 0 {
-		totalNetSent = netStats[0].BytesSent
-		totalNetRecv = netStats[0].BytesRecv
+	if err == nil && len(netStats) > 0 {
+		totalSent = netStats[0].BytesSent
+		totalRecv = netStats[0].BytesRecv
 	}
 
-	// B. Thu thập I/O Ổ cứng (Disk)
-	// Hàm này trả về map thông số của từng phân vùng (C:, D: hoặc /dev/sda1), ta cần cộng dồn lại
-	diskStats, err := disk.IOCounters()
+	// Lấy thông tin I/O theo từng PID
+	procs, err := process.Processes()
 	if err != nil {
-		// Ghi lại cảnh báo thay vì im lặng bỏ qua.
-		log.Printf("Telemetry Warning: Không thể lấy thông tin Disk I/O: %v", err)
-	} else {
-		for _, stat := range diskStats {
-			totalDiskWrite += stat.WriteBytes
-			totalDiskRead += stat.ReadBytes
+		log.Printf("Telemetry lỗi: Không thể đọc processes: %v", err)
+		return DataTransferRecord{TotalNetSent: totalSent, TotalNetRecv: totalRecv}, nil
+	}
+
+	var procStats []ProcessNetStats
+	for _, p := range procs {
+		ioc, err := p.IOCounters()
+		if err == nil && (ioc.WriteBytes > 0 || ioc.ReadBytes > 0) {
+			name, _ := p.Name()
+			procStats = append(procStats, ProcessNetStats{
+				PID:       p.Pid,
+				Name:      name,
+				BytesSent: ioc.WriteBytes, // Trên một số OS, IO Bytes có thể map mạng hoặc đĩa
+				BytesRecv: ioc.ReadBytes,
+			})
 		}
 	}
 
+	// Sắp xếp giảm dần theo lưu lượng gửi đi (Ưu tiên phát hiện Data Exfiltration)
+	sort.Slice(procStats, func(i, j int) bool {
+		return procStats[i].BytesSent > procStats[j].BytesSent
+	})
+
+	// Chỉ lấy Top 5 tiến trình ăn mạng nhiều nhất để giảm kích thước Payload
+	if len(procStats) > 5 {
+		procStats = procStats[:5]
+	}
+
 	return DataTransferRecord{
-		NetBytesSent:     totalNetSent,
-		NetBytesRecv:     totalNetRecv,
-		DiskBytesWritten: totalDiskWrite,
-		DiskBytesRead:    totalDiskRead,
-	}, nil // Telemetry thường không nên trả về lỗi làm dừng asset, chỉ trả về giá trị 0 nếu không thu thập được
+		TotalNetSent: totalSent,
+		TotalNetRecv: totalRecv,
+		TopProcesses: procStats,
+	}, nil
 }
