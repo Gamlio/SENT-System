@@ -31,7 +31,6 @@ func (s *DocumentUploadStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalT
 	return tx.Model(&models.Document{}).Where("id = ?", ticket.TargetID).Updates(map[string]interface{}{
 		"approval_status": "APPROVED",
 		"approved_by":     ticket.ReviewedBy,
-		"is_processed":    false, // Đặt là false vì chưa convert PDF thật sự
 	}).Error
 }
 

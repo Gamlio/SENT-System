@@ -77,8 +77,9 @@ func CheckPolicy(category string, value string) (isViolation bool, reason string
 		}
 	}
 
-	// Nếu hệ thống áp dụng Zero Trust cho danh mục này mà không có tên trong danh sách -> Chặn
-	if hasWhitelist && !inWhitelist {
+	// SỬA TẠI ĐÂY: Nếu danh mục có whitelist mà item không tìm thấy (found == false)
+	// thì mặc định là vi phạm Zero Trust.
+	if hasWhitelist {
 		return true, "Không nằm trong Whitelist (Zero Trust)"
 	}
 

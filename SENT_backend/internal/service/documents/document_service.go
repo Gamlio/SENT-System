@@ -128,7 +128,6 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 			doc.FilePath = filepath.ToSlash(filePath)
 			doc.OriginalName = fileName
 			doc.DisplayPdfPath = displayPdfPath
-			doc.IsProcessed = false
 		}
 
 		doc.Title = title

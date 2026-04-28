@@ -225,8 +225,6 @@ type Document struct {
 	ApprovedBy     string `json:"approved_by"`
 	DisplayPdfPath string `json:"display_pdf_path"`
 
-	IsProcessed bool `json:"is_processed" gorm:"default:false"`
-
 	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"`
 	UploadedBy     string `json:"uploaded_by"`
 }
