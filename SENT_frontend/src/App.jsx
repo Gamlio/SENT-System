@@ -18,7 +18,7 @@ import ApprovalCenter from './pages/approvals/ApprovalCenter.jsx';
 import PolicyCenter from './pages/policies/PolicyCenter.jsx'; 
 import IncidentDetail from './pages/IncidentReport/IncidentDetail.jsx';
 import BehaviorManager from './pages/Behaviors/BehaviorManager.jsx';
-import Documents from './pages/KnowledgeBase/Documents.jsx';     
+import Documents from './pages/Documents/Documents.jsx';     
 import UserManagement from './pages/User/UserManagement.jsx';   
 
 // IMPORT DRAWER MỚI TẠO

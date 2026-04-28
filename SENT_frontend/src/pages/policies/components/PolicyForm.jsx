@@ -1,30 +1,19 @@
 import React, { useState, useRef } from 'react';
-import { Plus, ShieldCheck, CheckCircle2, Globe, Laptop, Search, ListPlus, Type, Info, Upload, Loader2 } from 'lucide-react';
+import { Plus, ShieldCheck, CheckCircle2, Globe, Users, Search, ListPlus, Type, Info, Upload, Loader2 } from 'lucide-react';
 import Pagination from '../../../components/common/Pagination';
 import { parseExcel, parseWord } from '../../../utils/fileParsers';
 
-const PolicyForm = ({ currentConfig, assets, onAddPolicy, isLoading }) => {
+const PolicyForm = ({ currentConfig, groups, onAddPolicy, isLoading }) => {
     const [newTitle, setNewTitle] = useState('');
     const [policyType, setPolicyType] = useState('BLACKLIST');
     const [targetType, setTargetType] = useState('GLOBAL');
-    const [selectedAssetHWID, setSelectedAssetHWID] = useState([]); // Giữ nguyên tên gốc của bạn
+    const [selectedGroupID, setSelectedGroupID] = useState('');
 
     const [inputMode, setInputMode] = useState('SINGLE'); 
     const [singleValue, setSingleValue] = useState('');
     const [bulkValue, setBulkValue] = useState('');
     const [isReadingFile, setIsReadingFile] = useState(false);
     const fileInputRef = useRef(null);
-
-    const [assetSearch, setassetSearch] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 5;
-
-    const filteredassets = assets.filter(a => 
-        a.hostname?.toLowerCase().includes(assetSearch.toLowerCase()) || 
-        a.ip_address?.includes(assetSearch)
-    );
-    const totalPages = Math.ceil(filteredassets.length / itemsPerPage);
-    const displayedassets = filteredassets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     const handleFileImport = async (e) => {
         const file = e.target.files[0];
@@ -80,7 +69,7 @@ const PolicyForm = ({ currentConfig, assets, onAddPolicy, isLoading }) => {
             title: newTitle,
             policy_type: policyType,
             target_type: targetType,
-            target_hwids: selectedAssetHWID // ĐÃ SỬA: Xóa dấu cách
+            group_id: targetType === 'GLOBAL' ? null : Number(selectedGroupID)
         };
         
         onAddPolicy({ ...basePayload, values: valuesToSubmit });
@@ -88,7 +77,7 @@ const PolicyForm = ({ currentConfig, assets, onAddPolicy, isLoading }) => {
         setNewTitle('');
         setSingleValue('');
         setBulkValue('');
-        setSelectedAssetHWID([]); // ĐÃ SỬA: Xóa dấu cách
+        setSelectedGroupID('');
     };
 
     return (
@@ -153,40 +142,28 @@ const PolicyForm = ({ currentConfig, assets, onAddPolicy, isLoading }) => {
                             <Globe size={20}/>
                             <span className="text-xs font-bold">Toàn hệ thống</span>
                         </div>
-                        <div onClick={() => setTargetType('SPECIFIC')} className={`flex-1 p-3 rounded-xl border cursor-pointer transition flex flex-col items-center gap-2 ${targetType === 'SPECIFIC' ? 'bg-purple-500/10 border-purple-500 text-purple-400' : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-600'}`}>
-                            <Laptop size={20}/>
-                            <span className="text-xs font-bold">Máy cụ thể</span>
+                        <div onClick={() => setTargetType('GROUP')} className={`flex-1 p-3 rounded-xl border cursor-pointer transition flex flex-col items-center gap-2 ${targetType === 'GROUP' ? 'bg-purple-500/10 border-purple-500 text-purple-400' : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-600'}`}>
+                            <Users size={20}/>
+                            <span className="text-xs font-bold">Theo Nhóm</span>
                         </div>
                     </div>
                 </div>
 
-                {targetType === 'SPECIFIC' && (
+                {targetType === 'GROUP' && (
                     <div className="bg-slate-900/50 rounded-xl border border-slate-700 animate-in fade-in slide-in-from-top-2 overflow-hidden">
-                        <div className="p-3 border-b border-slate-800 bg-slate-900">
-                            <div className="relative">
-                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" size={14}/>
-                                <input type="text" placeholder="Tìm tên máy hoặc IP..." value={assetSearch} onChange={(e) => setassetSearch(e.target.value)} className="w-full pl-8 pr-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white outline-none focus:border-purple-500 transition" />
-                            </div>
+                        <div className="p-3 space-y-2">
+                            <select 
+                                value={selectedGroupID}
+                                onChange={(e) => setSelectedGroupID(e.target.value)}
+                                className="w-full bg-[#050B14] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-purple-500 outline-none transition-all"
+                                required
+                            >
+                                <option value="">-- Chọn một nhóm --</option>
+                                {groups && groups.map(g => (
+                                    <option key={g.id || g.ID} value={g.id || g.ID}>{g.name || g.Name}</option>
+                                ))}
+                            </select>
                         </div>
-                        <div className="p-2 space-y-1 min-h-[150px]">
-                            {displayedassets.length === 0 ? (
-                                <div className="text-center py-4 text-slate-500 text-xs italic">Không tìm thấy máy phù hợp</div>
-                            ) : (
-                                displayedassets.map(asset => (
-                                    <label key={asset.hwid} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition border border-transparent ${selectedAssetHWID.includes(asset.hwid) ? 'bg-purple-500/20 border-purple-500/30' : 'hover:bg-slate-800'}`}>
-                                        <input type="checkbox" checked={selectedAssetHWID.includes(asset.hwid)} onChange={() => {
-                                            if (selectedAssetHWID.includes(asset.hwid)) setSelectedAssetHWID(prev => prev.filter(id => id !== asset.hwid));
-                                            else setSelectedAssetHWID(prev => [...prev, asset.hwid]);
-                                        }} className="accent-purple-500 w-4 h-4 rounded" />
-                                        <div className="min-w-0">
-                                            <p className={`text-xs font-bold truncate ${selectedAssetHWID.includes(asset.hwid) ? 'text-white' : 'text-slate-300'}`}>{asset.hostname}</p>
-                                            <p className="text-[9px] text-slate-500 font-mono truncate">{asset.ip_address}</p>
-                                        </div>
-                                    </label>
-                                ))
-                            )}
-                        </div>
-                        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                     </div>
                 )}
 

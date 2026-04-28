@@ -16,8 +16,8 @@ const PolicyCenter = () => {
     const activeTab = queryParams.get('tab') || 'overview';
 
     const { 
-        policies, loading, 
-        fetchPolicies, addPolicy, deletePolicy, deleteBulkPolicies 
+        policies, groups, loading, 
+        fetchPolicies, fetchGroups, addPolicy, deletePolicy, deleteBulkPolicies 
     } = usePolicies();
 
     // Lắng nghe sự kiện từ WebSocket và tải lại dữ liệu
@@ -25,8 +25,6 @@ const PolicyCenter = () => {
         console.log('[WS] Bộ luật chính sách đã thay đổi, đang tải lại...');
         fetchPolicies();
     });
-
-    const [assets] = useState([]); 
 
     // Cấu hình Tabs
     const tabConfig = {
@@ -42,7 +40,8 @@ const PolicyCenter = () => {
     // Để lấy cả những dòng "OTHER" về rồi Frontend tự lọc
     useEffect(() => {
         fetchPolicies(); 
-    }, [fetchPolicies]);
+        if (fetchGroups) fetchGroups();
+    }, [fetchPolicies, fetchGroups]);
 
     // 2. Logic Lọc Thông Minh (Fix lỗi không hiện USB)
     const filteredPolicies = useMemo(() => {
@@ -137,7 +136,7 @@ const PolicyCenter = () => {
                         <div className="xl:col-span-4 h-full overflow-y-auto pr-1">
                             <PolicyForm 
                                 currentConfig={currentConfig} 
-                                assets={assets} 
+                                groups={groups || []} 
                                 onAddPolicy={handleAddPolicy} 
                                 isLoading={loading} 
                             />
@@ -147,7 +146,7 @@ const PolicyCenter = () => {
                                 policies={filteredPolicies} // <--- Danh sách đã được lọc kỹ
                                 onDelete={handleDelete} 
                                 onBulkDelete={handleBulkDelete} 
-                                assets={assets} 
+                                groups={groups || []} 
                             />
                         </div>
                     </div>

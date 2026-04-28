@@ -12,12 +12,11 @@ import (
 type PolicyCreateStrategy struct{}
 
 type PolicyPayload struct {
-	Title            string   `json:"title"`
-	Category         string   `json:"category"`
-	Value            string   `json:"value"`
-	PolicyType       string   `json:"policy_type"`
-	TargetType       string   `json:"target_type"`
-	TargetAssetHWIDs []string `json:"target_asset_hwids"`
+	Title      string `json:"title"`
+	Category   string `json:"category"`
+	Value      string `json:"value"`
+	PolicyType string `json:"policy_type"`
+	GroupID    *uint  `json:"group_id"` // Thay thế hoàn toàn cho TargetType và TargetAssetHWIDs
 }
 
 func (s *PolicyCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
@@ -34,17 +33,16 @@ func (s *PolicyCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTic
 
 	// 3. Bây giờ mới thực sự tạo Policy trong hệ thống
 	newPolicy := models.Policy{
-		OrgID:            ticket.OrgID,
-		Title:            payload.Title,
-		Category:         payload.Category,
-		Value:            payload.Value,
-		PolicyType:       payload.PolicyType,
-		TargetType:       payload.TargetType,
-		TargetAssetHWIDs: payload.TargetAssetHWIDs,
-		IsActive:         true,
-		ApprovalStatus:   "APPROVED",
-		CreatedBy:        ticket.RequestedBy,
-		ApprovedBy:       ticket.ReviewedBy,
+		OrgID:          ticket.OrgID,
+		Title:          payload.Title,
+		Category:       payload.Category,
+		Value:          payload.Value,
+		PolicyType:     payload.PolicyType,
+		GroupID:        payload.GroupID, // Sử dụng GroupID (Nếu null thì tự hiểu là Global Policy)
+		IsActive:       true,
+		ApprovalStatus: "APPROVED",
+		CreatedBy:      ticket.RequestedBy,
+		ApprovedBy:     ticket.ReviewedBy,
 	}
 
 	if err := tx.Create(&newPolicy).Error; err != nil {
@@ -91,4 +89,3 @@ func (s *PolicyBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approva
 func (s *PolicyBulkDeleteStrategy) OnReject(tx *gorm.DB, ticket *models.ApprovalTicket) error {
 	return nil
 }
-

@@ -1,5 +1,5 @@
 import React from 'react';
-import {  CheckCircle2, Laptop, Trash2, Clock, User, AlertTriangle } from 'lucide-react';
+import {  CheckCircle2, Users, Globe, Trash2, Clock, User, AlertTriangle } from 'lucide-react';
 
 export const StatCard = ({ icon, label, value, color, bg }) => (
     <div className={`p-5 rounded-3xl border border-slate-800 shadow-xl ${bg} flex flex-col gap-3 transition-transform hover:scale-[1.02]`}>
@@ -10,17 +10,13 @@ export const StatCard = ({ icon, label, value, color, bg }) => (
         </div>
     </div>
 );
-export const PolicyItem = ({ policy, onDelete, assets, isSelected, onSelect }) => {
-    const getTargetNames = () => {
-        if (!policy.target_hwids || policy.target_hwids === '[]') return "Global";
-        try {
-            const ids = typeof policy.target_hwids === 'string' ? JSON.parse(policy.target_hwids) : policy.target_hwids;
-            if (!Array.isArray(ids) || ids.length === 0) return "Global";
-            return ids.map(id => assets?.find(a => a.hwid === id)?.hostname || id.substring(0, 6)).join(', ');
-        } catch (e) {
-            console.error("Failed to parse target_hwids:", policy.target_hwids, e);
-            return "Invalid Target";
+export const PolicyItem = ({ policy, onDelete, groups, isSelected, onSelect }) => {
+    const getTargetDisplay = () => {
+        if (!policy.group_id && policy.target_type !== 'GROUP') {
+            return { label: "Toàn cục", icon: <Globe size={12}/>, color: "text-blue-400" };
         }
+        const groupName = groups?.find(g => g.id === policy.group_id || g.ID === policy.group_id)?.name || policy.group_name || `Nhóm ID: ${policy.group_id}`;
+        return { label: `Nhóm: ${groupName}`, icon: <Users size={12}/>, color: "text-purple-400" };
     };
 
     // Xác định màu sắc dựa trên trạng thái phê duyệt[cite: 45, 60]
@@ -67,11 +63,11 @@ export const PolicyItem = ({ policy, onDelete, assets, isSelected, onSelect }) =
                         <span className="text-[10px] text-slate-500 flex items-center gap-1">
                             <Clock size={12}/> {new Date(policy.CreatedAt).toLocaleDateString()}
                         </span>
-                        {policy.target_type === 'SPECIFIC' && (
-                            <span className="text-[10px] text-purple-400 flex items-center gap-1 font-bold">
-                                <Laptop size={12}/> {getTargetNames()}
-                            </span>
-                        )}
+                        
+                        <span className={`text-[10px] ${getTargetDisplay().color} flex items-center gap-1 font-bold`}>
+                            {getTargetDisplay().icon} {getTargetDisplay().label}
+                        </span>
+                        
                     </div>
                 </div>
             </div>

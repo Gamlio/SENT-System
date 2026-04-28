@@ -3,6 +3,7 @@ import axios from '../../../api/axios';
 
 export const usePolicies = () => {
     const [policies, setPolicies] = useState([]);
+    const [groups, setGroups] = useState([]); // Quản lý danh sách nhóm máy trạm
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -23,46 +24,68 @@ export const usePolicies = () => {
         }
     }, []);
 
-    // 2. THÊM LUẬT MỚI (JSON)
+    // 2. LẤY DANH SÁCH NHÓM (Dùng cho dropdown trong PolicyForm)
+    const fetchGroups = useCallback(async () => {
+        try {
+            // Giả định endpoint lấy danh sách nhóm là /groups
+            const res = await axios.get('/groups');
+            setGroups(res.data || []);
+        } catch (err) {
+            console.error("Lỗi tải danh sách nhóm:", err);
+        }
+    }, []);
+
+    // 3. THÊM LUẬT MỚI (JSON)
     const addPolicy = async (policyData) => {
         try {
+            // policyData giờ đây sẽ chứa group_id thay vì target_asset_hwids
             await axios.post('/policies', policyData);
-            // Sau khi thêm, nên gọi fetchPolicies lại ở component cha hoặc cập nhật state cục bộ
+            // Re-fetch sẽ được thực hiện thông qua Socket hoặc gọi thủ công ở component
             return { success: true };
         } catch (err) {
             console.error("Lỗi thêm chính sách:", err);
-            return { success: false, error: err.response?.data?.error || "Lỗi lưu dữ liệu" };
+            return { 
+                success: false, 
+                error: err.response?.data?.error || "Lỗi lưu dữ liệu chính sách" 
+            };
         }
     };
 
-    // 3. XÓA LUẬT
+    // 4. XÓA LUẬT LẺ
     const deletePolicy = async (id) => {
         try {
             await axios.delete(`/policies/${id}`);
-            setPolicies(prev => prev.filter(p => p.ID !== id)); // Cập nhật UI ngay
+            // Cập nhật state cục bộ để UI mượt mà hơn
+            setPolicies(prev => prev.filter(p => p.ID !== id && p.id !== id));
             return { success: true };
         } catch (err) {
-            alert("Không thể xóa chính sách này!");
-            return { success: false };
+            console.error("Lỗi xóa chính sách:", err);
+            return { success: false, error: "Không thể xóa chính sách này" };
         }
     };
 
-    // 4. XÓA NHIỀU LUẬT (CẦN PHÊ DUYỆT)
+    // 5. XÓA NHIỀU LUẬT (Gửi đơn phê duyệt)
     const deleteBulkPolicies = async (payload) => {
         try {
+            // payload: { ids: [1, 2, 3], reason: "..." }
             await axios.post('/policies/bulk-delete', payload);
             return { success: true };
         } catch (err) {
-            console.error("Lỗi xóa nhiều chính sách:", err);
-            return { success: false, error: err.response?.data?.error || "Lỗi gửi yêu cầu xóa" };
+            console.error("Lỗi gửi đơn xóa hàng loạt:", err);
+            return { 
+                success: false, 
+                error: err.response?.data?.error || "Lỗi gửi yêu cầu xóa hàng loạt" 
+            };
         }
     };
 
     return {
         policies,
+        groups,      // Danh sách Group để hiển thị trong Form/List
         loading,
         error,
         fetchPolicies,
+        fetchGroups, // Hàm nạp dữ liệu Group
         addPolicy,
         deletePolicy,
         deleteBulkPolicies

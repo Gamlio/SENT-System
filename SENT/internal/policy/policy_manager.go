@@ -20,8 +20,11 @@ type Policy struct {
 }
 
 var (
-	policyCache []Policy
-	mu          sync.RWMutex
+	// Cấu trúc: [Category][Value] -> PolicyType
+	// Ví dụ: optimizedCache["SOFTWARE"]["chrome.exe"] = "WHITELIST"
+	optimizedCache map[string]map[string]string
+	mu             sync.RWMutex
+	currentVersion int64 // Lưu trữ version hiện hành của bộ luật
 )
 
 // GetBlacklistedSoftware trả về danh sách tên các phần mềm bị cấm.
@@ -30,9 +33,13 @@ func GetBlacklistedSoftware() []string {
 	defer mu.RUnlock()
 
 	var blacklist []string
-	for _, p := range policyCache {
-		if (strings.ToUpper(p.Category) == "SOFTWARE" || strings.ToUpper(p.Category) == "PROCESS") && p.PolicyType == "BLACKLIST" {
-			blacklist = append(blacklist, strings.ToLower(p.Value))
+	for cat, values := range optimizedCache {
+		if cat == "SOFTWARE" || cat == "PROCESS" {
+			for val, pType := range values {
+				if pType == "BLACKLIST" {
+					blacklist = append(blacklist, val)
+				}
+			}
 		}
 	}
 	return blacklist
@@ -43,27 +50,30 @@ func CheckPolicy(category string, value string) (isViolation bool, reason string
 	mu.RLock()
 	defer mu.RUnlock()
 
+	cat := strings.ToUpper(category)
+	val := strings.ToLower(value)
+
+	values, exists := optimizedCache[cat]
+	if !exists {
+		return false, ""
+	}
+
+	// Tra cứu O(1) - Không lặp qua danh sách
+	pType, found := values[val]
+	if found {
+		if pType == "BLACKLIST" {
+			return true, "Phát hiện trong danh sách cấm"
+		}
+		// Nếu là Whitelist thì trả về false (không vi phạm)
+		return false, ""
+	}
+
+	// Kiểm tra xem category này có áp dụng Whitelist không (Zero Trust)
 	hasWhitelist := false
-	inWhitelist := false
-
-	for _, p := range policyCache {
-		// Bỏ qua các rule không đúng danh mục
-		if !strings.EqualFold(p.Category, category) {
-			continue
-		}
-
-		match := strings.EqualFold(strings.TrimSpace(p.Value), strings.TrimSpace(value))
-
-		// Phát hiện cấm (Blacklist)
-		if p.PolicyType == "BLACKLIST" && match {
-			return true, "Bị chặn bởi Blacklist"
-		}
-		// Kiểm tra có áp dụng Whitelist không (Zero Trust)
-		if p.PolicyType == "WHITELIST" {
+	for _, t := range values {
+		if t == "WHITELIST" {
 			hasWhitelist = true
-			if match {
-				inWhitelist = true
-			}
+			break
 		}
 	}
 
@@ -96,7 +106,11 @@ func fetchPolicies() {
 	log.Println("Đang đồng bộ chính sách bảo vệ từ server...")
 
 	client := &http.Client{Timeout: 20 * time.Second}
-	payload := map[string]string{"asset_hwid": config.GetHWID()}
+
+	payload := map[string]interface{}{
+		"asset_hwid": config.GetHWID(),
+		"version":    currentVersion, // Gửi kèm version để server đối chiếu
+	}
 	jsonPayload, _ := json.Marshal(payload)
 
 	req, err := http.NewRequest("POST", config.GetPolicyURL(), bytes.NewBuffer(jsonPayload))
@@ -116,11 +130,32 @@ func fetchPolicies() {
 	}
 	defer resp.Body.Close()
 
-	var newPolicies []Policy
-	if err := json.NewDecoder(resp.Body).Decode(&newPolicies); err == nil {
+	var respData struct {
+		Status   string   `json:"status"`
+		Version  int64    `json:"version"`
+		Policies []Policy `json:"policies"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err == nil {
+		if respData.Status == "not_modified" {
+			// Bỏ qua nếu luật không có gì thay đổi
+			return
+		}
+
+		// Build cache mới O(1)
+		newCache := make(map[string]map[string]string)
+		for _, p := range respData.Policies {
+			cat := strings.ToUpper(p.Category)
+			val := strings.ToLower(p.Value)
+			if newCache[cat] == nil {
+				newCache[cat] = make(map[string]string)
+			}
+			newCache[cat][val] = p.PolicyType
+		}
 		mu.Lock()
-		policyCache = newPolicies
+		optimizedCache = newCache
+		currentVersion = respData.Version
 		mu.Unlock()
-		log.Printf("Đồng bộ thành công %d chính sách.", len(newPolicies))
+		log.Printf("Đồng bộ thành công %d chính sách. (Version: %d)", len(respData.Policies), currentVersion)
 	}
 }

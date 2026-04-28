@@ -36,7 +36,7 @@ export const useDocuments = () => {
         setIsUploading(true);
         try {
             await axios.post('/docs/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
+                headers: { 'Content-Type': 'multipart/form-data' } // Hỗ trợ tải file Word
             });
             await fetchDocuments(); // Tải lại danh sách sau khi up
             return { success: true };
@@ -53,7 +53,7 @@ export const useDocuments = () => {
         if (!window.confirm("Bạn chắc chắn muốn xóa tài liệu này?")) return;
         try {
             await axios.delete(`/docs/${id}`);
-            setDocuments(prev => prev.filter(d => d.ID !== id));
+            setDocuments(prev => prev.filter(d => d.ID !== id)); // Cập nhật UI ngay lập tức
         } catch (err) {
             alert("Lỗi khi xóa tài liệu!");
         }
@@ -67,6 +67,28 @@ export const useDocuments = () => {
             return { success: true };
         } catch (err) {
             return { success: false, error: "Lỗi cập nhật" };
+        }
+    };
+
+    // 5. TẢI TÀI LIỆU VỀ MÁY (File Word gốc)
+    const downloadDoc = async (id, fileName) => {
+        try {
+            const response = await axios.get(`/docs/${id}/download`, {
+                responseType: 'blob', // Quan trọng để nhận file nhị phân từ Backend
+            });
+
+            // Tạo link ảo để tải file
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', fileName); // Giữ đúng tên và đuôi file gốc
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Lỗi tải file gốc:", err);
+            alert("Không thể tải file gốc!");
         }
     };
 
@@ -94,6 +116,7 @@ export const useDocuments = () => {
         fetchDocuments,
         uploadDoc,
         deleteDoc,
-        updateDoc
+        updateDoc,
+        downloadDoc // Xuất hàm tải file để UI sử dụng
     };
 };

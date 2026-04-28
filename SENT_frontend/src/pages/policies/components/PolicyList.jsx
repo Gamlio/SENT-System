@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Laptop, Globe, Trash2, X } from 'lucide-react';
+import { Users, Globe, Trash2, X } from 'lucide-react';
 import { PolicyItem } from './PolicyShared';
 import Pagination from '../../../components/common/Pagination';
 import BulkDeleteModal from '../../../components/common/BulkDeleteModal';
 
-const PolicyList = ({ policies, onDelete, onBulkDelete, assets, currentConfig }) => {
+const PolicyList = ({ policies, onDelete, onBulkDelete, groups, currentConfig }) => {
     // Thêm State phân trang cho phần Specific
     const [specPage, setSpecPage] = useState(1);
     const itemsPerPage = 5;
@@ -14,7 +14,7 @@ const PolicyList = ({ policies, onDelete, onBulkDelete, assets, currentConfig })
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
     // Lọc dữ liệu
-    const specificPolicies = policies.filter(p => p.target_type === 'SPECIFIC');
+    const specificPolicies = policies.filter(p => p.target_type === 'GROUP' || p.group_id);
     const globalPolicies = policies.filter(p => p.target_type === 'GLOBAL');
 
     // Tính toán phân trang cho Specific
@@ -46,7 +46,7 @@ const PolicyList = ({ policies, onDelete, onBulkDelete, assets, currentConfig })
                 <div className="bg-[#1e293b] rounded-3xl border border-purple-500/30 shadow-xl overflow-hidden">
                     <div className="p-4 bg-purple-500/10 border-b border-purple-500/20 flex items-center justify-between">
                         <h3 className="font-bold text-purple-400 flex items-center gap-2 text-sm uppercase tracking-wider">
-                            <Laptop size={18}/> Ngoại lệ & Ghi đè (Specific)
+                            <Users size={18}/> Chính sách Nhóm (Group)
                         </h3>
                         <span className="text-[10px] font-bold bg-purple-500 text-white px-2 py-0.5 rounded">Ưu tiên cao</span>
                     </div>
@@ -56,7 +56,7 @@ const PolicyList = ({ policies, onDelete, onBulkDelete, assets, currentConfig })
                                 key={p.ID} 
                                 policy={p} 
                                 onDelete={onDelete} 
-                                assets={assets} 
+                                groups={groups} 
                                 currentConfig={currentConfig} 
                                 isSelected={selectedIds.includes(p.ID)}
                                 onSelect={handleSelect}
@@ -94,7 +94,7 @@ const PolicyList = ({ policies, onDelete, onBulkDelete, assets, currentConfig })
                                 key={p.ID} 
                                 policy={p} 
                                 onDelete={onDelete} 
-                                assets={assets} 
+                                groups={groups} 
                                 currentConfig={currentConfig} 
                                 isSelected={selectedIds.includes(p.ID)}
                                 onSelect={handleSelect}

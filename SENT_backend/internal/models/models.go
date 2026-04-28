@@ -93,6 +93,16 @@ type UserPermission struct {
 	Permission string `json:"permission"`
 }
 
+// PolicyGroup định nghĩa một "Hồ sơ bảo mật" (VD: Kế toán, Máy chủ, Dev)
+type PolicyGroup struct {
+	gorm.Model
+	OrgID       uint     `json:"org_id" gorm:"index"`
+	Name        string   `json:"name"` // "High Security Profile"
+	Description string   `json:"description"`
+	Policies    []Policy `json:"policies" gorm:"foreignKey:GroupID"`
+	Assets      []Asset  `json:"assets" gorm:"foreignKey:GroupID"`
+}
+
 // --- NHÓM 3: THIẾT BỊ (assetS) ---
 type Asset struct {
 	AssetHWID string    `gorm:"primaryKey;column:asset_hwid" json:"asset_hwid"`
@@ -100,6 +110,7 @@ type Asset struct {
 	OrgID     uint      `gorm:"column:org_id" json:"org_id" binding:"required"`
 	RegionID  *uint     `gorm:"column:region_id" json:"region_id"`
 	UserID    *uint     `gorm:"column:user_id" json:"user_id"`
+	GroupID   *uint     `json:"group_id" gorm:"column:group_id;index"`
 	Hostname  string    `gorm:"column:hostname" json:"hostname"`
 	IPAddress string    `gorm:"column:ip_address" json:"ip_address"`
 	LastSeen  time.Time `gorm:"column:last_seen" json:"last_seen"`
@@ -193,8 +204,7 @@ type Policy struct {
 	PolicyType string `json:"policy_type" gorm:"default:'BLACKLIST'"`
 	IsActive   bool   `json:"is_active" gorm:"default:true"`
 
-	TargetType       string   `json:"target_type" gorm:"default:'GLOBAL'"`
-	TargetAssetHWIDs []string `json:"target_asset_hwids" gorm:"serializer:json"`
+	GroupID *uint `json:"group_id" gorm:"index"` // Nếu NULL = Global Policy
 
 	IncidentID *uint `json:"incident_id"`
 
@@ -206,19 +216,19 @@ type Policy struct {
 
 type Document struct {
 	gorm.Model
-	Title       string `json:"title"`
-	FileName    string `json:"file_name"`
-	FilePath    string `json:"file_path"`
-	Category    string `json:"category"`
-	IsProcessed bool   `gorm:"default:false" json:"is_processed"`
-	OrgID       uint   `json:"org_id" gorm:"index"`
+	OrgID          uint   `json:"org_id" gorm:"index"`
+	Title          string `json:"title"`
+	FileName       string `json:"file_name"`
+	FilePath       string `json:"file_path"`
+	Category       string `json:"category" gorm:"index"`
+	OriginalName   string `json:"original_name"`
+	ApprovedBy     string `json:"approved_by"`
+	DisplayPdfPath string `json:"display_pdf_path"`
 
-	OriginalPath   string `json:"original_path"`    // Lưu file gốc (Word, PDF, Excel...)
-	DisplayPdfPath string `json:"display_pdf_path"` // MẶC ĐỊNH LÀ PDF ĐỂ RENDER LÊN WEB
-	// [MỚI] ĐỒNG BỘ: Luồng phê duyệt tài liệu (tránh up file rác)
+	IsProcessed bool `json:"is_processed" gorm:"default:false"`
+
 	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"`
 	UploadedBy     string `json:"uploaded_by"`
-	ApprovedBy     string `json:"approved_by"`
 }
 
 // --- NHÓM 7: HỆ THỐNG PHÊ DUYỆT TẬP TRUNG (APPROVAL TICKETS) ---

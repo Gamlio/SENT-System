@@ -35,7 +35,7 @@ const PolicyOverview = ({ policies }) => {
                                     <p className="font-bold text-white text-sm truncate">{p.title}</p>
                                     {p.target_type === 'GLOBAL' ? 
                                         <Globe size={12} className="text-slate-500"/> : 
-                                        <Laptop size={12} className="text-purple-400"/>
+                                        <Users size={12} className="text-purple-400"/>
                                     }
                                 </div>
                                 <p className="text-xs text-slate-500 truncate mt-0.5">{p.value}</p>

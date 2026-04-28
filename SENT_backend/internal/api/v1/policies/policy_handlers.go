@@ -105,18 +105,42 @@ func DeleteBulkPolicies(c *gin.Context) {
 // SyncPoliciesForAsset (GATE): Cổng đồng bộ cho asset
 func SyncPoliciesForAsset(c *gin.Context) {
 	orgID := c.GetUint("org_id")
-	hwid := c.Query("hwid")
-	if hwid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu thông tin AssetID"})
+
+	var req struct {
+		AssetHWID string `json:"asset_hwid"`
+		Version   int64  `json:"version"` // Agent gửi version hiện tại lên
+	}
+
+	// Đọc từ JSON payload để khớp với Agent
+	if err := c.ShouldBindJSON(&req); err != nil || req.AssetHWID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu thông tin AssetHWID hoặc payload không hợp lệ"})
 		return
 	}
 
 	svc := &policyService.PolicyService{}
-	policies, err := svc.GetEffectivePolicies(orgID, hwid)
+	policies, err := svc.GetEffectivePolicies(orgID, req.AssetHWID)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "synchronized", "policies": policies})
+	// Tính toán LastUpdated lớn nhất để làm Version
+	var maxUpdated int64 = 0
+	for _, p := range policies {
+		if p.UpdatedAt.Unix() > maxUpdated {
+			maxUpdated = p.UpdatedAt.Unix()
+		}
+	}
+
+	// Nếu version của Agent >= version mới nhất ở Backend -> Không cần tải lại (Tiết kiệm băng thông)
+	if req.Version > 0 && req.Version >= maxUpdated {
+		c.JSON(http.StatusOK, gin.H{"status": "not_modified"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "synchronized",
+		"version":  maxUpdated,
+		"policies": policies,
+	})
 }

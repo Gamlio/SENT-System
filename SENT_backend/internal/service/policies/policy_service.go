@@ -17,7 +17,6 @@ type ExcelRow struct {
 	Category   string `json:"category"`
 	Value      string `json:"value"`
 	PolicyType string `json:"policy_type"`
-	TargetType string `json:"target_type"`
 }
 
 // CreatePolicyRequest: Logic tạo luật và Ticket phê duyệt
@@ -62,7 +61,6 @@ func (s *PolicyService) BulkCreatePolicyRequest(rows []ExcelRow, orgID uint) (in
 				Category:       row.Category,
 				Value:          row.Value,
 				PolicyType:     row.PolicyType,
-				TargetType:     row.TargetType,
 				ApprovalStatus: "PENDING",
 				CreatedBy:      "System_Import",
 			}
@@ -91,39 +89,26 @@ func (s *PolicyService) BulkCreatePolicyRequest(rows []ExcelRow, orgID uint) (in
 
 // GetEffectivePolicies: Engine tính toán luật hiệu dụng cho asset
 func (s *PolicyService) GetEffectivePolicies(orgID uint, hwid string) ([]models.Policy, error) {
-	var allPolicies []models.Policy
-	// Chỉ lấy các luật đã được APPROVED
-	err := database.DB.Where("org_id = ? AND is_active = ? AND approval_status = ?", orgID, true, "APPROVED").Find(&allPolicies).Error
-	if err != nil {
+	var asset models.Asset
+	if err := database.DB.Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error; err != nil {
 		return nil, err
 	}
 
-	effectiveMap := make(map[string]models.Policy)
+	var effectivePolicies []models.Policy
 
-	// 1. Áp dụng GLOBAL trước
-	for _, p := range allPolicies {
-		if p.TargetType == "GLOBAL" {
-			effectiveMap[p.Category+"|"+p.Value] = p
-		}
+	// 1. Lấy Global Policies (GroupID IS NULL)
+	var globalPolicies []models.Policy
+	database.DB.Where("org_id = ? AND group_id IS NULL AND is_active = true AND approval_status = ?", orgID, "APPROVED").Find(&globalPolicies)
+	effectivePolicies = append(effectivePolicies, globalPolicies...)
+
+	// 2. Lấy Group Policies nếu máy trạm có thuộc nhóm nào đó
+	if asset.GroupID != nil {
+		var groupPolicies []models.Policy
+		database.DB.Where("org_id = ? AND group_id = ? AND is_active = true AND approval_status = ?", orgID, *asset.GroupID, "APPROVED").Find(&groupPolicies)
+		effectivePolicies = append(effectivePolicies, groupPolicies...)
 	}
 
-	// 2. Áp dụng SPECIFIC (Ghi đè)
-	for _, p := range allPolicies {
-		if p.TargetType == "SPECIFIC" {
-			for _, target := range p.TargetAssetHWIDs {
-				if target == hwid {
-					effectiveMap[p.Category+"|"+p.Value] = p
-					break
-				}
-			}
-		}
-	}
-
-	var results []models.Policy
-	for _, p := range effectiveMap {
-		results = append(results, p)
-	}
-	return results, nil
+	return effectivePolicies, nil
 }
 
 // GetPolicies: Truy vấn danh sách có lọc

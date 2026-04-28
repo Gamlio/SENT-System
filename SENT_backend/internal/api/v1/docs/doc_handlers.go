@@ -18,16 +18,15 @@ func UploadDocument(c *gin.Context) {
 		return
 	}
 
-	// Đọc dữ liệu file vào byte slice để chuyển xuống Service
+	// Mở stream file để chuyển xuống Service (Không đọc toàn bộ vào RAM)
 	f, _ := file.Open()
-	fileBytes, _ := io.ReadAll(f)
 	defer f.Close()
 
 	orgID := c.GetUint("org_id")
 	username, _ := c.Get("username")
 
 	svc := &docService.DocumentService{}
-	if err := svc.CreateUploadRequest(orgID, title, category, file.Filename, fileBytes, username.(string)); err != nil {
+	if err := svc.CreateUploadRequest(orgID, title, category, file.Filename, f, file.Size, username.(string)); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
@@ -41,12 +40,12 @@ func UpdateDocument(c *gin.Context) {
 	title := c.PostForm("title")
 	category := c.PostForm("category")
 
-	var fileBytes []byte
+	var fileReader io.Reader
 	var fileName string
 	file, err := c.FormFile("file")
 	if err == nil {
 		f, _ := file.Open()
-		fileBytes, _ = io.ReadAll(f)
+		fileReader = f
 		fileName = file.Filename
 		defer f.Close()
 	}
@@ -55,7 +54,7 @@ func UpdateDocument(c *gin.Context) {
 	username, _ := c.Get("username")
 
 	svc := &docService.DocumentService{}
-	err = svc.CreateUpdateRequest(uint(id), orgID, title, category, fileName, fileBytes, username.(string))
+	err = svc.CreateUpdateRequest(uint(id), orgID, title, category, fileName, fileReader, username.(string))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -89,4 +88,22 @@ func DeleteDocument(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{"message": "Đã gửi yêu cầu xóa tài liệu."})
+}
+
+// DownloadDocument: Trả về file Word gốc với tên thuở sơ khai
+func DownloadDocument(c *gin.Context) {
+	idStr := c.Param("id")
+	id, _ := strconv.ParseUint(idStr, 10, 32)
+	orgID := c.GetUint("org_id")
+
+	svc := &docService.DocumentService{}
+	doc, err := svc.GetDocumentByID(uint(id), orgID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tài liệu đã bốc hơi hoặc bạn không có quyền"})
+		return
+	}
+
+	// [QUAN TRỌNG] FileAttachment sẽ ép trình duyệt tải xuống với tên gốc (OriginalName)
+	// thay vì cái tên dán nhãn timestamp trên server.
+	c.FileAttachment(doc.FilePath, doc.OriginalName)
 }
