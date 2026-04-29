@@ -114,21 +114,21 @@ func main() {
 
 			aiDocs := protected.Group("/docs")
 			{
-				aiDocs.GET("", docs.GetDocuments)           // Lấy danh sách tài liệu
-				aiDocs.POST("/upload", docs.UploadDocument) // Upload PDF/Word
-				aiDocs.DELETE("/:id", docs.DeleteDocument)  // Xóa tài liệu
-				aiDocs.PUT("/:id", docs.UpdateDocument)     // Sửa tên tài liệu
+				aiDocs.GET("", docs.GetDocuments)
+				aiDocs.POST("/upload", docs.UploadDocument)
+				aiDocs.DELETE("/:id", docs.DeleteDocument)
+				aiDocs.PUT("/:id", docs.UpdateDocument)
+				aiDocs.POST("/:id/delete-request", docs.DeleteDocument)
 			}
 
 			// 2. GROUP POLICIES (CHÍNH SÁCH KỸ THUẬT CHO asset)
 			policiesGroup := protected.Group("/policies")
 			{
-				policiesGroup.GET("", policies.GetPoliciesByCategory)           // Lấy luật JSON
-				policiesGroup.POST("/bulk", policies.AddBulkPolicies)           // Thêm nhiều luật cùng lúc (Dành cho import Excel)
-				policiesGroup.POST("", policies.AddPolicy)                      // Thêm luật JSON
-				policiesGroup.DELETE("/:id", policies.DeletePolicy)             // Xóa luật JSONager)
-				policiesGroup.POST("/bulk-delete", policies.DeleteBulkPolicies) // Xóa nhiều luật cùng lúc
-
+				policiesGroup.GET("", policies.GetPoliciesByCategory)
+				policiesGroup.POST("/bulk", policies.AddBulkPolicies)
+				policiesGroup.DELETE("/:id", policies.DeletePolicy)
+				policiesGroup.POST("/bulk-delete", policies.DeleteBulkPolicies)
+				policiesGroup.GET("/groups", policies.GetPolicyGroups)
 			}
 			dashGroup := protected.Group("/dashboard")
 			{

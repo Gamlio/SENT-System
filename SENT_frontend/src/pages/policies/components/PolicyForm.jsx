@@ -81,7 +81,7 @@ const PolicyForm = ({ currentConfig, groups, onAddPolicy, isLoading }) => {
     };
 
     return (
-        <div className="bg-[#1e293b] p-6 rounded-3xl border border-slate-800 shadow-xl sticky top-24">
+        <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 shadow-inner relative">
             {/* ... (Phần UI phía trên giữ nguyên) ... */}
             <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-400"><Plus size={24}/></div>
@@ -94,7 +94,7 @@ const PolicyForm = ({ currentConfig, groups, onAddPolicy, isLoading }) => {
             <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Tên gợi nhớ (Nhóm)</label>
-                    <input type="text" placeholder={inputMode === 'BULK' ? "VD: Danh sách đen T3/2026" : "VD: Chặn Game LOL"} value={newTitle} onChange={e => setNewTitle(e.target.value)} required className="w-full mt-1 p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:border-emerald-500 outline-none transition" />
+                    <input type="text" placeholder={inputMode === 'BULK' ? "VD: Danh sách đen T3/2026" : "VD: Chặn Game LOL"} value={newTitle} onChange={e => setNewTitle(e.target.value)} required className="w-full mt-1 p-3 bg-slate-950/50 border border-slate-700 rounded-xl text-sm text-white focus:border-emerald-500 outline-none transition" />
                 </div>
 
                 <div>
@@ -114,10 +114,10 @@ const PolicyForm = ({ currentConfig, groups, onAddPolicy, isLoading }) => {
                     </div>
 
                     {inputMode === 'SINGLE' ? (
-                        <input type="text" placeholder={currentConfig.placeholder} value={singleValue} onChange={e => setSingleValue(e.target.value)} className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm font-mono text-white focus:border-emerald-500 outline-none transition" />
+                        <input type="text" placeholder={currentConfig.placeholder} value={singleValue} onChange={e => setSingleValue(e.target.value)} className="w-full p-3 bg-slate-950/50 border border-slate-700 rounded-xl text-sm font-mono text-white focus:border-emerald-500 outline-none transition" />
                     ) : (
                         <div className="relative group">
-                            <textarea rows={6} disabled={isReadingFile} placeholder={isReadingFile ? "Đang đọc file..." : `Dán danh sách hoặc nạp file Excel/Word...\n${currentConfig.placeholder.replace('VD: ', '')}\n...`} value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono text-white focus:border-blue-500 outline-none transition custom-scrollbar resize-none disabled:opacity-50" />
+                            <textarea rows={6} disabled={isReadingFile} placeholder={isReadingFile ? "Đang đọc file..." : `Dán danh sách hoặc nạp file Excel/Word...\n${currentConfig.placeholder.replace('VD: ', '')}\n...`} value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="w-full p-3 bg-slate-950/50 border border-slate-700 rounded-xl text-xs font-mono text-white focus:border-blue-500 outline-none transition custom-scrollbar resize-none disabled:opacity-50" />
                             <button type="button" onClick={() => fileInputRef.current.click()} disabled={isReadingFile} className="absolute bottom-3 right-3 flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded-lg border border-slate-600 text-[10px] font-bold transition shadow-lg disabled:opacity-50">
                                 {isReadingFile ? <Loader2 size={10} className="animate-spin"/> : <Upload size={10} />} 
                                 {isReadingFile ? " Đang xử lý..." : " Import (Excel/Doc)"}

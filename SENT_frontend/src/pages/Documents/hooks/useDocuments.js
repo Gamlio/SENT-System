@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from '../../../api/axios';
 
 export const useDocuments = () => {
@@ -13,10 +13,10 @@ export const useDocuments = () => {
     const itemsPerPage = 8;
 
     // 1. LẤY DANH SÁCH TÀI LIỆU
-    const fetchDocuments = async () => {
+    const fetchDocuments = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await axios.get('/docs'); // Gọi đúng endpoint docs
+            const res = await axios.get('/docs');
             setDocuments(res.data || []);
             setError(null);
         } catch (err) {
@@ -25,20 +25,20 @@ export const useDocuments = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchDocuments();
-    }, []);
+    }, [fetchDocuments]);
 
     // 2. UPLOAD TÀI LIỆU (MULTIPART/FORM-DATA)
     const uploadDoc = async (formData) => {
         setIsUploading(true);
         try {
             await axios.post('/docs/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' } // Hỗ trợ tải file Word
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
-            await fetchDocuments(); // Tải lại danh sách sau khi up
+            await fetchDocuments();
             return { success: true };
         } catch (err) {
             console.error("Upload thất bại:", err);
@@ -48,25 +48,34 @@ export const useDocuments = () => {
         }
     };
 
-    // 3. XÓA TÀI LIỆU
-    const deleteDoc = async (id) => {
-        if (!window.confirm("Bạn chắc chắn muốn xóa tài liệu này?")) return;
+    // 3. XÓA TÀI LIỆU (Gửi yêu cầu kèm lý do)
+    const deleteDoc = async (id, reason) => {
         try {
-            await axios.delete(`/docs/${id}`);
-            setDocuments(prev => prev.filter(d => d.ID !== id)); // Cập nhật UI ngay lập tức
-        } catch (err) {
-            alert("Lỗi khi xóa tài liệu!");
-        }
-    };
-
-    // 4. CẬP NHẬT THÔNG TIN
-    const updateDoc = async (id, data) => {
-        try {
-            await axios.put(`/docs/${id}`, data);
+            // Sử dụng endpoint delete-request và gửi reason trong body JSON
+            await axios.post(`/docs/${id}/delete-request`, { reason });
             await fetchDocuments();
             return { success: true };
         } catch (err) {
-            return { success: false, error: "Lỗi cập nhật" };
+            console.error("Lỗi khi gửi yêu cầu xóa:", err);
+            return { success: false, error: err.response?.data?.error || "Lỗi xóa tài liệu" };
+        }
+    };
+
+    // 4. CẬP NHẬT THÔNG TIN (Gửi kèm lý do sửa)
+    const updateDoc = async (id, data, reason) => {
+        try {
+            const formData = new FormData();
+            formData.append('title', data.title);
+            formData.append('category', data.category);
+            formData.append('reason', reason); // Truyền lý do sửa vào Form
+            if (data.file) formData.append('file', data.file);
+
+            await axios.put(`/docs/${id}`, formData);
+            await fetchDocuments();
+            return { success: true };
+        } catch (err) {
+            console.error("Lỗi cập nhật:", err);
+            return { success: false, error: err.response?.data?.error || "Lỗi cập nhật" };
         }
     };
 
@@ -74,14 +83,12 @@ export const useDocuments = () => {
     const downloadDoc = async (id, fileName) => {
         try {
             const response = await axios.get(`/docs/${id}/download`, {
-                responseType: 'blob', // Quan trọng để nhận file nhị phân từ Backend
+                responseType: 'blob',
             });
-
-            // Tạo link ảo để tải file
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', fileName); // Giữ đúng tên và đuôi file gốc
+            link.setAttribute('download', fileName);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -105,7 +112,7 @@ export const useDocuments = () => {
 
     return {
         documents,
-        currentDocuments, // Dữ liệu đã phân trang để hiển thị
+        currentDocuments,
         filteredDocs,
         loading,
         error,
@@ -117,6 +124,6 @@ export const useDocuments = () => {
         uploadDoc,
         deleteDoc,
         updateDoc,
-        downloadDoc // Xuất hàm tải file để UI sử dụng
+        downloadDoc
     };
 };

@@ -7,6 +7,7 @@ import {
 import { useDocuments } from './hooks/useDocuments';
 import { useAuth } from '../../context/AuthContext';
 import Pagination from '../../components/common/Pagination';
+import AppDialog from '../../components/AppDialog';
 
 const DocStatusTag = ({ status }) => {
     const config = {
@@ -41,6 +42,28 @@ const Documents = () => {
     const [file, setFile] = useState(null);
     const [title, setTitle] = useState('');
     const [category, setCategory] = useState('Internal');
+
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [targetDeleteDoc, setTargetDeleteDoc] = useState(null);
+    const [deleteReason, setDeleteReason] = useState('');
+
+    const handleOpenDelete = (doc) => {
+        setTargetDeleteDoc(doc);
+        setDeleteReason('');
+        setIsDeleteModalOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!targetDeleteDoc) return;
+        const res = await deleteDoc(targetDeleteDoc.ID, deleteReason);
+        if (res && res.success) {
+            setIsDeleteModalOpen(false);
+            setTargetDeleteDoc(null);
+            setDeleteReason('');
+        } else if (res && res.error) {
+            alert(res.error);
+        }
+    };
 
     // --- THỐNG KÊ NHANH (Style: StatCard) ---
     const stats = useMemo(() => [
@@ -159,7 +182,7 @@ const Documents = () => {
                                     <button onClick={() => setEditingDoc(doc)} className="p-3 bg-slate-800 text-slate-400 hover:bg-slate-700 rounded-xl transition-all shadow-sm">
                                         <Edit size={18}/>
                                     </button>
-                                    <button onClick={() => deleteDoc(doc.ID)} className="p-3 bg-red-500/10 text-red-400 hover:bg-red-500 rounded-xl hover:text-white transition-all shadow-sm">
+                                    <button onClick={() => handleOpenDelete(doc)} className="p-3 bg-red-500/10 text-red-400 hover:bg-red-500 rounded-xl hover:text-white transition-all shadow-sm">
                                         <Trash2 size={18}/>
                                     </button>
                                 </>
@@ -252,6 +275,24 @@ const Documents = () => {
                     </div>
                 </div>
             )}
+
+            <AppDialog
+                isOpen={isDeleteModalOpen}
+                onClose={() => {
+                    setIsDeleteModalOpen(false);
+                    setTargetDeleteDoc(null);
+                    setDeleteReason('');
+                }}
+                onConfirm={handleConfirmDelete}
+                title="Xác nhận xóa tài liệu"
+                message={`Bạn có chắc chắn muốn xóa tài liệu "${targetDeleteDoc?.title}"? Hành động này sẽ được ghi vào Audit Log.`}
+                type="danger"
+                confirmText="Xác nhận xóa"
+                showInput={true}
+                inputValue={deleteReason}
+                onInputChange={setDeleteReason}
+                inputPlaceholder="Nhập lý do xóa (bắt buộc)..."
+            />
         </div>
     );
 };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Globe, Laptop, List, Usb, Clock } from 'lucide-react'; // Đã xóa Activity
+import { ShieldCheck, Globe, Laptop, List, Usb, Clock, Users } from 'lucide-react'; // Đã xóa Activity
 import { StatCard } from './PolicyShared';
 
 const PolicyOverview = ({ policies }) => {
@@ -19,14 +19,14 @@ const PolicyOverview = ({ policies }) => {
             </div>
 
             {/* Danh sách mới nhất */}
-            <div className="bg-[#1e293b] rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
+            <div className="bg-slate-900/50 rounded-2xl border border-slate-800 shadow-inner overflow-hidden">
                 <div className="p-5 border-b border-slate-800 bg-slate-800/30 flex items-center gap-3">
                     <Clock className="text-slate-400" size={20}/>
                     <h3 className="font-bold text-white">Hoạt động chính sách gần đây</h3>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {policies.slice(0, 6).map(p => (
-                        <div key={p.ID} className="bg-slate-900/50 border border-slate-700/50 p-4 rounded-2xl flex items-start gap-3 relative overflow-hidden group hover:border-slate-600 transition">
+                        <div key={p.ID} className="bg-slate-800/20 border border-slate-700/50 p-4 rounded-xl flex items-start gap-3 relative overflow-hidden group hover:bg-slate-800/50 transition">
                             <div className={`p-2.5 rounded-xl shrink-0 ${p.category === 'SOFTWARE' ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
                                 {p.category === 'SOFTWARE' ? <List size={18}/> : <Usb size={18}/>}
                             </div>

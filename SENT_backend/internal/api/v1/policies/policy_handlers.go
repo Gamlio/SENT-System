@@ -3,6 +3,7 @@ package policies
 import (
 	"fmt"
 	"net/http"
+	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	policyService "sent_backend/internal/service/policies"
 	"strconv"
@@ -143,4 +144,18 @@ func SyncPoliciesForAsset(c *gin.Context) {
 		"version":  maxUpdated,
 		"policies": policies,
 	})
+}
+
+// GetPolicyGroups: Lấy danh sách các nhóm chính sách đã tạo
+func GetPolicyGroups(c *gin.Context) {
+	orgID := c.GetUint("org_id")
+	var groups []models.PolicyGroup
+
+	// Lấy tất cả nhóm thuộc tổ chức này
+	if err := database.DB.Where("org_id = ?", orgID).Find(&groups).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy danh sách nhóm"})
+		return
+	}
+
+	c.JSON(http.StatusOK, groups)
 }

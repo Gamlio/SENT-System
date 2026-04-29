@@ -24,10 +24,10 @@ var Registry = map[string]ApprovalStrategy{
 	"POLICY_BULK_DELETE": &PolicyBulkDeleteStrategy{},
 
 	"DOCUMENT_UPLOAD": &DocumentUploadStrategy{},
-
-	"USER_CREATE": &UserCreateStrategy{},
-	"USER_UPDATE": &UserUpdateStrategy{},
-	"USER_DELETE": &UserDeleteStrategy{},
+	"DOCUMENT_DELETE": &DocumentUploadStrategy{}, // Dùng chung Strategy với Upload, chỉ khác ở ActionType
+	"USER_CREATE":     &UserCreateStrategy{},
+	"USER_UPDATE":     &UserUpdateStrategy{},
+	"USER_DELETE":     &UserDeleteStrategy{},
 }
 
 // GetStrategy: Hàm lấy bộ xử lý tương ứng

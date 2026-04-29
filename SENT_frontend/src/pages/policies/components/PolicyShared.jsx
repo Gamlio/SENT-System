@@ -2,7 +2,7 @@ import React from 'react';
 import {  CheckCircle2, Users, Globe, Trash2, Clock, User, AlertTriangle } from 'lucide-react';
 
 export const StatCard = ({ icon, label, value, color, bg }) => (
-    <div className={`p-5 rounded-3xl border border-slate-800 shadow-xl ${bg} flex flex-col gap-3 transition-transform hover:scale-[1.02]`}>
+    <div className={`p-5 rounded-2xl border border-slate-800 shadow-inner ${bg} flex flex-col gap-3 transition-transform hover:scale-[1.02]`}>
         <div className={color}>{icon}</div>
         <div>
             <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{label}</p>

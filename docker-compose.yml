@@ -50,6 +50,12 @@ services:
       - ./SENT_backend/uploads:/app/uploads
     networks:
       - sent_net
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: sent_converter
+    restart: always
+    networks:
+      - sent_net
   frontend:
     build:
       context: ./SENT_frontend

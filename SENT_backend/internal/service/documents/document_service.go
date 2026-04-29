@@ -1,9 +1,12 @@
 package documents
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sent_backend/internal/database"
@@ -61,7 +64,7 @@ func (s *DocumentService) CreateUploadRequest(orgID uint, title, category, fileN
 		if err := tx.Create(&doc).Error; err != nil {
 			return err
 		}
-
+		go s.convertToPDF(filePath, displayPdfPath)
 		// 5. Đẻ vé phê duyệt
 		ticket := models.ApprovalTicket{
 			OrgID:       orgID,
@@ -90,7 +93,7 @@ func (s *DocumentService) CreateUploadRequest(orgID uint, title, category, fileN
 }
 
 // CreateUpdateRequest: Tạo đơn yêu cầu cập nhật nội dung/file
-func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, category string, fileName string, file io.Reader, requester string) error {
+func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, category string, fileName string, file io.Reader, reason string, requester string) error {
 	var doc models.Document
 	if err := database.DB.Where("id = ? AND org_id = ?", docID, orgID).First(&doc).Error; err != nil {
 		return fmt.Errorf("không tìm thấy tài liệu")
@@ -141,35 +144,37 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 
 		// Tạo vé duyệt cho bản cập nhật
 		ticket := models.ApprovalTicket{
-			OrgID:        orgID,
-			ModuleType:   "DOCUMENT_UPLOAD",
-			ActionType:   "UPDATE",
-			TargetID:     doc.ID,
-			TargetName:   fmt.Sprintf("[%s] %s (Cập nhật)", category, title),
-			Status:       "PENDING",
-			RequestedBy:  requester,
-			SnapshotData: `{"action": "update_content_or_file"}`,
+			OrgID:         orgID,
+			ModuleType:    "DOCUMENT_UPLOAD",
+			ActionType:    "UPDATE",
+			TargetID:      doc.ID,
+			TargetName:    fmt.Sprintf("[%s] %s (Cập nhật)", category, title),
+			Status:        "PENDING",
+			RequestedBy:   requester,
+			RequestReason: reason,
+			SnapshotData:  `{"action": "update_content_or_file"}`,
 		}
 		return tx.Create(&ticket).Error
 	})
 }
 
-// CreateDeleteRequest: Tạo đơn yêu cầu xóa tài liệu (Zero Trust)
-func (s *DocumentService) CreateDeleteRequest(docID uint, orgID uint, requester string) error {
+// CreateDeleteRequest: Tạo đơn yêu cầu xóa tài liệu kèm lý do (Zero Trust)
+func (s *DocumentService) CreateDeleteRequest(docID uint, orgID uint, requester string, reason string) error {
 	var doc models.Document
 	if err := database.DB.Where("id = ? AND org_id = ?", docID, orgID).First(&doc).Error; err != nil {
 		return fmt.Errorf("không tìm thấy tài liệu")
 	}
 
 	ticket := models.ApprovalTicket{
-		OrgID:        orgID,
-		ModuleType:   "DOCUMENT_DELETE",
-		ActionType:   "DELETE",
-		TargetID:     doc.ID,
-		TargetName:   fmt.Sprintf("Xóa tài liệu: %s", doc.Title),
-		Status:       "PENDING",
-		RequestedBy:  requester,
-		SnapshotData: fmt.Sprintf(`{"id": %d, "title": "%s"}`, doc.ID, doc.Title),
+		OrgID:         orgID,
+		ModuleType:    "DOCUMENT_DELETE",
+		ActionType:    "DELETE",
+		TargetID:      doc.ID,
+		TargetName:    fmt.Sprintf("Xóa tài liệu: %s", doc.Title),
+		Status:        "PENDING",
+		RequestedBy:   requester,
+		RequestReason: reason, // [BỔ SUNG] Lưu lý do xóa vào đơn
+		SnapshotData:  fmt.Sprintf(`{"id": %d, "title": "%s"}`, doc.ID, doc.Title),
 	}
 	return database.DB.Create(&ticket).Error
 }
@@ -195,4 +200,35 @@ func (s *DocumentService) GetDocuments(orgID uint, status string) ([]models.Docu
 
 	err := query.Order("created_at desc").Find(&docs).Error
 	return docs, err
+}
+func (s *DocumentService) convertToPDF(wordPath, pdfPath string) error {
+	// 1. Chuẩn bị request gửi sang Gotenberg
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// Mở file Word gốc
+	file, _ := os.Open(wordPath)
+	defer file.Close()
+
+	part, _ := writer.CreateFormFile("files", filepath.Base(wordPath))
+	io.Copy(part, file)
+	writer.Close()
+
+	// 2. Gọi API Gotenberg (sử dụng tên service trong Docker là 'gotenberg')
+	req, _ := http.NewRequest("POST", "http://gotenberg:3000/forms/libreoffice/convert", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// 3. Lưu file PDF nhận được vào thư mục pdf_previews
+	out, _ := os.Create(pdfPath)
+	defer out.Close()
+	_, err = io.Copy(out, resp.Body)
+
+	return err
 }
