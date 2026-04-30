@@ -28,6 +28,7 @@ var Registry = map[string]ApprovalStrategy{
 	"USER_CREATE":     &UserCreateStrategy{},
 	"USER_UPDATE":     &UserUpdateStrategy{},
 	"USER_DELETE":     &UserDeleteStrategy{},
+	"GROUP_DELETE":    &GroupDeleteStrategy{},
 }
 
 // GetStrategy: Hàm lấy bộ xử lý tương ứng

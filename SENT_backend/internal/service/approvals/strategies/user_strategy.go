@@ -33,19 +33,26 @@ func (s *UserCreateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicke
 		FullName:           payload.FullName,
 		Phone:              payload.Phone,
 		Email:              payload.Email,
+		GroupID:            payload.GroupID,
 		OrgID:              &ticket.OrgID, // OrgID lấy từ Ticket
 		PermAssetView:      payload.PermAssetView,
 		PermAssetAction:    payload.PermAssetAction,
 		PermAssetDelete:    payload.PermAssetDelete,
+		PermAssetMove:      payload.PermAssetMove,
 		PermPolicyView:     payload.PermPolicyView,
-		PermPolicyAction:   payload.PermPolicyAction,
+		PermPolicyManage:   payload.PermPolicyManage,
 		PermIncidentView:   payload.PermIncidentView,
 		PermIncidentAction: payload.PermIncidentAction,
 		PermDocView:        payload.PermDocView,
 		PermDocManage:      payload.PermDocManage,
+		PermUserView:       payload.PermUserView,
 		PermUserManage:     payload.PermUserManage,
-		PermApprovalManage: payload.PermApprovalManage,
-		ApprovalStatus:     "APPROVED", // Trạng thái là APPROVED vì đã được Sếp duyệt
+		PermSystemConfig:   payload.PermSystemConfig,
+		PermGroupManage:    payload.PermGroupManage,
+		PermApprovalView:   payload.PermApprovalView,
+		PermApprovalFinal:  payload.PermApprovalFinal,
+
+		ApprovalStatus: "APPROVED", // Trạng thái là APPROVED vì đã được Sếp duyệt
 	}
 
 	if err := tx.Create(&newUser).Error; err != nil {
@@ -97,14 +104,20 @@ type userUpdatePayload struct {
 	PermAssetView      bool   `json:"perm_asset_view"`
 	PermAssetAction    bool   `json:"perm_asset_action"`
 	PermAssetDelete    bool   `json:"perm_asset_delete"`
+	PermAssetMove      bool   `json:"perm_asset_move"`
 	PermPolicyView     bool   `json:"perm_policy_view"`
-	PermPolicyAction   bool   `json:"perm_policy_action"`
+	PermPolicyManage   bool   `json:"perm_policy_manage"`
 	PermIncidentView   bool   `json:"perm_incident_view"`
 	PermIncidentAction bool   `json:"perm_incident_action"`
 	PermDocView        bool   `json:"perm_doc_view"`
 	PermDocManage      bool   `json:"perm_doc_manage"`
+	PermUserView       bool   `json:"perm_user_view"`
 	PermUserManage     bool   `json:"perm_user_manage"`
-	PermApprovalManage bool   `json:"perm_approval_manage"`
+	PermSystemConfig   bool   `json:"perm_system_config"`
+	PermGroupManage    bool   `json:"perm_group_manage"`
+	PermApprovalView   bool   `json:"perm_approval_view"`
+	PermApprovalFinal  bool   `json:"perm_approval_final"`
+	GroupID            *uint  `json:"group_id"`
 }
 
 func (s *UserUpdateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
@@ -119,17 +132,23 @@ func (s *UserUpdateStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicke
 		"full_name":            payload.FullName,
 		"phone":                payload.Phone,
 		"email":                payload.Email,
+		"group_id":             payload.GroupID,
 		"perm_asset_view":      payload.PermAssetView,
 		"perm_asset_action":    payload.PermAssetAction,
 		"perm_asset_delete":    payload.PermAssetDelete,
+		"perm_asset_move":      payload.PermAssetMove,
 		"perm_policy_view":     payload.PermPolicyView,
-		"perm_policy_action":   payload.PermPolicyAction,
+		"perm_policy_manage":   payload.PermPolicyManage,
 		"perm_incident_view":   payload.PermIncidentView,
 		"perm_incident_action": payload.PermIncidentAction,
 		"perm_doc_view":        payload.PermDocView,
 		"perm_doc_manage":      payload.PermDocManage,
+		"perm_user_view":       payload.PermUserView,
 		"perm_user_manage":     payload.PermUserManage,
-		"perm_approval_manage": payload.PermApprovalManage,
+		"perm_system_config":   payload.PermSystemConfig,
+		"perm_group_manage":    payload.PermGroupManage,
+		"perm_approval_view":   payload.PermApprovalView,
+		"perm_approval_final":  payload.PermApprovalFinal,
 	}
 
 	if payload.Password != "" {

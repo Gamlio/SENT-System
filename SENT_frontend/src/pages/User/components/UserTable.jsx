@@ -85,9 +85,11 @@ const UserTable = ({ users, onEdit, onDelete, canManageUsers }) => {
                                 <div className="flex flex-col gap-2">
                                     <div className="flex flex-wrap gap-1.5 items-center">
                                         <Settings size={12} className="text-slate-500 mr-1"/>
+                                        {!!u.perm_group_manage && <Badge text="QUẢN LÝ NHÓM" color="purple"/>}
                                         {!!u.perm_user_manage && <Badge text="NHÂN SỰ" color="purple"/>}
                                         {!!u.perm_approval_manage && <Badge text="DUYỆT ĐƠN" color="purple"/>}
-                                        {!(u.perm_user_manage || u.perm_approval_manage) && <span className="text-[10px] text-slate-600 italic">Không có quyền</span>}
+                                        {/* Cập nhật điều kiện kiểm tra */}
+                                        {!(u.perm_user_manage || u.perm_approval_manage || u.perm_group_manage) && <span className="text-[10px] text-slate-600 italic">Không có quyền</span>}
                                     </div>
                                 </div>
                             </td>

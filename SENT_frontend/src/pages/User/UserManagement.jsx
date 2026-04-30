@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Search, Tag } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { useUsers } from './hooks/useUsers';
 import { useAuth } from '../../context/AuthContext';
 
@@ -7,13 +7,18 @@ import UserToolbar from './components/UserToolbar';
 import UserTable from './components/UserTable';
 import UserFormModal from './components/UserFormModal';
 import UserDeleteModal from './components/UserDeleteModal';
+import GroupManagementModal from './components/GroupManagementModal'; // Component mới
 
 const UserManagement = () => {
     const { user: currentUser } = useAuth();
     const canManageUsers = currentUser?.permissions?.user_manage === true;
+    const canManageGroups = currentUser?.permissions?.group_manage === true;
 
     const {
-        currentUsers, filteredUsers,
+        currentUsers, 
+        groups, // Lấy thêm dữ liệu group từ hook
+        fetchGroups,
+        filteredUsers,
         searchQuery, setSearchQuery,
         currentPage, setCurrentPage, totalPages, indexOfFirstItem, indexOfLastItem,
         isLoading, createUser, deleteUser, updateUser 
@@ -21,6 +26,7 @@ const UserManagement = () => {
 
     // State điều khiển các Modal
     const [showFormModal, setShowFormModal] = useState(false);
+    const [showGroupModal, setShowGroupModal] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [userToEdit, setUserToEdit] = useState(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -61,27 +67,22 @@ const UserManagement = () => {
     return (
         <div className="p-6 text-slate-200 h-[calc(100vh-60px)] flex flex-col bg-[#050B14] font-sans">
             
-            <div className="flex justify-between items-end mb-4 shrink-0">
-                <div>
-                    <h1 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tight">
-                        <Users size={24} className="text-indigo-500"/> QUẢN LÝ NHÂN SỰ
-                    </h1>
-                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Phân quyền, quản lý lịch trực và theo dõi đội ngũ SOC.</p>
-                </div>
-            </div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-3 mb-1">
+                <Users size={28} className="text-indigo-400"/>
+                Quản lý Nhân sự & Phòng ban
+            </h1>
+            <p className="text-sm text-slate-400 mb-6">Phân quyền, quản lý lịch trực và theo dõi đội ngũ SOC.</p>
+
+            <UserToolbar 
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                onAddUser={handleOpenAddModal}
+                canManageUsers={canManageUsers}
+                onManageGroups={() => setShowGroupModal(true)}
+                canManageGroups={canManageGroups}
+            />
 
             <div className="flex-1 bg-[#0A101D] rounded-lg border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
-                <div className="p-3 border-b border-slate-800 bg-[#111827] flex justify-between items-center shrink-0">
-                    <div className="relative w-72">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-                        <input type="text" placeholder="Search users..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-[#050B14] border border-slate-800 text-xs text-white rounded pl-9 pr-4 py-1.5 outline-none focus:border-indigo-500 font-mono transition-colors" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Tag className="text-emerald-500" size={12}/> <span className="text-[10px] font-mono font-bold text-slate-400">TOTAL: {filteredUsers.length}</span>
-                    </div>
-                </div>
-
                 <UserTable 
                     users={currentUsers}
                     onEdit={handleOpenEditModal}
@@ -100,14 +101,13 @@ const UserManagement = () => {
                 )}
             </div>
 
-        
-            
             <UserFormModal 
                 isOpen={showFormModal} 
                 onClose={() => setShowFormModal(false)}
                 initialData={userToEdit}
                 onSubmit={handleFormSubmit}
                 isLoading={isLoading}
+                groups={groups} // Truyền danh sách group vào form
             />
 
             <UserDeleteModal 
@@ -116,6 +116,16 @@ const UserManagement = () => {
                 user={userToDelete}
                 onConfirm={handleDeleteConfirm}
                 isLoading={isLoading}
+            />
+
+            {/* Modal Quản lý phòng ban */}
+            <GroupManagementModal 
+                isOpen={showGroupModal}
+                onClose={() => {
+                    setShowGroupModal(false);
+                    fetchGroups(); // Refresh lại danh sách sau khi đóng
+                }}
+                currentUser={currentUser}
             />
         </div>
     );

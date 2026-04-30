@@ -84,7 +84,7 @@ function App() {
                     <Route path="/incidents" element={<ProtectedRoute requiredPermission="incident_view"><IncidentList /></ProtectedRoute>} />
                     <Route path="/incidents/:id" element={<IncidentDetail />} />
                     <Route path="/behaviors" element={<ProtectedRoute requiredPermission="incident_view"><BehaviorManager /></ProtectedRoute>} />
-                    <Route path="/approvals" element={<ProtectedRoute requiredPermission="approval_manage"><ApprovalCenter /></ProtectedRoute>} />
+                    <Route path="/approvals" element={<ProtectedRoute requiredPermission="approval_view"><ApprovalCenter /></ProtectedRoute>} />
 
                     {/* Compliance & Knowledge Base Routes */}
                     <Route path="/policy-center" element={<ProtectedRoute requiredPermission="policy_view"><PolicyCenter /></ProtectedRoute>} />
@@ -93,7 +93,7 @@ function App() {
                     <Route path="/docs" element={<ProtectedRoute><Documents requiredPermission="doc_view" /></ProtectedRoute>} />
                     
                     {/* System Admin Routes */}
-                    <Route path="/users" element={<ProtectedRoute requiredPermission="user_manage"><UserManagement /></ProtectedRoute>} />
+                    <Route path="/users" element={<ProtectedRoute requiredPermission="user_view"><UserManagement /></ProtectedRoute>} />
 
                     {/* Software Management Routes */}
                     <Route path="/versions" element={<ProtectedRoute><VersionsPage /></ProtectedRoute>} />

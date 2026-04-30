@@ -65,18 +65,23 @@ func RegisterSMEHandler(c *gin.Context) {
 		PasswordHash:       string(hashed),
 		Email:              req.Email,
 		OrgID:              &org.ID,
-		PermAssetView:      true,
-		PermAssetAction:    true,
-		PermAssetDelete:    true,
-		PermPolicyView:     true,
-		PermPolicyAction:   true,
-		PermIncidentView:   true,
-		PermIncidentAction: true,
-		PermDocView:        true,
-		PermDocManage:      true,
+		PermAssetView:      false,
+		PermAssetAction:    false,
+		PermAssetDelete:    false,
+		PermAssetMove:      false,
+		PermPolicyView:     false,
+		PermPolicyManage:   false,
+		PermIncidentView:   false,
+		PermIncidentAction: false,
+		PermDocView:        false,
+		PermDocManage:      false,
+		PermUserView:       true,
 		PermUserManage:     true,
-		PermApprovalManage: true,
-		ApprovalStatus:     "APPROVED",
+		PermGroupManage:    true,
+		PermApprovalView:   true,
+		PermApprovalFinal:  true,
+
+		ApprovalStatus: "APPROVED",
 	}
 
 	if err := database.DB.Create(&user).Error; err != nil {
@@ -117,7 +122,7 @@ func RegisterSMEHandler(c *gin.Context) {
 
 func LoginHandler(c *gin.Context) {
 	var req struct {
-		CompanyCode string `json:"company_code" binding:"required,min=7,max=20"` // [BẢO MẬT] BẮT BUỘC PHẢI CÓ
+		CompanyCode string `json:"company_code" binding:"required,min=7,max=20"`
 		Username    string `json:"username" binding:"required,min=3,max=50"`
 		Password    string `json:"password" binding:"required,min=1,max=128"`
 	}
@@ -127,20 +132,14 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
-	if req.CompanyCode == "" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Yêu cầu mã Workspace (Company Code) để đăng nhập!"})
-		return
-	}
-
-	// 1. CHỐT CHẶN BẢO MẬT 1: Tìm công ty trước
+	// 1. Tìm công ty (Organization)
 	var org models.Organization
 	if err := database.DB.Where("company_code = ?", req.CompanyCode).First(&org).Error; err != nil {
-		// Dùng thông báo chung chung để chống dò quét
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Thông tin đăng nhập không chính xác hoặc không gian làm việc không tồn tại!"})
 		return
 	}
 
-	// 2. CHỐT CHẶN BẢO MẬT 2: Tìm User TRONG NỘI BỘ công ty đó
+	// 2. Tìm User trong nội bộ công ty
 	var user models.User
 	if err := database.DB.Where("username = ? AND org_id = ?", req.Username, org.ID).First(&user).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Thông tin đăng nhập không chính xác hoặc không gian làm việc không tồn tại!"})
@@ -153,25 +152,41 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
-	// 4. Cập nhật thành công, cấp Token
+	// 4. Cấp Token
 	token, _ := auth.GenerateToken(user.Username, *user.OrgID, user.ID)
 
+	// 5. Trả về thông tin kèm theo đầy đủ danh sách quyền hạn mới
 	c.JSON(http.StatusOK, gin.H{
 		"token":        token,
 		"username":     user.Username,
 		"company_code": org.CompanyCode,
 		"permissions": map[string]bool{
-			"asset_view":      user.PermAssetView,
-			"asset_action":    user.PermAssetAction,
-			"asset_delete":    user.PermAssetDelete,
-			"policy_view":     user.PermPolicyView,
-			"policy_action":   user.PermPolicyAction,
+			// Quyền về Asset
+			"asset_view":   user.PermAssetView,
+			"asset_action": user.PermAssetAction,
+			"asset_delete": user.PermAssetDelete,
+			"asset_move":   user.PermAssetMove,
+
+			// Quyền về Policy & Group
+			"policy_view":   user.PermPolicyView,
+			"policy_manage": user.PermPolicyManage, // Cập nhật từ Action sang Manage
+			"group_manage":  user.PermGroupManage,  // Quyền "Boss" quản lý phòng ban
+
+			// Quyền về Incident & Doc
 			"incident_view":   user.PermIncidentView,
 			"incident_action": user.PermIncidentAction,
 			"doc_view":        user.PermDocView,
 			"doc_manage":      user.PermDocManage,
-			"user_manage":     user.PermUserManage,
-			"approval_manage": user.PermApprovalManage,
+
+			// Quyền về Nhân sự & Hệ thống
+			"user_view":     user.PermUserView,
+			"user_manage":   user.PermUserManage,
+			"system_config": user.PermSystemConfig,
+
+			// Quyền về Phê duyệt
+			"approval_view":   user.PermApprovalView,
+			"approval_final":  user.PermApprovalFinal, // Quyền duyệt cuối của Root SME
+			"approval_manage": user.PermApprovalView,
 		},
 	})
 }

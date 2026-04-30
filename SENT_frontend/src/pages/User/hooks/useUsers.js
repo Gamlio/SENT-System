@@ -3,6 +3,7 @@ import axios from '../../../api/axios';
 
 export const useUsers = () => {
     const [users, setUsers] = useState([]);
+    const [groups, setGroups] = useState([]); // [MỚI] Lưu danh sách phòng ban
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
@@ -18,7 +19,18 @@ export const useUsers = () => {
         }
     };
 
-    useEffect(() => { fetchUsers(); }, []);
+    // [MỚI] Lấy danh sách phòng ban
+    const fetchGroups = async () => {
+        try {
+            const res = await axios.get('/groups'); // Gọi HandleGetGroups
+            setGroups(res.data.data || []);
+        } catch (err) { console.error("Lỗi lấy groups:", err); }
+    };
+
+    useEffect(() => { 
+        fetchUsers();
+        fetchGroups();
+    }, []);
 
     const filteredUsers = useMemo(() => {
         if (!searchQuery) return users;
@@ -73,7 +85,7 @@ export const useUsers = () => {
     };
 
     return {
-        users, currentUsers, filteredUsers,
+        users, groups, fetchGroups, currentUsers, filteredUsers,
         searchQuery, setSearchQuery,
         currentPage, setCurrentPage, totalPages, indexOfFirstItem, indexOfLastItem,
         isLoading, createUser, deleteUser, updateUser 

@@ -27,16 +27,15 @@ export const usePolicies = () => {
     // 2. LẤY DANH SÁCH NHÓM (Dùng cho dropdown trong PolicyForm)
     const fetchGroups = useCallback(async () => {
         try {
-            // Sửa đường dẫn từ '/groups' thành '/policies/groups'
-            const res = await axios.get('/policies/groups'); 
-            
-            // Dùng cơ chế bảo vệ dữ liệu như bạn đã viết
-            setGroups(Array.isArray(res.data) ? res.data : []); 
+            // Endpoint đã được chuẩn hóa về /groups để khớp với backend
+            const res = await axios.get('/groups');
+            // Backend trả về cấu trúc { data: [...] }, cần lấy res.data.data
+            setGroups(res.data.data || []);
         } catch (err) {
             console.error("Lỗi tải danh sách nhóm:", err);
-                setGroups([]); 
-            }
-        }, []);
+            setGroups([]);
+        }
+    }, []);
 
     // 3. THÊM LUẬT MỚI (JSON)
     const addPolicy = async (policyData) => {

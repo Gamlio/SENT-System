@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
-
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type UserService struct{}
@@ -15,8 +12,15 @@ type UserService struct{}
 // CreateUserRequest: Xử lý yêu cầu tạo nhân sự mới
 func (s *UserService) CreateUserRequest(req models.UserPayload, orgID uint, requester models.User) error {
 	// 1. Kiểm tra quyền hạn cấp phát
-	if (req.PermApprovalManage && !requester.PermApprovalManage) ||
-		(req.PermUserManage && !requester.PermUserManage) {
+	if (req.PermSystemConfig && !requester.PermSystemConfig) ||
+		(req.PermApprovalFinal && !requester.PermApprovalFinal) ||
+		(req.PermUserManage && !requester.PermUserManage) ||
+		(req.PermUserView && !requester.PermUserView) ||
+		(req.PermAssetMove && !requester.PermAssetMove) ||
+		(req.PermPolicyManage && !requester.PermPolicyManage) ||
+		(req.PermApprovalView && !requester.PermApprovalView) ||
+		(req.PermGroupManage && !requester.PermGroupManage) ||
+		(req.PermApprovalFinal && !requester.PermApprovalFinal) { // Thêm kiểm tra cho PermApprovalFinal
 		return fmt.Errorf("bạn không có quyền cấp phát các đặc quyền quản trị cao cấp")
 	}
 
@@ -26,52 +30,20 @@ func (s *UserService) CreateUserRequest(req models.UserPayload, orgID uint, requ
 		return fmt.Errorf("tên đăng nhập này đã tồn tại")
 	}
 
-	// 3. Băm mật khẩu
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
+	// 3. Tạo Ticket phê duyệt (Hệ thống SẠCH - Không tạo rác PENDING)
+	snapshot, _ := json.Marshal(req)
+	ticket := models.ApprovalTicket{
+		OrgID:        orgID,
+		ModuleType:   "USER_CREATE",
+		ActionType:   "CREATE",
+		TargetID:     0, // Chưa có ID thực vì đợi Sếp duyệt mới INSERT
+		TargetName:   fmt.Sprintf("Tài khoản: %s", req.Username),
+		Status:       "PENDING",
+		RequestedBy:  requester.Username,
+		SnapshotData: string(snapshot),
+	}
 
-	return database.DB.Transaction(func(tx *gorm.DB) error {
-		// Tạo bản ghi User ở trạng thái PENDING
-		newUser := models.User{
-			Username:       req.Username,
-			PasswordHash:   string(hashedPassword),
-			FullName:       req.FullName,
-			Phone:          req.Phone,
-			Email:          req.Email,
-			OrgID:          &orgID,
-			ApprovalStatus: "PENDING",
-			// Gán các quyền từ request
-			PermAssetView:      req.PermAssetView,
-			PermAssetAction:    req.PermAssetAction,
-			PermAssetDelete:    req.PermAssetDelete,
-			PermPolicyView:     req.PermPolicyView,
-			PermPolicyAction:   req.PermPolicyAction,
-			PermIncidentView:   req.PermIncidentView,
-			PermIncidentAction: req.PermIncidentAction,
-			PermDocView:        req.PermDocView,
-			PermDocManage:      req.PermDocManage,
-			PermUserManage:     req.PermUserManage,
-			PermApprovalManage: req.PermApprovalManage,
-		}
-
-		if err := tx.Create(&newUser).Error; err != nil {
-			return err
-		}
-
-		// Tạo Ticket phê duyệt
-		snapshot, _ := json.Marshal(req)
-		ticket := models.ApprovalTicket{
-			OrgID:        orgID,
-			ModuleType:   "USER_CREATE",
-			ActionType:   "CREATE",
-			TargetID:     newUser.ID,
-			TargetName:   fmt.Sprintf("Tài khoản: %s", newUser.Username),
-			Status:       "PENDING",
-			RequestedBy:  requester.Username,
-			SnapshotData: string(snapshot),
-		}
-
-		return tx.Create(&ticket).Error
-	})
+	return database.DB.Create(&ticket).Error
 }
 
 // UpdateUserRequest: Tạo đơn yêu cầu thay đổi quyền hạn/thông tin
@@ -86,8 +58,15 @@ func (s *UserService) UpdateUserRequest(targetID uint, req models.UserPayload, o
 		return fmt.Errorf("bạn không thể tự tước quyền Quản lý nhân sự của chính mình")
 	}
 
-	if (req.PermApprovalManage && !requester.PermApprovalManage) ||
-		(req.PermUserManage && !requester.PermUserManage) {
+	if (req.PermSystemConfig && !requester.PermSystemConfig) ||
+		(req.PermApprovalFinal && !requester.PermApprovalFinal) ||
+		(req.PermUserManage && !requester.PermUserManage) ||
+		(req.PermUserView && !requester.PermUserView) ||
+		(req.PermAssetMove && !requester.PermAssetMove) ||
+		(req.PermPolicyManage && !requester.PermPolicyManage) ||
+		(req.PermGroupManage && !requester.PermGroupManage) ||
+		(req.PermApprovalView && !requester.PermApprovalView) ||
+		(req.PermApprovalFinal && !requester.PermApprovalFinal) { // Thêm kiểm tra cho PermApprovalFinal
 		return fmt.Errorf("bạn không có quyền cấp phát đặc quyền quản trị")
 	}
 

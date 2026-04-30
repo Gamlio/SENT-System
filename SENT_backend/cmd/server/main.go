@@ -13,8 +13,8 @@ import (
 	"sent_backend/internal/api/v1/approvals"
 	"sent_backend/internal/api/v1/assets"
 	"sent_backend/internal/api/v1/auth"
+	"sent_backend/internal/api/v1/group"
 
-	// Dùng bí danh behaviorAPI để tránh xung đột/lỗi cache module
 	"sent_backend/internal/api/v1/behavior"
 	"sent_backend/internal/api/v1/dashboard"
 	"sent_backend/internal/api/v1/docs"
@@ -40,12 +40,8 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Logger())
 	r.RedirectTrailingSlash = false
-	// ===== BẢNG MÔNG BẢO MẬT TẦNG GLOBAL =====
-	// 1. IP Blacklist check (Rẻ nhất, chặn ngay lập tức)
 	r.Use(middleware.IPBlacklistMiddleware())
-	// 2. Kiểm tra Content-Type, Body Size -> Chặn DoS attacks
 	r.Use(middleware.SecurityValidationMiddleware())
-	// 3. Rate limiting chung
 	limiter := middleware.RateLimitMiddleware(10, 20)
 	r.Use(limiter)
 
@@ -81,7 +77,6 @@ func main() {
 			assetPublicGroup.GET("/sync-policies", assets.GetActiveEnrollmentToken, policies.SyncPoliciesForAsset)
 		}
 
-		// --- API Public cho Version & Webhook CI/CD ---
 		v1Group.GET("/versions", version.GetVersions)
 		v1Group.POST("/internal/update-version", version.GitHubWebhookHandler)
 
@@ -121,7 +116,6 @@ func main() {
 				aiDocs.POST("/:id/delete-request", docs.DeleteDocument)
 			}
 
-			// 2. GROUP POLICIES (CHÍNH SÁCH KỸ THUẬT CHO asset)
 			policiesGroup := protected.Group("/policies")
 			{
 				policiesGroup.GET("", policies.GetPoliciesByCategory)
@@ -132,50 +126,48 @@ func main() {
 			}
 			dashGroup := protected.Group("/dashboard")
 			{
-				// Trỏ về đúng Handler mỏng vừa tạo
 				dashGroup.GET("/stats", dashboard.GetDashboardStats)
 			}
 
 			incidentsGroup := protected.Group("/incidents")
 			{
-				incidentsGroup.GET("", incidents.GetIncidents)          // Lấy danh sách (Đã đổi tên khớp Handler)
-				incidentsGroup.GET("/:id", incidents.GetIncidentDetail) // Chi tiết sự cố + Timeline Audit
-				incidentsGroup.POST("/close", incidents.CloseIncident)  // Đóng Case kèm Baseline Proof
+				incidentsGroup.GET("", incidents.GetIncidents)
+				incidentsGroup.GET("/:id", incidents.GetIncidentDetail)
+				incidentsGroup.POST("/close", incidents.CloseIncident)
 				incidentsGroup.PUT("/:id/playbook", incidents.UpdatePlaybookProgress)
 
-				// --- Dành cho Admin/Auditor (Chuyển giao quyền quản lý) ---
-				// Gợi ý: Nên bọc qua một middleware CheckRole("ADMIN") ở đây
-				incidentsGroup.PUT("/:id/assign", incidents.AssignIncident)                   // Chỉ Admin mới được phân công người làm
-				incidentsGroup.GET("/audit/:audit_id/verify", incidents.VerifyAuditIntegrity) // Kiểm tra tính toàn vẹn của Log
+				incidentsGroup.PUT("/:id/assign", incidents.AssignIncident)
+				incidentsGroup.GET("/audit/:audit_id/verify", incidents.VerifyAuditIntegrity)
 
 			}
 			behaviorGroup := protected.Group("/behaviors")
 			{
-				behaviorGroup.GET("", behavior.GetBehaviors)               // Xem danh sách hành vi vi phạm (Alerts)
-				behaviorGroup.POST("/escalate", incidents.EscalateHandler) // Nâng cấp Alert lên Incident
+				behaviorGroup.GET("", behavior.GetBehaviors)
+				behaviorGroup.POST("/escalate", incidents.EscalateHandler)
 			}
 			aiGroup := protected.Group("/ai")
 			{
 				aiGroup.POST("/chat", ai.ChatHandler)
-				aiGroup.POST("/sessions", ai.CreateSession) // Tạo phiên mới
-				aiGroup.GET("/sessions", ai.GetSessions)    // Lấy danh sách phiên
+				aiGroup.POST("/sessions", ai.CreateSession)
+				aiGroup.GET("/sessions", ai.GetSessions)
 
-				// Chat trong phiên cụ thể
 				aiGroup.POST("/chat/:session_id", ai.ChatHandler)
-				// Các endpoint khác như xóa phiên, lấy lịch sử chat... có thể thêm sau khi có cơ sở hạ tầng chính. Hiện tập trung vào chức năng chat chính đã.
-				aiGroup.DELETE("/sessions/:id", ai.DeleteSession) // Xóa phiên
+				aiGroup.DELETE("/sessions/:id", ai.DeleteSession)
 				aiGroup.PUT("/sessions/:id", ai.RenameSession)
-				aiGroup.GET("/chat/:session_id", ai.GetChatHistory) // Lấy lịch sử chat của phiên
+				aiGroup.GET("/chat/:session_id", ai.GetChatHistory)
 			}
 			approvalsGroup := protected.Group("/approvals")
 			{
-				// Lấy danh sách các đơn cần duyệt (có thể lọc theo ModuleType)
 				approvalsGroup.GET("", approvals.GetTickets)
-
-				// Admin thao tác: Duyệt hoặc Từ chối
 				approvalsGroup.PUT("/:id/review", approvals.ReviewTicket)
 			}
-
+			groupsGroup := protected.Group("/groups")
+			{
+				groupsGroup.GET("", group.HandleGetGroups)
+				groupsGroup.POST("", group.HandleCreateGroup)
+				groupsGroup.PUT("/:id", group.HandleUpdateGroup)
+				groupsGroup.DELETE("/:id", group.HandleDeleteGroup)
+			}
 		}
 	}
 

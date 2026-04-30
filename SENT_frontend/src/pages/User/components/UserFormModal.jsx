@@ -1,175 +1,205 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Mail, Phone,  Shield, Loader2, Monitor, FileText, AlertTriangle, Settings } from 'lucide-react';
+import { User, Lock, Mail, Shield, Settings, X, Save, Key, Briefcase, Users, FileText, AlertTriangle } from 'lucide-react';
 
-const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading }) => {
-    const isEditMode = !!initialData;
-
-    const defaultState = {
-        employee_id: '', username: '', full_name: '', email: '', phone: '', password: '',
-        perm_asset_view: false, perm_asset_action: false, perm_asset_delete: false,
-        perm_policy_view: false, perm_policy_action: false,
-        perm_incident_view: false, perm_incident_action: false,
-        perm_doc_view: false, perm_doc_manage: false,
-        perm_user_manage: false, perm_approval_manage: false,
-    };
-
-    const [formData, setFormData] = useState(defaultState);
-
-    useEffect(() => {
-        if (isOpen) {
-            if (isEditMode && initialData) {
-                setFormData({
-                    ...initialData,
-                    password: '', // Không bao giờ hiện pass cũ
-                    phone: initialData.phone || '', 
-                    perm_asset_view: !!initialData.perm_asset_view,
-                    perm_asset_action: !!initialData.perm_asset_action,
-                    perm_asset_delete: !!initialData.perm_asset_delete,
-                    perm_policy_view: !!initialData.perm_policy_view,
-                    perm_policy_action: !!initialData.perm_policy_action,
-                    perm_incident_view: !!initialData.perm_incident_view,
-                    perm_incident_action: !!initialData.perm_incident_action,
-                    perm_doc_view: !!initialData.perm_doc_view,
-                    perm_doc_manage: !!initialData.perm_doc_manage,
-                    perm_user_manage: !!initialData.perm_user_manage,
-                    perm_approval_manage: !!initialData.perm_approval_manage,
-                });
-            } else {
-                setFormData(defaultState);
-            }
-        }
-    }, [initialData, isEditMode, isOpen]);
-
-    const handleToggle = (field) => {
-        setFormData(prev => {
-            const val = !prev[field];
-            const updated = { ...prev, [field]: val };
-            // Logic liên đới
-            if (val) {
-                if (['perm_asset_action', 'perm_asset_delete'].includes(field)) updated.perm_asset_view = true;
-                if (field === 'perm_policy_action') updated.perm_policy_view = true;
-                if (field === 'perm_incident_action') updated.perm_incident_view = true;
-                if (field === 'perm_doc_manage') updated.perm_doc_view = true;
-            }
-            return updated;
-        });
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        // LÀM SẠCH DỮ LIỆU trước khi gửi
-        const payload = { ...formData };
-        delete payload.id;
-        delete payload.CreatedAt;
-        delete payload.UpdatedAt;
-        delete payload.DeletedAt;
-        
-        onSubmit(payload);
-    };
-
+// --- Placeholder Components (Giả lập để code dễ đọc) ---
+const Modal = ({ isOpen, onClose, children, title }) => {
     if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-[#1e293b] w-full max-w-4xl rounded-3xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/50 shrink-0">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        {isEditMode ? <Shield className="text-blue-400"/> : <User className="text-emerald-400"/>}
-                        {isEditMode ? 'Cập nhật Quyền & Tài khoản' : 'Thêm Nhân sự Mới'}
-                    </h3>
-                    <button onClick={onClose} className="text-slate-500 hover:text-white transition"><X size={20}/></button>
-                </div>
-
-                <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-                    <form id="userForm" onSubmit={handleSubmit} className="space-y-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InputRow label="Tên đăng nhập" icon={User} required disabled={isEditMode}>
-                                <input type="text" disabled={isEditMode} value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-10 text-sm text-white focus:border-emerald-500 outline-none disabled:opacity-50" />
-                            </InputRow>
-                            <InputRow label="Họ và Tên" icon={User} required>
-                                <input type="text" required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-10 text-sm text-white focus:border-emerald-500 outline-none" />
-                            </InputRow>
-                            <InputRow label="Số điện thoại" icon={Phone} required>
-                                 <input type="text" required value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-10 text-sm text-white focus:border-emerald-500 outline-none" />
-                            </InputRow>
-                            <InputRow label="Email" icon={Mail} required>
-                                <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-10 text-sm text-white focus:border-emerald-500 outline-none" />
-                            </InputRow>
-                        </div>
-
-                        <div>
-                            <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">Ma trận Đặc quyền (Permissions)</h4>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <PermissionBlock title="Máy trạm" icon={<Monitor size={16}/>} color="text-emerald-400">
-                                    <ToggleSwitch field="perm_asset_view" label="Xem danh sách" data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_asset_action" label="Chỉnh sửa máy" data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_asset_delete" label="Xóa máy" data={formData} onToggle={handleToggle} isDanger/>
-                                </PermissionBlock>
-                                <PermissionBlock title="Sự cố" icon={<AlertTriangle size={16}/>} color="text-red-400">
-                                    <ToggleSwitch field="perm_incident_view" label="Xem sự cố" data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_incident_action" label="Xử lý sự cố" data={formData} onToggle={handleToggle}/>
-                                </PermissionBlock>
-                                <PermissionBlock title="Tài liệu & Chính sách" icon={<FileText size={16}/>} color="text-blue-400">
-                                    <ToggleSwitch field="perm_policy_view" label="Xem Chính sách" data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_policy_action" label="Đổi Chính sách" data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_doc_view" label="Xem Tài liệu " data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_doc_manage" label="Quản lý Tài liệu " data={formData} onToggle={handleToggle}/>
-                                </PermissionBlock>
-                                <PermissionBlock title="Quản trị Hệ thống" icon={<Settings size={16}/>} color="text-purple-400">
-                                    <ToggleSwitch field="perm_approval_manage" label="Duyệt yêu cầu (Maker-Checker)" data={formData} onToggle={handleToggle}/>
-                                    <ToggleSwitch field="perm_user_manage" label="Quản lý Nhân sự (Thêm/Xóa)" data={formData} onToggle={handleToggle} isDanger/>
-                                </PermissionBlock>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-
-                <div className="p-4 border-t border-slate-800 bg-slate-800/50 flex justify-end gap-3 shrink-0">
-                    <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition">Hủy bỏ</button>
-                    <button type="submit" form="userForm" disabled={isLoading} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-bold shadow-lg transition flex items-center gap-2">
-                        {isLoading && <Loader2 size={16} className="animate-spin"/>}
-                        {isEditMode ? 'Lưu Cập Nhật' : 'Tạo Tài Khoản'}
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center animate-fade-in">
+            <div className="bg-[#161d2b] rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-700 transform transition-all duration-300 scale-95 animate-modal-pop-in">
+                <div className="flex justify-between items-center p-5 border-b border-slate-800">
+                    <h3 className="text-xl font-bold text-white">{title}</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+                        <X size={24} />
                     </button>
                 </div>
+                {children}
             </div>
         </div>
     );
 };
 
-const InputRow = ({ label, icon: Icon, required, disabled, children }) => (
-    <div className="relative">
-        <label className="block text-xs font-bold text-slate-400 mb-1.5 pl-1">{label} {required && <span className="text-red-500">*</span>}</label>
-        <div className="relative">
-            <Icon size={16} className={`absolute left-3 top-1/2 -translate-y-1/2 ${disabled ? 'text-slate-600' : 'text-slate-400'}`}/>
+const InputRow = ({ label, icon: Icon, children }) => (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center">
+        <label className="text-slate-400 text-sm font-medium flex items-center gap-3">
+            {Icon && <Icon size={16} className="text-slate-500" />}
+            {label}
+        </label>
+        <div className="md:col-span-2 relative">
+             {Icon && <div className="absolute left-3 top-1/2 -translate-y-1/2 hidden">{/* Placeholder for potential icon inside input */}</div>}
             {children}
         </div>
     </div>
 );
 
 const PermissionBlock = ({ title, icon, color, children }) => (
-    <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-xl">
-        <div className={`flex items-center gap-2 mb-3 font-bold ${color}`}>{icon} {title}</div>
-        <div className="space-y-2">{children}</div>
+    <div>
+        <h4 className={`flex items-center gap-2 font-bold mb-3 ${color}`}>
+            {icon}
+            {title}
+        </h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pl-6">
+            {children}
+        </div>
     </div>
 );
 
-// Component Gạt (Toggle Switch) trực quan
-const ToggleSwitch = ({ field, label, data, onToggle, isDanger }) => {
-    const isChecked = !!data[field];
-    const activeColor = isDanger ? 'bg-red-500' : 'bg-emerald-500';
-    const bgContainer = isChecked 
-        ? (isDanger ? 'bg-red-500/10 border-red-500/30' : 'bg-emerald-500/10 border-emerald-500/30') 
-        : 'bg-[#1e293b] border-slate-700 hover:border-slate-500';
+const ToggleSwitch = ({ field, label, data, onToggle, isDanger = false }) => (
+    <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
+        <span className={`text-sm font-medium ${isDanger ? 'text-red-400' : 'text-slate-300'}`}>{label}</span>
+        <label className="relative inline-flex items-center cursor-pointer">
+            <input
+                type="checkbox"
+                checked={!!data[field]}
+                onChange={() => onToggle(field, !data[field])}
+                className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-slate-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-emerald-500/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+        </label>
+    </div>
+);
+// --- End Placeholder Components ---
+
+
+const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading, groups = [] }) => {
+    const isEditMode = !!initialData?.ID;
+
+    const createDefaultFormState = () => ({
+        username: '',
+        full_name: '',
+        employee_id: '',
+        email: '',
+        password: '',
+        group_id: null,
+        perm_asset_view: false,
+        perm_asset_action: false,
+        perm_asset_delete: false,
+        perm_policy_view: false,
+        perm_policy_manage: false,
+        perm_incident_view: false,
+        perm_incident_action: false,
+        perm_doc_view: false,
+        perm_doc_manage: false,
+        perm_user_manage: false,
+        perm_group_manage: false,
+        perm_approval_manage: false, 
+        perm_asset_move: false,    
+        perm_user_view: false,     
+        perm_system_config: false, 
+        perm_approval_final: false
+    });
+
+    const [formData, setFormData] = useState(createDefaultFormState());
+
+    useEffect(() => {
+        if (isOpen) {
+            if (isEditMode && initialData) {
+                const populatedData = { ...createDefaultFormState(), ...initialData };
+                populatedData.password = ''; // Không hiển thị password cũ
+                setFormData(populatedData);
+            } else {
+                setFormData(createDefaultFormState());
+            }
+        }
+    }, [isOpen, initialData, isEditMode]);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleToggle = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSubmit(formData);
+    };
 
     return (
-        <div onClick={() => onToggle(field)} className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all select-none ${bgContainer}`}>
-            <span className={`text-sm font-bold transition-colors ${isChecked ? (isDanger ? 'text-red-400' : 'text-emerald-400') : 'text-slate-400'}`}>
-                {label}
-            </span>
-            <div className={`relative w-10 h-5 rounded-full transition-colors duration-300 ease-in-out ${isChecked ? activeColor : 'bg-slate-700'}`}>
-                <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform duration-300 ease-in-out ${isChecked ? 'translate-x-5' : 'translate-x-0 shadow-sm'}`}></div>
-            </div>
-        </div>
+        <Modal isOpen={isOpen} onClose={onClose} title={isEditMode ? "Chỉnh sửa Thông tin Nhân sự" : "Thêm Nhân sự Mới"}>
+            <form onSubmit={handleSubmit}>
+                <div className="p-6 space-y-8 max-h-[80vh] overflow-y-auto">
+                    {/* Phần 1: Thông tin cơ bản */}
+                    <div className="p-5 bg-slate-900/50 border border-slate-800 rounded-xl space-y-4">
+                        <h3 className="text-lg font-semibold text-emerald-400 mb-4">Thông tin Cơ bản</h3>
+                        <InputRow label="Tên đăng nhập" icon={User}>
+                            <input type="text" name="username" value={formData.username} onChange={handleInputChange} required disabled={isEditMode} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-4 text-sm text-white focus:border-emerald-500 outline-none disabled:bg-slate-800 disabled:text-slate-500" />
+                        </InputRow>
+                        <InputRow label="Họ và Tên" icon={User}>
+                            <input type="text" name="full_name" value={formData.full_name || ''} onChange={handleInputChange} required className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-4 text-sm text-white focus:border-emerald-500 outline-none" />
+                        </InputRow>
+                        <InputRow label="Mã nhân viên" icon={Briefcase}>
+                            <input type="text" name="employee_id" value={formData.employee_id || ''} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-4 text-sm text-white focus:border-emerald-500 outline-none" />
+                        </InputRow>
+                        <InputRow label="Email" icon={Mail}>
+                            <input type="email" name="email" value={formData.email || ''} onChange={handleInputChange} required className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-4 text-sm text-white focus:border-emerald-500 outline-none" />
+                        </InputRow>
+                        <InputRow label="Mật khẩu" icon={Lock}>
+                            <input type="password" name="password" value={formData.password} onChange={handleInputChange} placeholder={isEditMode ? "Để trống nếu không đổi" : "Tối thiểu 8 ký tự"} required={!isEditMode} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-4 text-sm text-white focus:border-emerald-500 outline-none" />
+                        </InputRow>
+                        
+                        {/* === [MỚI] Thêm trường Phòng ban === */}
+                        <InputRow label="Phòng ban / Nhóm" icon={Shield}>
+                            <select
+                                value={formData.group_id || ''}
+                                onChange={e => setFormData({ ...formData, group_id: e.target.value ? Number(e.target.value) : null })}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 outline-none appearance-none"
+                            >
+                                <option value="">-- Chọn phòng ban --</option>
+                                {groups.map(g => (
+                                    <option key={g.ID} value={g.ID}>{g.name}</option>
+                                ))}
+                            </select>
+                        </InputRow>
+                    </div>
+
+                    {/* Phần 2: Ma trận đặc quyền */}
+                    <div className="p-5 bg-slate-900/50 border border-slate-800 rounded-xl space-y-6">
+                        <h3 className="text-lg font-semibold text-emerald-400 mb-4">Ma trận Đặc quyền</h3>
+                        
+                        <PermissionBlock title="Quản trị Hệ thống" icon={<Settings size={16} />} color="text-purple-400">
+                            <ToggleSwitch field="perm_group_manage" label="Quản lý Nhóm (Groups)" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_approval_manage" label="Duyệt yêu cầu (Maker-Checker)" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_system_config" label="Cấu hình Hệ thống" data={formData} onToggle={handleToggle} isDanger />
+                            <ToggleSwitch field="perm_approval_final" label="Duyệt đơn cuối (Checker)" data={formData} onToggle={handleToggle} isDanger />
+                            <ToggleSwitch field="perm_user_view" label="Xem danh sách Nhân sự" data={formData} onToggle={handleToggle} />                                                                   
+                            <ToggleSwitch field="perm_user_manage" label="Quản lý Nhân sự" data={formData} onToggle={handleToggle} isDanger />
+                        </PermissionBlock>
+
+                        <PermissionBlock title="Quản lý Thiết bị" icon={<Key size={16} />} color="text-sky-400">
+                            <ToggleSwitch field="perm_asset_view" label="Xem Thiết bị" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_asset_action" label="Hành động trên Thiết bị" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_asset_delete" label="Xóa Thiết bị" data={formData} onToggle={handleToggle} isDanger />
+                            <ToggleSwitch field="perm_asset_move" label="Di chuyển Nhóm máy" data={formData} onToggle={handleToggle} />
+                        </PermissionBlock>
+
+                        <PermissionBlock title="Chính sách & Tài liệu" icon={<FileText size={16} />} color="text-amber-400">
+                            <ToggleSwitch field="perm_policy_view" label="Xem Chính sách" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_policy_manage" label="Quản lý Chính sách" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_doc_manage" label="Quản lý Tài liệu" data={formData} onToggle={handleToggle} />
+                        </PermissionBlock>
+
+                        <PermissionBlock title="Sự cố An ninh" icon={<AlertTriangle size={16} />} color="text-rose-400">
+                            <ToggleSwitch field="perm_incident_view" label="Xem Sự cố" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_incident_action" label="Xử lý Sự cố" data={formData} onToggle={handleToggle} />
+                        </PermissionBlock>
+                    </div>
+                </div>
+
+                {/* Phần 3: Nút bấm */}
+                <div className="flex justify-end items-center p-5 bg-slate-900/50 border-t border-slate-800 rounded-b-2xl">
+                    <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm font-bold text-slate-300 hover:text-white rounded-lg mr-3">
+                        Hủy
+                    </button>
+                    <button type="submit" disabled={isLoading} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg transition disabled:bg-slate-500 disabled:cursor-not-allowed">
+                        <Save size={18} />
+                        {isLoading ? 'Đang lưu...' : (isEditMode ? 'Lưu Thay đổi' : 'Tạo Tài khoản')}
+                    </button>
+                </div>
+            </form>
+        </Modal>
     );
 };
 

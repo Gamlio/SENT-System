@@ -18,21 +18,20 @@ const Sidebar = () => {
 
     const menuItems = [
         { path: '/', icon: <LayoutDashboard size={18}/>, label: 'Tổng quan', show: true },
-        { path: '/assets', icon: <Monitor size={18}/>, label: 'Máy trạm', show: user.permissions?.asset_view },
-        { path: '/policy-center', icon: <ShieldCheck size={18}/>, label: 'Chính sách', show: user.permissions?.policy_view },
-        { path: '/docs', icon: <FileText size={18}/>, label: 'Tài liệu', show: user.permissions?.doc_view },
-        { path: '/users', icon: <User size={18}/>, label: 'Nhân sự', show: user.permissions?.user_manage },
-        { path: '/incidents', icon: <AlertTriangle size={18}/>, label: 'Sự cố', show: user.permissions?.incident_view },
-        { path: '/behaviors', icon: <AlertTriangle size={18}/>, label: 'Hành vi', show: user.permissions?.incident_view },
-        { path: '/approvals', icon: <ClipboardCheck size={18}/>, label: 'Phê duyệt', show: user.permissions?.approval_manage },
-        { path: '/versions', icon: <Package size={18}/>, label: 'Phần mềm', show: true }
-    ];
+    { path: '/assets', icon: <Monitor size={18}/>, label: 'Máy trạm', show: user.permissions?.asset_view },
+    { path: '/policy-center', icon: <ShieldCheck size={18}/>, label: 'Chính sách', show: user.permissions?.policy_view },
+    { path: '/docs', icon: <FileText size={18}/>, label: 'Tài liệu', show: user.permissions?.doc_view },
+    { path: '/users', icon: <User size={18}/>, label: 'Nhân sự', show: user.permissions?.user_view }, 
+    { path: '/incidents', icon: <AlertTriangle size={18}/>, label: 'Sự cố', show: user.permissions?.incident_view },
+    { path: '/behaviors', icon: <AlertTriangle size={18}/>, label: 'Hành vi', show: user.permissions?.incident_view },
+    { path: '/approvals', icon: <ClipboardCheck size={18}/>, label: 'Phê duyệt', show: user.permissions?.approval_view },
+    { path: '/versions', icon: <Package size={18}/>, label: 'Phần mềm', show: true }
+];
 
     return (
         <div 
             className={`${isCollapsed ? 'w-20' : 'w-64'} bg-[#050B14] h-screen flex flex-col border-r border-slate-800 shadow-[10px_0_30px_rgba(0,0,0,0.5)] relative z-20 transition-all duration-300 ease-in-out font-sans`}
         >
-            {/* TOGGLE BUTTON - Đổi sang màu Indigo/Cyber */}
             <button 
                 onClick={() => setIsCollapsed(!isCollapsed)}
                 className="absolute -right-3 top-10 bg-[#111827] text-indigo-400 p-1.5 rounded-md border border-slate-700 hover:border-indigo-500 transition-all z-50 shadow-xl"

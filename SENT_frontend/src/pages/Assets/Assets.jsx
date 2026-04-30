@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { 
     Search, Monitor, ShieldAlert, Smartphone, User, 
     ChevronRight, X, UserCheck, LayoutList, ArrowUpDown, Trash2,
-    ShieldCheck, Laptop, Activity, Tag, Server, Briefcase, UserX
+    ShieldCheck, Laptop, Activity, Tag, Server, Briefcase, UserX, Layers
 } from 'lucide-react'; 
 import { useassets, getTimeAgo } from './hooks/useAssets'; 
+import { useGroups } from '../User/hooks/useGroups';
 import { useUsers } from '../User/hooks/useUsers'; 
 import AssetsActions from './components/AssetsActions';
 import GenerateTokenButton from './components/GenerateTokenButton';
@@ -58,12 +59,14 @@ const Assets = () => {
     const navigate = useNavigate();
     const {
         currentassets = [], searchQuery, setSearchQuery, 
-        sortConfig, setSortConfig, assets = [], fetchassets
+        sortConfig, setSortConfig, assets = [], fetchassets, updateAssetGroup
     } = useassets();
 
     const { users = [] } = useUsers();
+    const { groups = [] } = useGroups();
     const [selectedassets, setSelectedassets] = useState([]);
     const [showAssignModal, setShowAssignModal] = useState(false);
+    const [showGroupModal, setShowGroupModal] = useState(false);
     const [targetassetHwid, setTargetassetHwid] = useState(null);
     const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: '', hwids: [] });
 
@@ -86,6 +89,20 @@ const Assets = () => {
             setSelectedassets([]);
             fetchassets();
         } catch (err) { alert("Lỗi phân công!"); }
+    };
+
+    const handleConfirmChangeGroup = async (groupId) => {
+        if (targetassetHwid) {
+            try {
+                if (updateAssetGroup) {
+                    await updateAssetGroup(targetassetHwid, groupId);
+                } else {
+                    await axios.put(`/assets/${targetassetHwid}/group`, { group_id: groupId });
+                    fetchassets();
+                }
+                setShowGroupModal(false);
+            } catch (err) { alert("Lỗi chuyển nhóm!"); }
+        }
     };
 
     const tableColumns = useMemo(() => [
@@ -118,12 +135,19 @@ const Assets = () => {
             }
         },
         {
-            key: 'manager', label: 'Owner / Dept', className: 'w-[20%]',
+            key: 'manager', label: 'Owner / Group', className: 'w-[20%]',
             render: (a) => (
-                <div>
+                <div 
+                    className="cursor-pointer hover:opacity-80" 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setTargetassetHwid(a.asset_hwid);
+                        setShowGroupModal(true);
+                    }}
+                >
                     <p className="text-[11px] font-bold text-slate-300 truncate">{a.manager?.full_name || 'Unassigned'}</p>
-                    <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mt-0.5 border border-slate-700 bg-[#050B14] w-max px-1.5 py-0.5 rounded">
-                        {a.department_tag || 'OFFICE'}
+                    <p className="text-[9px] text-indigo-400 uppercase font-black tracking-widest mt-0.5 border border-indigo-500/30 bg-indigo-500/10 w-max px-1.5 py-0.5 rounded flex items-center gap-1">
+                        <Tag size={8}/> {a.group?.name || 'GLOBAL POLICY'}
                     </p>
                 </div>
             )
@@ -154,7 +178,7 @@ const Assets = () => {
                 </div>
             )
         }
-    ], []);
+    ], [groups]);
 
     return (
         <div className="p-6 h-[calc(100vh-60px)] flex flex-col text-slate-200 bg-[#050B14] font-sans">
@@ -242,6 +266,40 @@ const Assets = () => {
                                         </div>
                                     </div>
                                     <ChevronRight size={14} className="text-slate-700 group-hover:text-indigo-400 transition-transform group-hover:translate-x-1"/>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL THAY ĐỔI NHÓM (SOFT SELECT) */}
+            {showGroupModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+                    <div className="bg-[#0A101D] w-full max-w-md rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#111827]">
+                            <h3 className="text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2">
+                                <Layers size={14} className="text-sky-400"/> Di chuyển vào nhóm
+                            </h3>
+                            <button onClick={() => setShowGroupModal(false)} className="text-slate-500 hover:text-white transition"><X size={16}/></button>
+                        </div>
+                        <div className="p-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                            {/* Option mặc định */}
+                            <button onClick={() => handleConfirmChangeGroup(null)} className="w-full flex items-center p-3 hover:bg-slate-800 rounded-lg text-left transition-all border border-transparent hover:border-slate-700 mb-1">
+                                <div className="text-xs font-bold text-slate-400 italic">Gỡ khỏi nhóm (Global Policy)</div>
+                            </button>
+                            
+                            {/* Danh sách nhóm động từ API */}
+                            {groups.map(g => (
+                                <button key={g.ID} onClick={() => handleConfirmChangeGroup(g.ID)} className="w-full flex items-center justify-between p-3 hover:bg-indigo-500/10 rounded-lg border border-transparent hover:border-indigo-500/30 transition-all group">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-1.5 bg-[#050B14] border border-slate-800 rounded text-slate-500 group-hover:text-indigo-400 transition-colors"><Briefcase size={14}/></div>
+                                        <div className="text-left">
+                                            <p className="text-xs font-bold text-white">{g.name}</p>
+                                            <p className="text-[9px] text-slate-500 truncate max-w-[200px]">{g.description || 'Không có mô tả'}</p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight size={14} className="text-slate-700 group-hover:text-indigo-400"/>
                                 </button>
                             ))}
                         </div>
