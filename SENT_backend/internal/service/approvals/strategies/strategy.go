@@ -24,10 +24,12 @@ var Registry = map[string]ApprovalStrategy{
 	"POLICY_BULK_DELETE": &PolicyBulkDeleteStrategy{},
 
 	"DOCUMENT_UPLOAD": &DocumentUploadStrategy{},
-	"DOCUMENT_DELETE": &DocumentUploadStrategy{}, // Dùng chung Strategy với Upload, chỉ khác ở ActionType
+	"DOCUMENT_DELETE": &DocumentUploadStrategy{},
 	"USER_CREATE":     &UserCreateStrategy{},
 	"USER_UPDATE":     &UserUpdateStrategy{},
 	"USER_DELETE":     &UserDeleteStrategy{},
+	"GROUP_CREATE":    &GroupCreateStrategy{},
+	"GROUP_UPDATE":    &GroupUpdateStrategy{},
 	"GROUP_DELETE":    &GroupDeleteStrategy{},
 }
 

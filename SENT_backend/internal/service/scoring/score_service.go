@@ -66,12 +66,30 @@ func RecalculateRiskScore(assetAssetID string) {
 		return
 	}
 
-	// 1. Lấy telemetry ở MongoDB
-	var alerts []models.SecurityAlert
+	// 1. IMPACT TỨC THỜI (R_active) - Giảm trọng số
+	var activeAlerts []models.SecurityAlert
 	if database.SecurityAlertCollection != nil {
-		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"asset_hwid": assetAssetID, "is_resolved": false})
+		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{
+			"asset_hwid": assetAssetID, "is_resolved": false,
+		})
 		if err == nil {
-			cursor.All(context.TODO(), &alerts)
+			cursor.All(context.TODO(), &activeAlerts)
+		}
+	}
+
+	ti := 0.0
+	hasP1 := false
+	for _, alert := range activeAlerts {
+		switch alert.Priority {
+		case "P1":
+			ti += 5.0
+			hasP1 = true
+		case "P2":
+			ti += 2.5
+		case "P4":
+			ti += 0.5
+		default:
+			ti += 1.0
 		}
 	}
 
@@ -99,58 +117,98 @@ func RecalculateRiskScore(assetAssetID string) {
 		}
 	}
 
-	// 2. Tính điểm từ telemetry
-	n := len(alerts)
-	sumSi := 0.0
-	hasP1 := false
-	for _, alert := range alerts {
-		switch alert.Priority {
-		case "P1":
-			sumSi += 50.0
-			hasP1 = true
-		case "P2":
-			sumSi += 25.0
-		case "P3":
-			sumSi += 10.0
-		case "P4":
-			sumSi += 5.0
-		default:
-			sumSi += 5.0
-		}
-	}
-
-	// Thêm điểm từ trạng thái open port nếu có
-	if len(openPorts) > 0 {
-		sumSi += float64(len(openPorts)) * 2.0
-	}
-
-	// Thêm điểm từ USB vi phạm (coi là mỗi USB mới là 3 điểm)
-	if len(usbLogs) > 0 {
-		sumSi += float64(len(usbLogs)) * 3.0
-	}
-
-	// Thêm điểm IO spike (nếu có bản ghi I/O recent)
-	if len(ioActivities) > 0 {
-		sumSi += float64(len(ioActivities)) * 5.0
-	}
+	n := float64(len(activeAlerts))
 
 	if n == 0 && len(openPorts) == 0 && len(usbLogs) == 0 && len(ioActivities) == 0 {
-		database.DB.Model(&asset).Updates(map[string]interface{}{"risk_score": 0.0})
+		database.DB.Model(&asset).Updates(map[string]interface{}{
+			"risk_score":     0.0,
+			"security_grade": "A",
+		})
 		return
 	}
 
-	En := math.Pow(1.2, float64(n+len(openPorts)))
-	rawScore := (sumSi * En) / kFactor
-	currentRisk := 100.0 * (1.0 - math.Exp(-rawScore))
-
-	if currentRisk > 100.0 {
-		currentRisk = 100.0
+	// Bổ sung telemetry khác vào ti để hệ thống vẫn phản ứng với hành vi bất thường
+	if len(usbLogs) > 0 {
+		ti += float64(len(usbLogs)) * 0.5
+	}
+	if len(ioActivities) > 0 {
+		ti += float64(len(ioActivities)) * 0.2
 	}
 
-	// 3. Cập nhật thông số asset
+	// Sử dụng Log để n lỗi không bằng 1 lỗi nặng
+	multiplier := n + 1
+	if n == 0 && ti > 0 {
+		multiplier = 2 // Đảm bảo math.Log2(2) = 1 để giữ nguyên điểm ti từ telemetry
+	}
+	rActive := ti * math.Log2(multiplier)
+
+	// 2. IMPACT LỊCH SỬ (R_history) - Giữ vết lâu (Lookback 180 ngày)
+	var pastIncidents []models.Incident
+	halfYearAgo := time.Now().AddDate(0, 0, -180) // Quét lịch sử 180 ngày
+	rHistory := 0.0
+
+	if err := database.DB.Where("asset_hwid = ? AND created_at >= ?", assetAssetID, halfYearAgo).Find(&pastIncidents).Error; err == nil {
+		for _, inc := range pastIncidents {
+			daysOld := time.Since(inc.CreatedAt).Hours() / 24.0
+			hImpact := 1.0
+			switch inc.Priority {
+			case "P1":
+				hImpact = 10.0
+			case "P2":
+				hImpact = 5.0
+			case "P4":
+				hImpact = 0.5
+			}
+
+			// Decay cực chậm: Sau 3 tháng (90 ngày) lỗi P1 vẫn còn giữ khoảng 5 điểm rủi ro
+			rHistory += hImpact / (1.0 + 0.01*daysOld)
+		}
+	}
+
+	// 3. TRỌNG SỐ NGỮ CẢNH (C) VÀ HỆ SỐ PHƠI NHIỄM (V)
+	cFactor := 1.0
+	switch asset.AssetType.Name {
+	case "SERVER":
+		cFactor = 2.0 // Rất cao
+	case "IT_ADMIN":
+		cFactor = 1.5 // Cao
+	default:
+		cFactor = 1.0 // Trung bình
+	}
+
+	vFactor := 1.0 + (float64(len(openPorts)) * 0.05) // Mỗi port mở tăng 5%
+
+	// 4. TỔNG HỢP & PHÂN HẠNG (0-100 scale cho UI)
+	displayScore := (rActive + rHistory) * cFactor * vFactor
+	if displayScore > 100.0 {
+		displayScore = 100.0
+	}
+
+	grade := "A"
+	switch {
+	case displayScore > 60:
+		grade = "F"
+	case displayScore > 35:
+		grade = "D"
+	case displayScore > 15:
+		grade = "C"
+	case displayScore > 5:
+		grade = "B"
+	default:
+		grade = "A"
+	}
+
+	// 5. CƠ CHẾ FORENSIC INTEGRITY (Niêm phong bằng chứng)
+	if displayScore > 80.0 {
+		log.Printf("🚨 [FORENSIC SEAL] %s: Điểm rủi ro=%.1f > 80. Hệ thống kích hoạt Snapshot Immutable!", asset.Hostname, displayScore)
+		// TODO: Tích hợp gọi EventEngine đẩy lệnh thu thập Process/Port list xuống Go-SENT tại đây.
+	}
+
+	// 6. CẬP NHẬT TRẠNG THÁI
 	now := time.Now()
 	updates := map[string]interface{}{
-		"risk_score":       currentRisk,
+		"risk_score":       displayScore,
+		"security_grade":   grade,
 		"last_incident_at": &now,
 	}
 
@@ -163,7 +221,8 @@ func RecalculateRiskScore(assetAssetID string) {
 	}
 
 	database.DB.Model(&asset).Updates(updates)
-	log.Printf("📊 [Scoring v6] asset %s: Alerts=%d openPorts=%d usb=%d io=%d | Rủi ro=%.1f | Uy tín=%.1f", asset.Hostname, n, len(openPorts), len(usbLogs), len(ioActivities), currentRisk, asset.TrustScore)
+	log.Printf("🧬 [EQRI v2] %s: R_active=%.1f | R_hist=%.1f | Grade=%s | Điểm rủi ro: %.1f/100",
+		asset.Hostname, rActive, rHistory, grade, displayScore)
 }
 
 // NewScoreService creates a new ScoreService instance

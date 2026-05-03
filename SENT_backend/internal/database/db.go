@@ -20,7 +20,7 @@ import (
 
 var DB *gorm.DB
 var MongoClient *mongo.Client
-var IOCollection *mongo.Collection // Collection riêng cho log truyền tải dữ liệu
+var IOCollection *mongo.Collection
 var SoftwareCollection *mongo.Collection
 var USBCollection *mongo.Collection
 var OpenPortCollection *mongo.Collection
@@ -145,7 +145,8 @@ func InitDB() {
 		&models.Organization{},
 		&models.Region{},
 		&models.User{},
-		&models.Asset{}, // Asset tạo trước để Incident có cái mà tham chiếu
+		&models.Asset{},
+		&models.PolicyGroup{},
 		&models.EnrollmentToken{},
 		&models.Incident{},
 		&models.ApprovalTicket{},

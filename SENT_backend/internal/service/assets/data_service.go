@@ -126,7 +126,7 @@ func (s *AssetDataService) GetAssetList(orgID uint, page int, limit int, search 
 			"risk_score":        a.RiskScore,
 			"trust_score":       a.TrustScore,
 			"department_tag":    a.DepartmentTag,
-			"device_type":       a.DeviceType,
+			"assets_type":       a.AssetType,
 			"is_zero_trust":     a.IsZeroTrust,
 			"user_id":           a.UserID, // ID của người quản lý
 		}

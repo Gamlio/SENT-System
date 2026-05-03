@@ -150,8 +150,9 @@ type Asset struct {
 	IOActivities               []AssetIOActivity `gorm:"-" json:"io_activities"`
 	RiskScore                  int               `json:"risk_score" gorm:"default:0"`
 	Status                     string            `json:"status" gorm:"default:'PENDING'"`
-	DeviceType                 string            `json:"device_type" gorm:"column:device_type;default:'UNKNOWN'"`
-	TrustScore                 float64           `gorm:"default:100"` // Long-term trust
+	AssetTypeID                *uint             `json:"asset_type_id" gorm:"column:asset_type_id"`
+	AssetType                  *AssetType        `json:"asset_type" gorm:"foreignKey:AssetTypeID"`
+	TrustScore                 float64           `gorm:"default:100"`
 	DepartmentTag              string            `json:"department_tag"`
 	LastIncidentAt             *time.Time        `json:"last_incident_at"`
 	LastTrustRecoveryAppliedAt *time.Time        `json:"last_trust_recovery_applied_at"`
@@ -161,6 +162,14 @@ type Asset struct {
 	ApprovedBy string `json:"approved_by"`
 
 	Incidents []Incident `gorm:"foreignKey:AssetHWID;" json:"incidents"`
+}
+type AssetType struct {
+	gorm.Model
+	OrgID       uint    `json:"org_id" gorm:"index"`
+	Name        string  `json:"name"`        // VD: "Máy chủ nghiệp vụ"
+	Icon        string  `json:"icon"`        // Tên icon (Server, Laptop...)
+	RiskWeight  float64 `json:"risk_weight"` // Hệ số rủi ro: 1.5, 1.2...
+	Description string  `json:"description"`
 }
 type WhitelistItem struct {
 	gorm.Model

@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { 
     Search, Monitor, ShieldAlert, Smartphone, User, 
     ChevronRight, X, UserCheck, LayoutList, ArrowUpDown, Trash2,
-    ShieldCheck, Laptop, Activity, Tag, Server, Briefcase, UserX, Layers
+    ShieldCheck, Laptop, Activity, Tag, Server, Briefcase, UserX, Layers, Settings
 } from 'lucide-react'; 
 import { useassets, getTimeAgo } from './hooks/useAssets'; 
 import { useGroups } from '../User/hooks/useGroups';
 import { useUsers } from '../User/hooks/useUsers'; 
+import { useAuth } from '../../context/AuthContext';
 import AssetsActions from './components/AssetsActions';
 import GenerateTokenButton from './components/GenerateTokenButton';
 import AssetsBulkActions from './components/AssetsBulkActions';
@@ -57,6 +58,7 @@ const RiskScoreDisplay = React.memo(({ score }) => {
 
 const Assets = () => {
     const navigate = useNavigate();
+    const { user } = useAuth(); // Lấy thông tin user để check quyền
     const {
         currentassets = [], searchQuery, setSearchQuery, 
         sortConfig, setSortConfig, assets = [], fetchassets, updateAssetGroup
@@ -190,7 +192,19 @@ const Assets = () => {
                     </h1>
                     <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Total Enrolled Devices: {assets.length}</p>
                 </div>
-                <GenerateTokenButton />
+                
+                <div className="flex items-center gap-3">
+                    {/* Chỉ hiển thị nút cấu hình nếu user có quyền system_config */}
+                    {user?.permissions?.system_config && (
+                        <button 
+                            onClick={() => navigate('/assets/types')}
+                            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl border border-slate-700 transition-all font-bold text-xs uppercase tracking-widest"
+                        >
+                            <Settings size={14}/> Cấu hình loại máy
+                        </button>
+                    )}
+                    <GenerateTokenButton />
+                </div>
             </div>
 
             <div className="flex-1 bg-[#0A101D] rounded-lg border border-slate-800 shadow-2xl flex flex-col overflow-hidden">

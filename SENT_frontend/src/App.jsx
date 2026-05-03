@@ -9,9 +9,9 @@ import VersionsPage from './pages/Versions/VersionsPage.jsx';
 import Login from './pages/Auth/Login.jsx';
 import Register from './pages/Auth/Register.jsx';
 import Dashboard from './pages/Dashboard/Dashboard.jsx';
-
 import AssetList from './pages/Assets/Assets.jsx';
-import AssetDetail from './pages/Assets/AssetsDetail.jsx'; 
+import AssetDetail from './pages/Assets/AssetsDetail.jsx';
+import AssetTypeManagement from './pages/Assets/AssetTypeManagement.jsx';
 import IncidentList from './pages/IncidentReport/IncidentManager.jsx';
 import AIChatPage from './pages/AIChat/AIChatPage.jsx';
 import ApprovalCenter from './pages/approvals/ApprovalCenter.jsx';
@@ -21,41 +21,31 @@ import BehaviorManager from './pages/Behaviors/BehaviorManager.jsx';
 import Documents from './pages/Documents/Documents.jsx';     
 import UserManagement from './pages/User/UserManagement.jsx';   
 
-// IMPORT DRAWER MỚI TẠO
 import GlobalCopilotDrawer from './components/GlobalCopilotDrawer.jsx'; 
 
 const ProtectedRoute = ({ children, requiredPermission }) => {
     const { user, loading } = useAuth();
-    
-    // STATE ĐIỀU KHIỂN AI DRAWER
+
     const [isCopilotOpen, setIsCopilotOpen] = useState(false);
     
     if (loading) return <div className="h-screen bg-[#0f172a]"></div>;
     if (!user) return <Navigate to="/login" />;
-    
     if (requiredPermission && user.permissions && !user.permissions[requiredPermission]) {
         return <Navigate to="/" />; 
     }
-
     return (
         <div className="flex h-screen overflow-hidden bg-[#0f172a] relative">
-            {/* Sidebar bên trái */}
+
             <Sidebar />
-            
-            {/* Khu vực nội dung chính */}
             <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Header truyền hàm mở Drawer vào Navbar */}
                 <Navbar onOpenCopilot={() => setIsCopilotOpen(true)} />
-                
-                {/* Nội dung trang */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto p-8 relative">
                     <div className="max-w-7xl mx-auto h-full"> 
                         {children}
                     </div>
                 </main>
             </div>
-            
-            {/* NHÚNG DRAWER VÀO LAYOUT TOÀN CỤC */}
+
             <GlobalCopilotDrawer 
                 isOpen={isCopilotOpen} 
                 onClose={() => setIsCopilotOpen(false)} 
@@ -80,6 +70,7 @@ function App() {
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/assets" element={<ProtectedRoute requiredPermission="asset_view"><AssetList /></ProtectedRoute>} />
                     <Route path="/assets/:hwid" element={<ProtectedRoute requiredPermission="asset_view"><AssetDetail /></ProtectedRoute>} /> 
+                    <Route path="/assets/types" element={<ProtectedRoute requiredPermission="system_config"><AssetTypeManagement /></ProtectedRoute>} />
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/incidents" element={<ProtectedRoute requiredPermission="incident_view"><IncidentList /></ProtectedRoute>} />
                     <Route path="/incidents/:id" element={<IncidentDetail />} />
@@ -88,14 +79,8 @@ function App() {
 
                     {/* Compliance & Knowledge Base Routes */}
                     <Route path="/policy-center" element={<ProtectedRoute requiredPermission="policy_view"><PolicyCenter /></ProtectedRoute>} />
-                    
-                    {/* Lưu ý: Tạm thời bỏ requiredPermission cho Docs vì DB chưa có quyền này */}
                     <Route path="/docs" element={<ProtectedRoute><Documents requiredPermission="doc_view" /></ProtectedRoute>} />
-                    
-                    {/* System Admin Routes */}
                     <Route path="/users" element={<ProtectedRoute requiredPermission="user_view"><UserManagement /></ProtectedRoute>} />
-
-                    {/* Software Management Routes */}
                     <Route path="/versions" element={<ProtectedRoute><VersionsPage /></ProtectedRoute>} />
                 </Routes>
             </WebSocketProvider>

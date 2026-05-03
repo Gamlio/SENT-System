@@ -9,6 +9,8 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [showTypeModal, setShowTypeModal] = useState(false);
     const [isLoadingType, setIsLoadingType] = useState(false);
+    const [assetTypes, setAssetTypes] = useState([]);
+    const [isLoadingTypes, setIsLoadingTypes] = useState(false);
     const menuRef = useRef(null);
     const [dialogConfig, setDialogConfig] = useState({
         isOpen: false,
@@ -30,13 +32,30 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Lấy danh sách từ Backend khi mở Modal
+    useEffect(() => {
+        const fetchTypes = async () => {
+            try {
+                setIsLoadingTypes(true);
+                const res = await axios.get('/assets/types');
+                setAssetTypes(res.data.data || res.data || []);
+            } catch (error) {
+                console.error('Lỗi khi tải danh sách loại thiết bị:', error);
+            } finally {
+                setIsLoadingTypes(false);
+            }
+        };
+        if (showTypeModal) fetchTypes();
+    }, [showTypeModal]);
+
     // Gọi API cập nhật phân loại
-   const handleChangeType = async (type) => {
+   const handleChangeType = async (typeId) => {
         if (isLoadingType) return; // Ngăn chặn người dùng bấm nhiều lần (Race condition)
         setIsLoadingType(true);
         try {
-            await axios.put(`/assets/${asset.asset_hwid}/device-type`, { device_type: type });
+            await axios.put(`/assets/${asset.asset_hwid}/device-type`, { device_type: typeId });
             setShowTypeModal(false);
+            if (onRefresh) onRefresh();
             setDialogConfig({
                 isOpen: true,
                 title: 'Thành công!',
@@ -148,46 +167,49 @@ const handleDeleteasset = () => {
                             <button onClick={() => setShowTypeModal(false)} className="text-slate-500 hover:text-white transition"><X size={20}/></button>
                         </div>
                         
-                        <div className="p-4 space-y-3">
-                            <button disabled={isLoadingType} onClick={() => handleChangeType('SERVER')} className={`w-full flex flex-col p-4 rounded-2xl border transition group relative overflow-hidden ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${asset.device_type === 'SERVER' ? 'bg-purple-500/20 border-purple-500' : 'border-slate-700 bg-slate-800/50 hover:bg-purple-500/10 hover:border-purple-500/50'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-purple-500/20 text-purple-400 rounded-lg"><Server size={20}/></div>
-                                    <div className="text-left">
-                                        <p className={`text-sm font-bold transition ${asset.device_type === 'SERVER' ? 'text-purple-400' : 'text-white group-hover:text-purple-400'}`}>Máy chủ (Tier 1)</p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">Hệ số rủi ro: <span className="font-bold text-white">x1.5</span> | Dành cho Server, Giám đốc</p>
-                                    </div>
+                        <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                            {isLoadingTypes ? (
+                                <div className="flex flex-col items-center justify-center py-8 text-indigo-500 gap-3">
+                                    <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest animate-pulse">Đang tải phân loại...</span>
                                 </div>
-                            </button>
-
-                            <button disabled={isLoadingType} onClick={() => handleChangeType('IT_ADMIN')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${asset.device_type === 'IT_ADMIN' ? 'bg-blue-500/20 border-blue-500' : 'border-slate-700 bg-slate-800/50 hover:bg-blue-500/10 hover:border-blue-500/50'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg"><Briefcase size={20}/></div>
-                                    <div className="text-left">
-                                        <p className={`text-sm font-bold transition ${asset.device_type === 'IT_ADMIN' ? 'text-blue-400' : 'text-white group-hover:text-blue-400'}`}>IT Admin (Tier 2)</p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">Hệ số rủi ro: <span className="font-bold text-white">x1.2</span> | Dành cho IT, Quản trị viên</p>
-                                    </div>
+                            ) : assetTypes.length > 0 ? (
+                                assetTypes.map((type) => (
+                                    <button 
+                                        key={type.ID || type.id}
+                                        disabled={isLoadingType}
+                                        onClick={() => handleChangeType(type.ID || type.id)}
+                                        className={`w-full flex items-center p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${asset.device_type === (type.ID || type.id) ? 'bg-purple-500/20 border-purple-500' : 'border-slate-700 bg-slate-800/50 hover:bg-purple-500/10 hover:border-purple-500/50'}`}
+                                    >
+                                        <div className="text-left flex-1">
+                                            <p className={`text-sm font-bold transition ${asset.device_type === (type.ID || type.id) ? 'text-purple-400' : 'text-white group-hover:text-purple-400'}`}>
+                                                {type.name}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 mt-0.5 italic line-clamp-1">
+                                                {type.description || 'Không có mô tả chi tiết'}
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-col items-end justify-center ml-3 shrink-0">
+                                            <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase mb-0.5">
+                                                Risk Weight
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black font-mono border ${
+                                                (type.risk_weight || 1) >= 1.5 
+                                                    ? 'bg-red-500/10 text-red-400 border-red-500/30' 
+                                                    : (type.risk_weight || 1) > 1.0 
+                                                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' 
+                                                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                            }`}>
+                                                x{Number(type.risk_weight || 1).toFixed(1)}
+                                            </span>
+                                        </div>
+                                    </button>
+                                ))
+                            ) : (
+                                <div className="text-center py-6 text-slate-500 text-[10px] font-bold uppercase tracking-widest border-2 border-dashed border-slate-800 rounded-lg">
+                                    Không tìm thấy phân loại thiết bị
                                 </div>
-                            </button>
-
-                            <button disabled={isLoadingType} onClick={() => handleChangeType('OFFICE')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${(!asset.device_type || asset.device_type === 'OFFICE') ? 'bg-slate-700 border-slate-500' : 'border-slate-700 bg-slate-800/50 hover:bg-slate-700'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-slate-600 text-white rounded-lg"><Cpu size={20}/></div>
-                                    <div className="text-left">
-                                        <p className="text-sm font-bold text-white">Văn phòng (Tier 3)</p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">Hệ số rủi ro: <span className="font-bold text-white">x1.0</span> | Máy tính làm việc tiêu chuẩn</p>
-                                    </div>
-                                </div>
-                            </button>
-
-                            <button disabled={isLoadingType} onClick={() => handleChangeType('GUEST')} className={`w-full flex flex-col p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${asset.device_type === 'GUEST' ? 'bg-stone-500/20 border-stone-500' : 'border-slate-700 bg-slate-800/50 hover:bg-stone-500/10 hover:border-stone-500/50'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-stone-500/20 text-stone-400 rounded-lg"><UserX size={20}/></div>
-                                    <div className="text-left">
-                                        <p className={`text-sm font-bold transition ${asset.device_type === 'GUEST' ? 'text-stone-400' : 'text-white group-hover:text-stone-400'}`}>Máy Khách (Tier 4)</p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">Hệ số rủi ro: <span className="font-bold text-white">x0.8</span> | Máy Public, Lễ tân</p>
-                                    </div>
-                                </div>
-                            </button>
+                            )}
                         </div>
                     </div>
                 </div>
