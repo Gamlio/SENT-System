@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -73,9 +74,9 @@ func SecurityValidationMiddleware() gin.HandlerFunc {
 				return
 			}
 		} else {
-			// Các request JSON bình thường (Telemetry, Login...) vẫn bị khóa ở 100KB
-			if c.Request.ContentLength > 100*1024 {
-				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Request body quá lớn (max 100KB)"})
+			// Các request JSON bình thường (Telemetry, Login...) vẫn bị khóa ở 15MB
+			if c.Request.ContentLength > 15*1024*1024 {
+				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Request body quá lớn (max 15MB)"})
 				c.Abort()
 				return
 			}
@@ -95,9 +96,9 @@ func assetAuthSecurityMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hwid := c.Param("hwid")
 
-		// Validate AssetHWID  format (max 64 eric)
-		if len(hwid) > 64 || !regexp.MustCompile(`^[a-zA-Z0-9]*$`).MatchString(hwid) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid AssetHWID  format"})
+		// Nới lỏng: Cho phép Chữ, Số, Gạch ngang (-), Gạch dưới (_), Hai chấm (:), và Dấu chấm (.)
+		if len(hwid) > 128 || !regexp.MustCompile(`^[a-zA-Z0-9\-_:\.\{\}]*$`).MatchString(hwid) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Định dạng ID máy trạm không hợp lệ"})
 			c.Abort()
 			return
 		}
@@ -109,22 +110,24 @@ func assetAuthSecurityMiddleware() gin.HandlerFunc {
 // ValidateUserCreationMiddleware: Middleware riêng cho user creation endpoints
 func ValidateUserCreationMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Đọc body vào một buffer để có thể đọc lại sau
-		var buf bytes.Buffer
-		tee := io.TeeReader(c.Request.Body, &buf)
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể đọc dữ liệu request"})
+			c.Abort()
+			return
+		}
 
-		// Phân tích bằng struct cụ thể, KHÔNG dùng map[string]interface{} để tránh Reflection GC
 		var req struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
 		}
-		if err := json.NewDecoder(tee).Decode(&req); err != nil {
+		if err := json.Unmarshal(bodyBytes, &req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 			c.Abort()
 			return
 		}
 		// Nạp lại dữ liệu vào Body để Handler phía sau có thể đọc
-		c.Request.Body = io.NopCloser(&buf)
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 		// Validate password strength
 		if req.Password != "" {
@@ -146,10 +149,13 @@ func ValidateAssetPayloadMiddleware() gin.HandlerFunc {
 		var req struct {
 			HWID    string `json:"asset_hwid"`
 			LogType string `json:"log_type"`
+			Type    string `json:"type"`
 		}
 
 		// Tận dụng raw_body từ AssetHMACAuth nếu có để tránh copy bộ nhớ lần 2
 		if rawBody, exists := c.Get("raw_body"); exists {
+			// Debug: In ra dữ liệu thực tế Agent đang gửi lên TRƯỚC KHI unmarshal
+			fmt.Println("Payload Received (Context):", string(rawBody.([]byte)))
 			if err := json.Unmarshal(rawBody.([]byte), &req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid asset payload format"})
 				c.Abort()
@@ -157,20 +163,27 @@ func ValidateAssetPayloadMiddleware() gin.HandlerFunc {
 			}
 		} else {
 			// Fallback nếu không có HMAC middleware phía trước
-			var buf bytes.Buffer
-			tee := io.TeeReader(c.Request.Body, &buf)
-			if err := json.NewDecoder(tee).Decode(&req); err != nil {
+			bodyBytes, err := io.ReadAll(c.Request.Body)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể đọc dữ liệu payload"})
+				c.Abort()
+				return
+			}
+			// Debug: In ra dữ liệu thực tế Agent đang gửi lên
+			fmt.Println("Payload Received (Fallback):", string(bodyBytes))
+			if err := json.Unmarshal(bodyBytes, &req); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid asset payload format"})
 				c.Abort()
 				return
 			}
-			c.Request.Body = io.NopCloser(&buf)
+			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 
 		// Validate AssetHWID
 		if req.HWID != "" {
-			if len(req.HWID) > 64 || !regexp.MustCompile(`^[a-zA-Z0-9]*$`).MatchString(req.HWID) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid AssetHWID  format"})
+			// Tăng độ dài lên 128 ký tự để bao quát mọi loại thiết bị
+			if len(req.HWID) > 128 || !regexp.MustCompile(`^[a-zA-Z0-9\-_:\.\{\}]*$`).MatchString(req.HWID) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Định dạng ID máy trạm không hợp lệ"})
 				c.Abort()
 				return
 			}
@@ -178,8 +191,8 @@ func ValidateAssetPayloadMiddleware() gin.HandlerFunc {
 
 		// Validate LogType
 		if req.LogType != "" {
-			if !regexp.MustCompile(`^[a-zA-Z0-9_]*$`).MatchString(req.LogType) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid LogType format"})
+			if !regexp.MustCompile(`^[a-zA-Z0-9\-_:\.]*$`).MatchString(req.LogType) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Định dạng LogType không hợp lệ"})
 				c.Abort()
 				return
 			}

@@ -158,7 +158,7 @@ const AssetDetail = () => {
                     
                     {/* TABS HEADER TRÀN NGANG */}
                     <div className="flex border-b border-slate-800 bg-[#0A101D] shrink-0 overflow-x-auto custom-scrollbar">
-                        <TabButton active={activeTab === 'LOGS'} onClick={() => setActiveTab('LOGS')} icon={ShieldAlert} label={`Alert Logs (${logs.length})`} color="text-red-400" />
+                        <TabButton active={activeTab === 'LOGS'} onClick={() => setActiveTab('LOGS')} icon={ShieldAlert} label={`Alert Logs (${logs?.length})`} color="text-red-400" />
                         <TabButton active={activeTab === 'SOFTWARE'} onClick={() => setActiveTab('SOFTWARE')} icon={Package} label={`Software (${asset.software?.length || 0})`} color="text-blue-400" />
                         <TabButton active={activeTab === 'USB'} onClick={() => setActiveTab('USB')} icon={Usb} label={`USB History (${asset.usb_logs?.length || 0})`} color="text-emerald-400" />
                         <TabButton active={activeTab === 'PORTS'} onClick={() => setActiveTab('PORTS')} icon={Network} label={`Open Ports (${asset.open_ports?.length || 0})`} color="text-amber-400" />

@@ -24,6 +24,11 @@ type Config struct {
 var Current Config
 
 func LoadOrBootstrap(hwid, hostname, ipAddress string) {
+	if hwid == "" {
+		fmt.Println("❌ Lỗi nghiêm trọng: Không thể định danh thiết bị (HWID rỗng). Vui lòng kiểm tra lại quyền truy cập hệ thống.")
+		os.Exit(1)
+	}
+
 	file, err := os.ReadFile(CONFIG_FILE)
 	if err == nil {
 		json.Unmarshal(file, &Current)
@@ -32,9 +37,25 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 		updateBackendURL()
 
 		if Current.SecretKey != "" {
+			// Cảnh báo nếu HWID trong file khác với HWID của hệ thống hiện tại
+			if Current.HWID != "" && Current.HWID != hwid {
+				fmt.Printf("⚠️ CẢNH BÁO: HWID đã thay đổi từ %s sang %s. Quá trình giải mã SecretKey có thể thất bại và gây lỗi 403!\n", Current.HWID, hwid)
+			}
+
+			needsUpdate := Current.HWID == ""
 			Current.HWID = hwid
+
 			// Giải mã SecretKey khi nạp vào RAM
 			Current.SecretKey = deobfuscateKey(Current.SecretKey, hwid)
+
+			// Nếu cấu hình trước đó thiếu HWID, ghi đè lại file để đồng bộ
+			if needsUpdate {
+				tempSecret := Current.SecretKey
+				Current.SecretKey = obfuscateKey(tempSecret, hwid)
+				data, _ := json.MarshalIndent(Current, "", "  ")
+				os.WriteFile(CONFIG_FILE, data, 0600)
+				Current.SecretKey = tempSecret
+			}
 			return
 		}
 	}
@@ -60,6 +81,11 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 }
 
 func enrollToServer(token, hwid, hostname, ipAddress string) bool {
+	if hwid == "" {
+		fmt.Println("❌ Lỗi: Không thể đăng ký do HWID rỗng.")
+		return false
+	}
+
 	payload := map[string]string{
 		"asset_hwid": hwid,
 		"hostname":   hostname,
@@ -81,6 +107,9 @@ func enrollToServer(token, hwid, hostname, ipAddress string) bool {
 	json.NewDecoder(resp.Body).Decode(&result)
 
 	Current.EnrollToken = token
+
+	// Sửa lỗi: Cập nhật HWID vào struct TRƯỚC khi ghi xuống đĩa để tránh ghi rỗng
+	Current.HWID = hwid
 
 	// Mã hóa (Obfuscate) SecretKey trước khi lưu xuống đĩa
 	rawSecret := result["secret_key"].(string)

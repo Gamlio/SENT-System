@@ -69,8 +69,8 @@ func AssetHMACAuth() gin.HandlerFunc {
 		}
 
 		now := time.Now().Unix()
-		// Cho phép lệch tối đa 10 giây để giảm thiểu rủi ro
-		if now-reqTimestamp > 10 || reqTimestamp-now > 10 {
+		// Cho phép lệch tối đa 60 giây để giảm thiểu rủi ro
+		if now-reqTimestamp > 60 || reqTimestamp-now > 60 {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Yêu cầu đã hết hạn (Replay Attack Protection)"})
 			c.Abort()
 			return
@@ -94,7 +94,6 @@ func AssetHMACAuth() gin.HandlerFunc {
 
 		// 5. Streaming HMAC: Tính toán mã băm ĐỒNG THỜI khi đọc Body (Zero-Copy memory optimization)
 		mac := hmac.New(sha256.New, []byte(secretKey))
-		mac.Write([]byte(ts)) // Ký kèm cả timestamp
 
 		// Dùng io.TeeReader để vừa đọc request body vừa đẩy dữ liệu vào hasher
 		tee := io.TeeReader(c.Request.Body, mac)

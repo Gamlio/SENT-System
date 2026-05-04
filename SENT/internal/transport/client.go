@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -28,6 +29,7 @@ func GetAssetClient() *AssetClient {
 func (c *AssetClient) SendPayload(hwid, hostname, logType string, data interface{}) string {
 
 	payload := map[string]interface{}{
+		"type":       "DATA",
 		"asset_hwid": hwid,
 		"hostname":   hostname,
 		"log_type":   logType,
@@ -56,7 +58,7 @@ func (c *AssetClient) SendPayload(hwid, hostname, logType string, data interface
 	sequence := strconv.FormatInt(time.Now().UnixNano(), 10)
 	req.Header.Set("X-Sent-Timestamp", timestamp)
 	req.Header.Set("X-Sent-Sequence", sequence)
-
+	req.Header.Set("X-Asset-HWID", hwid)
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		log.Printf("Lỗi kết nối tới server (%s): %v", logType, err)
@@ -64,8 +66,13 @@ func (c *AssetClient) SendPayload(hwid, hostname, logType string, data interface
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusForbidden {
-		return "ISOLATED" // Trả về tín hiệu máy đã bị backend cách ly
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body) // Đọc nội dung lỗi từ Backend
+		log.Printf("🚨 Server trả về lỗi %d: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusForbidden {
+			return "ISOLATED" // Trả về tín hiệu máy đã bị backend cách ly
+		}
+		return "ERROR"
 	}
 
 	return "OK"

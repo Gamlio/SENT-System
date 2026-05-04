@@ -72,7 +72,7 @@ func main() {
 
 		assetPublicGroup := v1Group.Group("/assets")
 		{
-			assetPublicGroup.POST("/push", middleware.AssetFloodProtectionMiddleware(), middleware.ValidateAssetPayloadMiddleware(), assets.PushDataHandler)
+			assetPublicGroup.POST("/push", middleware.AssetHMACAuth(), middleware.AssetFloodProtectionMiddleware(), middleware.ValidateAssetPayloadMiddleware(), assets.PushDataHandler)
 			assetPublicGroup.POST("/enroll", middleware.AssetEnrollRateLimitMiddleware(), assets.EnrollAsset)
 			assetPublicGroup.GET("/sync-policies", assets.GetActiveEnrollmentToken, policies.SyncPoliciesForAsset)
 		}
@@ -98,6 +98,9 @@ func main() {
 				assetsGroup.GET("", assets.GetAssets)
 				assetsGroup.GET("/:hwid", assets.GetAssetDetail)
 				assetsGroup.GET("/:hwid/logs", assets.GetAssetLogs)
+				assetsGroup.GET("/:hwid/software", assets.GetAssetSoftware)
+				assetsGroup.GET("/:hwid/usb", assets.GetAssetUSB)
+				assetsGroup.GET("/:hwid/ports", assets.GetAssetPorts)
 				assetsGroup.GET("/active-token", assets.GetActiveEnrollmentToken)
 				assetsGroup.POST("/generate-token", assets.GenerateEnrollmentToken)
 				assetsGroup.PUT("/:hwid/assign", assets.AssignManager)
