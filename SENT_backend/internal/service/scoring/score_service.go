@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sync"
 	"time"
 
 	"sent_backend/internal/database"
@@ -60,9 +61,29 @@ type ScoreService struct {
 	db *gorm.DB
 }
 
+// Áp dụng cơ chế Debounce đồng thời cho nhiều Assets, tránh Spam truy vấn.
+var scoreTimers sync.Map
+
 func RecalculateRiskScore(assetAssetID string) {
+	if timer, ok := scoreTimers.Load(assetAssetID); ok {
+		// Nếu đang trong hàng đợi tính điểm thì chỉ cần reset lại Timer
+		timer.(*time.Timer).Reset(2 * time.Second)
+		return
+	}
+
+	// Debounce: Chờ thêm 2 giây để đón tất cả log đồng thời (ví dụ cắm nhiều USB).
+	// Gom lại xử lý 1 lần.
+	timer := time.AfterFunc(2*time.Second, func() {
+		scoreTimers.Delete(assetAssetID)
+		processRiskScore(assetAssetID)
+	})
+	scoreTimers.Store(assetAssetID, timer)
+}
+
+func processRiskScore(assetAssetID string) {
 	var asset models.Asset
-	if err := database.DB.Where("asset_hwid = ?", assetAssetID).First(&asset).Error; err != nil {
+	// Tối ưu DB: Select chỉ lấy trường cần thiết, Preload AssetType để tránh lỗi
+	if err := database.DB.Select("id", "asset_hwid", "hostname", "risk_score", "trust_score", "asset_type_id").Preload("AssetType").Where("asset_hwid = ?", assetAssetID).First(&asset).Error; err != nil {
 		return
 	}
 
@@ -167,13 +188,16 @@ func RecalculateRiskScore(assetAssetID string) {
 
 	// 3. TRỌNG SỐ NGỮ CẢNH (C) VÀ HỆ SỐ PHƠI NHIỄM (V)
 	cFactor := 1.0
-	switch asset.AssetType.Name {
-	case "SERVER":
-		cFactor = 2.0 // Rất cao
-	case "IT_ADMIN":
-		cFactor = 1.5 // Cao
-	default:
-		cFactor = 1.0 // Trung bình
+	// Xử lý nil pointer để tránh Panic khi chạy
+	if asset.AssetType != nil {
+		switch asset.AssetType.Name {
+		case "SERVER":
+			cFactor = 2.0 // Rất cao
+		case "IT_ADMIN":
+			cFactor = 1.5 // Cao
+		default:
+			cFactor = 1.0 // Trung bình
+		}
 	}
 
 	vFactor := 1.0 + (float64(len(openPorts)) * 0.05) // Mỗi port mở tăng 5%

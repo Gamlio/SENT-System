@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	db         *bbolt.DB
-	fileBucket = []byte("FileMetadata")
-	memCache   sync.Map
+	db          *bbolt.DB
+	fileBucket  = []byte("FileMetadata")
+	stateBucket = []byte("ModuleStates")
+	memCache    sync.Map
 )
 
 // FileMetadata stores the last known state of a file, including its hash.
@@ -32,8 +33,13 @@ func InitLocalDB(agentDataPath string) error {
 	}
 
 	return db.Update(func(tx *bbolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists(fileBucket)
-		return err
+		if _, err := tx.CreateBucketIfNotExists(fileBucket); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists(stateBucket); err != nil {
+			return err
+		}
+		return nil
 	})
 }
 
@@ -123,5 +129,39 @@ func UpdateFileMetadataBatch(metas map[string]FileMetadata) error {
 			}
 		}
 		return nil
+	})
+}
+
+// IsDataNew kiểm tra xem dữ liệu của module có thay đổi so với lần gửi cuối không
+func IsDataNew(moduleName string, currentHash string) bool {
+	var isNew bool = true // Mặc định là mới nếu chưa có record
+	if db == nil {
+		return true
+	}
+	db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(stateBucket)
+		if b == nil {
+			return nil
+		}
+		oldHash := b.Get([]byte(moduleName))
+		if oldHash != nil && string(oldHash) == currentHash {
+			isNew = false
+		}
+		return nil
+	})
+	return isNew
+}
+
+// UpdateModuleState lưu lại mã băm trạng thái mới nhất của module
+func UpdateModuleState(moduleName string, currentHash string) error {
+	if db == nil {
+		return nil
+	}
+	return db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(stateBucket)
+		if b == nil {
+			return nil
+		}
+		return b.Put([]byte(moduleName), []byte(currentHash))
 	})
 }

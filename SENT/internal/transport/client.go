@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"SENT/internal/config"
@@ -24,6 +25,8 @@ func GetAssetClient() *AssetClient {
 		HTTPClient: &http.Client{Timeout: 15 * time.Second},
 	}
 }
+
+var requestSequence int64 // Biến global trong package transport
 
 // SendPayload gửi dữ liệu log thông thường (POST)
 func (c *AssetClient) SendPayload(hwid, hostname, logType string, data interface{}) string {
@@ -55,7 +58,8 @@ func (c *AssetClient) SendPayload(hwid, hostname, logType string, data interface
 
 	// Bổ sung header chống Replay Attack
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	sequence := strconv.FormatInt(time.Now().UnixNano(), 10)
+	seq := atomic.AddInt64(&requestSequence, 1) // Đảm bảo không bao giờ trùng
+	sequence := strconv.FormatInt(time.Now().UnixNano()+seq, 10)
 	req.Header.Set("X-Sent-Timestamp", timestamp)
 	req.Header.Set("X-Sent-Sequence", sequence)
 	req.Header.Set("X-Asset-HWID", hwid)

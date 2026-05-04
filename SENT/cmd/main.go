@@ -25,11 +25,19 @@ func main() {
 		log.Println("SENT đang tự động khởi động lại hoặc thoát do lỗi...")
 	}()
 
+	// Tạo các thư mục cần thiết nếu chưa có
+	os.MkdirAll("data", 0755)
+	os.MkdirAll("config", 0755)
+
+	err := collector.InitLocalDB("data")
+	if err != nil {
+		log.Fatalf("Không thể khởi tạo DB: %v", err)
+	}
 	defer collector.CloseLocalDB() // Đảm bảo nhả file agent_cache.db.lock khi thoát
 
-	err := godotenv.Load()
+	err = godotenv.Load("config/.env")
 	if err != nil {
-		log.Println("⚠️  Cảnh báo: Không tìm thấy file .env, sử dụng cấu hình mặc định.")
+		log.Println("⚠️  Cảnh báo: Không tìm thấy file .env trong config/, sử dụng cấu hình mặc định.")
 	}
 
 	if !utils.IsAdmin() {
@@ -64,47 +72,52 @@ func main() {
 	fmt.Printf(" [INFO] Đã nạp %d module cảm biến...\n", len(collector.Registry))
 
 	// Tách chu kỳ quét để tối ưu I/O Disk & CPU
-	usbTicker := time.NewTicker(5 * time.Second)   // Tạm thời Polling nhanh cho USB (chờ nâng cấp Event-driven)
-	fastTicker := time.NewTicker(30 * time.Second) // Các module nhẹ (Network, AV, Firewall)
-	slowTicker := time.NewTicker(5 * time.Minute)  // Các module nặng (Software Hash)
-	hourlyTicker := time.NewTicker(1 * time.Hour)  // Inventory (Ít thay đổi)
+	immediateTicker := time.NewTicker(5 * time.Second) // Tức khắc (USB)
+	fiveMinTicker := time.NewTicker(5 * time.Minute)   // Nhóm 5 phút (Port, Data Transfer, AV, Firewall)
+	hourlyTicker := time.NewTicker(1 * time.Hour)      // Nhóm 1 tiếng (Software)
+	tenHourTicker := time.NewTicker(10 * time.Hour)    // Nhóm 5-10 tiếng (Inventory)
 
 	// Gửi toàn bộ trạng thái Baseline ngay lần đầu Agent khởi động
-	runSensors(client, AssetHWID, hostname, "inventory")
-	runSensors(client, AssetHWID, hostname, "software")
-	runSensors(client, AssetHWID, hostname, "fast")
-	runSensors(client, AssetHWID, hostname, "usb")
+	runSensorsBatch(client, AssetHWID, hostname, "immediate")
+	runSensorsBatch(client, AssetHWID, hostname, "five_min")
+	runSensorsBatch(client, AssetHWID, hostname, "hourly")
+	runSensorsBatch(client, AssetHWID, hostname, "ten_hour")
 
 	for {
 		select {
-		case <-usbTicker.C:
-			runSensors(client, AssetHWID, hostname, "usb")
-		case <-fastTicker.C:
-			runSensors(client, AssetHWID, hostname, "fast")
-		case <-slowTicker.C:
-			runSensors(client, AssetHWID, hostname, "software")
+		case <-immediateTicker.C:
+			runSensorsBatch(client, AssetHWID, hostname, "immediate")
+		case <-fiveMinTicker.C:
+			runSensorsBatch(client, AssetHWID, hostname, "five_min")
 		case <-hourlyTicker.C:
-			runSensors(client, AssetHWID, hostname, "inventory")
+			runSensorsBatch(client, AssetHWID, hostname, "hourly")
+		case <-tenHourTicker.C:
+			runSensorsBatch(client, AssetHWID, hostname, "ten_hour")
 		}
 	}
 }
 
-func runSensors(client *transport.AssetClient, hwid, hostname string, group string) {
+func runSensorsBatch(client *transport.AssetClient, hwid, hostname string, group string) {
+	batchData := make(map[string]interface{})
+	batchHashes := make(map[string]string)
+	hasNewData := false
+
 	for _, sensor := range collector.Registry {
 		name := sensor.Name()
 
 		// Phân loại nhóm chu kỳ quét
 		var expectedGroup string
 		switch name {
-		case "inventory":
-			expectedGroup = "inventory"
-		case "software":
-			expectedGroup = "software"
 		case "usb":
-			expectedGroup = "usb"
+			expectedGroup = "immediate"
+		case "port", "data_transfer", "antivirus":
+			expectedGroup = "five_min"
+		case "software":
+			expectedGroup = "hourly"
+		case "inventory":
+			expectedGroup = "ten_hour"
 		default:
-			// Các module còn lại (port, data_transfer, antivirus, firewall)
-			expectedGroup = "fast"
+			expectedGroup = "five_min"
 		}
 
 		// Chỉ kích hoạt sensor nếu đúng chu kỳ của nhóm
@@ -114,9 +127,28 @@ func runSensors(client *transport.AssetClient, hwid, hostname string, group stri
 
 		data, err := sensor.Collect()
 		if err == nil && data != nil {
-			go func(logType string, logData interface{}) {
-				client.SendPayload(hwid, hostname, logType, logData)
-			}(sensor.Name(), data)
+			// 1. Tính toán vân tay (Hash) của bộ dữ liệu hiện tại
+			currentHash := utils.CalculateHash(data)
+
+			// 2. So sánh với bản cũ trong DB
+			if collector.IsDataNew(sensor.Name(), currentHash) {
+				batchData[name] = data
+				batchHashes[name] = currentHash
+				hasNewData = true
+			}
 		}
+	}
+
+	if hasNewData {
+		go func(groupName string, payload interface{}, hashes map[string]string) {
+			// 3. Gửi payload gom nhóm, nếu Server chưa phê duyệt (trả về lỗi) thì không lưu state
+			status := client.SendPayload(hwid, hostname, "batch_"+groupName, payload)
+			// 4. Chỉ lưu lại trạng thái mới để lần sau không gửi trùng khi Server đã lưu OK
+			if status == "OK" {
+				for modName, hash := range hashes {
+					collector.UpdateModuleState(modName, hash)
+				}
+			}
+		}(group, batchData, batchHashes)
 	}
 }

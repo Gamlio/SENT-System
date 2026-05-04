@@ -11,7 +11,10 @@ func ProcessAntivirus(asset models.Asset, data interface{}) {
 	var record struct {
 		HasThreat bool `json:"has_threat"`
 	}
-	bytes, _ := json.Marshal(data)
+	bytes, err := GetBytesFromData(data)
+	if err != nil {
+		return
+	}
 
 	if err := json.Unmarshal(bytes, &record); err == nil && record.HasThreat {
 		// Khởi tạo service sự cố để xử lý gom nhóm tự động

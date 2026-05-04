@@ -17,10 +17,8 @@ func ProcessInventory(asset models.Asset, data interface{}) {
 		return
 	}
 
-	var bytes []byte
-	if raw, ok := data.(json.RawMessage); ok {
-		bytes = raw
-	} else {
+	bytes, err := GetBytesFromData(data)
+	if err != nil {
 		return
 	}
 

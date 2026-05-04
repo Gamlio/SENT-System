@@ -38,11 +38,9 @@ func cleanupExpiredCache() {
 }
 
 func ProcessDataTransfer(asset models.Asset, data interface{}) {
-	// LOẠI BỎ CHAI CỔ CPU TỪ MARSHALLING: Ép kiểu trực tiếp từ json.RawMessage
-	var bytes []byte
-	if raw, ok := data.(json.RawMessage); ok {
-		bytes = raw
-	} else {
+	// LOẠI BỎ CHAI CỔ CPU TỪ MARSHALLING NẾU CÓ THỂ
+	bytes, err := GetBytesFromData(data)
+	if err != nil {
 		return // Dữ liệu không hợp lệ
 	}
 

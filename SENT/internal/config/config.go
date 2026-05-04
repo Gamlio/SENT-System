@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const CONFIG_FILE = "sent_config.json"
+const CONFIG_FILE = "config/sent_config.json"
 
 type Config struct {
 	EnrollToken string `json:"enroll_token"`

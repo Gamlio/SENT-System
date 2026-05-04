@@ -20,10 +20,8 @@ type assetTelemetryRecord struct {
 }
 
 func ProcessPorts(asset models.Asset, data interface{}) {
-	var bytes []byte
-	if raw, ok := data.(json.RawMessage); ok {
-		bytes = raw
-	} else {
+	bytes, err := GetBytesFromData(data)
+	if err != nil {
 		return
 	}
 

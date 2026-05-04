@@ -33,11 +33,8 @@ type softwareViolation struct {
 }
 
 func ProcessSoftware(asset models.Asset, data interface{}) {
-	// TỐI ƯU HIỆU NĂNG: Không dùng json.Marshal, lấy trực tiếp mảng byte
-	var bytes []byte
-	if raw, ok := data.(json.RawMessage); ok {
-		bytes = raw
-	} else {
+	bytes, err := GetBytesFromData(data)
+	if err != nil {
 		return
 	}
 
@@ -141,10 +138,8 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 
 // Xử lý nạp Baseline ban đầu
 func HandleSoftwareBaseline(asset models.Asset, data interface{}) {
-	var bytes []byte
-	if raw, ok := data.(json.RawMessage); ok {
-		bytes = raw
-	} else {
+	bytes, err := GetBytesFromData(data)
+	if err != nil {
 		return
 	}
 

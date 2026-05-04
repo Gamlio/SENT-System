@@ -11,7 +11,10 @@ func ProcessFirewall(asset models.Asset, data interface{}) {
 	var record struct {
 		FirewallOff bool `json:"firewall_off"`
 	}
-	bytes, _ := json.Marshal(data)
+	bytes, err := GetBytesFromData(data)
+	if err != nil {
+		return
+	}
 
 	if err := json.Unmarshal(bytes, &record); err == nil && record.FirewallOff {
 		incSvc := &incidents.IncidentService{}
