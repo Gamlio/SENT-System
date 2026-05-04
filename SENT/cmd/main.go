@@ -77,10 +77,13 @@ func main() {
 	hourlyTicker := time.NewTicker(1 * time.Hour)      // Nhóm 1 tiếng (Software)
 	tenHourTicker := time.NewTicker(10 * time.Hour)    // Nhóm 5-10 tiếng (Inventory)
 
-	// Gửi toàn bộ trạng thái Baseline ngay lần đầu Agent khởi động
+	// Gửi toàn bộ trạng thái Baseline ngay lần đầu Agent khởi động, có khoảng trễ để tránh Replay Attack
 	runSensorsBatch(client, AssetHWID, hostname, "immediate")
+	time.Sleep(500 * time.Millisecond)
 	runSensorsBatch(client, AssetHWID, hostname, "five_min")
+	time.Sleep(500 * time.Millisecond)
 	runSensorsBatch(client, AssetHWID, hostname, "hourly")
+	time.Sleep(500 * time.Millisecond)
 	runSensorsBatch(client, AssetHWID, hostname, "ten_hour")
 
 	for {
