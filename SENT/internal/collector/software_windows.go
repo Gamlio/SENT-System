@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/shirou/gopsutil/v3/process"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -105,7 +104,7 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 	}
 
 	// Bổ sung: Bắt các Portable Binaries / Malware đang chạy ngầm nhưng trốn Registry
-	procs, _ := process.Processes()
+	procs, _ := GetProcessesCached()
 	for _, p := range procs {
 		exePath, err := p.Exe()
 		if err != nil || exePath == "" {

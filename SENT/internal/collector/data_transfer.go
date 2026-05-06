@@ -1,11 +1,9 @@
 package collector
 
 import (
-	"log"
 	"sort"
 
 	"github.com/shirou/gopsutil/v3/net"
-	"github.com/shirou/gopsutil/v3/process"
 )
 
 // 1. Khai báo Struct cho Sensor
@@ -39,33 +37,29 @@ func (s *DataTransferSensor) Collect() (interface{}, error) {
 		totalRecv = netStats[0].BytesRecv
 	}
 
-	// Lấy thông tin I/O theo từng PID
-	procs, err := process.Processes()
-	if err != nil {
-		log.Printf("Telemetry lỗi: Không thể đọc processes: %v", err)
-		return DataTransferRecord{TotalNetSent: totalSent, TotalNetRecv: totalRecv}, nil
-	}
-
+	// [SỬA LỖI LOGIC] Loại bỏ việc dùng p.IOCounters() vì nó trả về số liệu đọc/ghi Disk I/O,
+	// dẫn đến việc báo cáo sai lệch thành hành vi mạng (Data Exfiltration).
+	// Lấy danh sách tiến trình đang mở kết nối mạng để định danh ứng dụng ngốn mạng.
 	var procStats []ProcessNetStats
-	for _, p := range procs {
-		ioc, err := p.IOCounters()
-		if err == nil && (ioc.WriteBytes > 0 || ioc.ReadBytes > 0) {
-			name, _ := p.Name()
-			procStats = append(procStats, ProcessNetStats{
-				PID:       p.Pid,
-				Name:      name,
-				BytesSent: ioc.WriteBytes, // Trên một số OS, IO Bytes có thể map mạng hoặc đĩa
-				BytesRecv: ioc.ReadBytes,
-			})
+	procs, err := GetProcessesCached()
+	if err == nil {
+		for _, p := range procs {
+			conns, err := p.Connections()
+			if err == nil && len(conns) > 0 {
+				name, _ := p.Name()
+				procStats = append(procStats, ProcessNetStats{
+					PID:       p.Pid,
+					Name:      name,
+					BytesSent: uint64(len(conns)), // Dùng số lượng Socket đang mở làm trọng số mô phỏng
+					BytesRecv: 0,
+				})
+			}
 		}
 	}
 
-	// Sắp xếp giảm dần theo lưu lượng gửi đi (Ưu tiên phát hiện Data Exfiltration)
 	sort.Slice(procStats, func(i, j int) bool {
 		return procStats[i].BytesSent > procStats[j].BytesSent
 	})
-
-	// Chỉ lấy Top 5 tiến trình ăn mạng nhiều nhất để giảm kích thước Payload
 	if len(procStats) > 5 {
 		procStats = procStats[:5]
 	}

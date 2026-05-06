@@ -1,18 +1,13 @@
 package assets
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"io"
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	assetService "sent_backend/internal/service/assets"
 	"sent_backend/internal/service/scoring"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -31,12 +26,15 @@ type assetPayload struct {
 
 // PushDataHandler: Cổng tiếp nhận duy nhất
 func PushDataHandler(c *gin.Context) {
-	// Lấy toàn bộ body gốc để xác thực chữ ký (SENT ký trên toàn bộ payload)
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể đọc dữ liệu yêu cầu"})
+	// [BẢO MẬT & HIỆU NĂNG] Middleware AssetHMACAuth đã xử lý HMAC, Replay Attack và đọc an toàn Body.
+	// Lấy trực tiếp dữ liệu thô từ Context để tránh đọc lại Body và ngăn chặn rủi ro DoS (OOM).
+	rawBody, exists := c.Get("raw_body")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể truy xuất dữ liệu đã xác thực"})
 		return
 	}
+
+	bodyBytes := rawBody.([]byte)
 
 	// 1. Bind dữ liệu
 	var req assetPayload
@@ -45,39 +43,8 @@ func PushDataHandler(c *gin.Context) {
 		return
 	}
 
-	// 2. Xác thực danh tính thiết bị
-	var asset models.Asset
-	if err := database.DB.Where("asset_hwid = ?", req.AssetID).First(&asset).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Thiết bị không tồn tại"})
-		return
-	}
-
-	// [BẢO MẬT] Xác thực HMAC & Chống Replay Attack
-	signature := c.GetHeader("X-Sent-Signature")
-	timestampStr := c.GetHeader("X-Sent-Timestamp")
-
-	if signature == "" || timestampStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Yêu cầu từ chối: Thiếu Headers bảo mật"})
-		return
-	}
-
-	// 1. Kiểm tra Timestamp Drift (Chống Replay Attack - trễ tối đa 5 phút)
-	ts, err := strconv.ParseInt(timestampStr, 10, 64)
-	if err != nil || time.Since(time.Unix(ts, 0)).Abs() > 5*time.Minute {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Yêu cầu đã hết hạn (Replay Attack Detected)"})
-		return
-	}
-
-	// 2. Xác thực HMAC-SHA256
-	mac := hmac.New(sha256.New, []byte(asset.SecretKey))
-	mac.Write(bodyBytes) // Dùng TOÀN BỘ raw body thay vì chỉ req.Data
-	if !hmac.Equal([]byte(signature), []byte(hex.EncodeToString(mac.Sum(nil)))) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Chữ ký số không hợp lệ"})
-		return
-	}
-
 	// 3. Quăng dữ liệu vào hàng đợi bất đồng bộ (Goroutine) cho Bộ não xử lý
-	go assetService.ProcessassetData(assetService.AssetPayload{
+	assetService.ProcessassetData(assetService.AssetPayload{
 		Type:     "DATA",
 		LogType:  req.LogType,
 		AssetID:  req.AssetID,
@@ -86,7 +53,7 @@ func PushDataHandler(c *gin.Context) {
 	})
 
 	// 4. Phản hồi ngay lập tức cho asset
-	c.JSON(http.StatusOK, gin.H{"message": "Dữ liệu đã được tiếp nhận", "status": asset.Status})
+	c.JSON(http.StatusOK, gin.H{"message": "Dữ liệu đã được tiếp nhận và lưu trữ an toàn"})
 }
 func UpdateDepartment(c *gin.Context) {
 	hwid := c.Param("hwid")
@@ -133,9 +100,8 @@ func GetAssetSoftware(c *gin.Context) {
 	limit64 := int64(limit)
 
 	filter := bson.M{"asset_hwid": hwid}
-	if orgID, exists := c.Get("org_id"); exists {
-		filter["org_id"] = orgID
-	}
+	// Bắt buộc ép kiểu sang int64 để truy vấn chính xác trên MongoDB
+	filter["org_id"] = int64(c.GetUint("org_id"))
 
 	if search != "" {
 		filter["$or"] = []bson.M{
@@ -190,9 +156,8 @@ func GetAssetUSB(c *gin.Context) {
 	limit64 := int64(limit)
 
 	filter := bson.M{"asset_hwid": hwid}
-	if orgID, exists := c.Get("org_id"); exists {
-		filter["org_id"] = orgID
-	}
+	// Bắt buộc ép kiểu sang int64 để truy vấn chính xác trên MongoDB
+	filter["org_id"] = int64(c.GetUint("org_id"))
 
 	if search != "" {
 		filter["$or"] = []bson.M{
@@ -235,9 +200,8 @@ func GetAssetPorts(c *gin.Context) {
 	limit64 := int64(limit)
 
 	filter := bson.M{"asset_hwid": hwid}
-	if orgID, exists := c.Get("org_id"); exists {
-		filter["org_id"] = orgID
-	}
+	// Bắt buộc ép kiểu sang int64 để truy vấn chính xác trên MongoDB
+	filter["org_id"] = int64(c.GetUint("org_id"))
 
 	if search != "" {
 		orConditions := []bson.M{

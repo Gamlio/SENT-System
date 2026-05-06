@@ -3,17 +3,18 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
 )
 
-func ProcessFirewall(asset models.Asset, data interface{}) {
+func ProcessFirewall(asset models.Asset, data interface{}) error {
 	var record struct {
 		FirewallOff bool `json:"firewall_off"`
 	}
 	bytes, err := GetBytesFromData(data)
 	if err != nil {
-		return
+		return fmt.Errorf("dữ liệu firewall không hợp lệ: %w", err)
 	}
 
 	if err := json.Unmarshal(bytes, &record); err == nil && record.FirewallOff {
@@ -25,4 +26,5 @@ func ProcessFirewall(asset models.Asset, data interface{}) {
 			"P1",
 		)
 	}
+	return nil
 }

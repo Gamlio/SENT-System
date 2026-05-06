@@ -2,8 +2,8 @@ package cache
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -25,6 +25,38 @@ func InitRedis(addr string, password string, db int) error {
 	return RDB.Ping(Ctx).Err()
 }
 
+// ============================= LUA SCRIPTS (ATOMIC OPERATIONS) =============================
+var (
+	// Sliding Window Rate Limiting (Chặn Burst Traffic triệt để)
+	rateLimitScript = redis.NewScript(`
+		redis.call('zremrangebyscore', KEYS[1], 0, tonumber(ARGV[3]) - tonumber(ARGV[2]))
+		local count = redis.call('zcard', KEYS[1])
+		if count < tonumber(ARGV[1]) then
+			redis.call('zadd', KEYS[1], tonumber(ARGV[3]), tonumber(ARGV[3]))
+			redis.call('pexpire', KEYS[1], tonumber(ARGV[2]))
+			return 1
+		end
+		return 0
+	`)
+
+	// Gộp Incr, Expire và Check Limit vào một thao tác nguyên tử
+	floodScript = redis.NewScript(`
+		local reqKey = KEYS[1]; local byteKey = KEYS[2]; local blKey = KEYS[3]
+		local bodySize = tonumber(ARGV[1])
+		local reqs = redis.call('incr', reqKey); if reqs == 1 then redis.call('expire', reqKey, 60) end
+		local bytes = redis.call('incrby', byteKey, bodySize); if bytes == bodySize then redis.call('expire', byteKey, 60) end
+		if reqs > 100 then redis.call('set', blKey, 'blocked', 'EX', 600); return 1
+		elseif bytes > 52428800 then redis.call('set', blKey, 'blocked', 'EX', 600); return 2 end
+		return 0
+	`)
+
+	// Chống Race Condition tuyệt đối khi cập nhật Sequence
+	seqScript = redis.NewScript(`
+		local current = redis.call('get', KEYS[1]); if current and tonumber(ARGV[1]) <= tonumber(current) then return 0 end
+		redis.call('set', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[2])); return 1
+	`)
+)
+
 // ============================= BLACKLIST HELPERS =============================
 
 // SetBlacklist chặn một IP hoặc HWID với thời gian hết hạn (TTL)
@@ -36,80 +68,63 @@ func SetBlacklist(key string, duration time.Duration) error {
 func IsBlacklisted(key string) bool {
 	val, err := RDB.Exists(Ctx, fmt.Sprintf("blacklist:%s", key)).Result()
 	if err != nil {
-		return false
+		return true // [BẢO MẬT] Fail-closed: Coi như bị chặn nếu Redis sập
 	}
 	return val > 0
 }
 
 // ============================= DISTRIBUTED ASSET CACHE =============================
 
-type AssetCacheData struct {
-	SecretKey string `json:"secret_key"`
-	OrgID     uint   `json:"org_id"`
-}
-
 // SetAssetCache lưu Key của Asset vào Redis để đồng bộ toàn bộ cluster
 func SetAssetCache(hwid string, secretKey string, orgID uint, ttl time.Duration) error {
-	data := AssetCacheData{SecretKey: secretKey, OrgID: orgID}
-	bytes, _ := json.Marshal(data)
-	return RDB.Set(Ctx, fmt.Sprintf("asset_cache:%s", hwid), bytes, ttl).Err()
+	// [HIỆU NĂNG] Thay vì JSON chuỗi, dùng Hash Map siêu tốc (HSET)
+	key := fmt.Sprintf("asset_cache:%s", hwid)
+	pipe := RDB.Pipeline()
+	pipe.HSet(Ctx, key, "secret_key", secretKey, "org_id", orgID)
+	pipe.Expire(Ctx, key, ttl)
+	_, err := pipe.Exec(Ctx)
+	return err
 }
 
 // GetAssetCache lấy Key của Asset từ Redis
 func GetAssetCache(hwid string) (string, uint, error) {
-	val, err := RDB.Get(Ctx, fmt.Sprintf("asset_cache:%s", hwid)).Result()
-	if err != nil {
-		return "", 0, err
+	key := fmt.Sprintf("asset_cache:%s", hwid)
+	res, err := RDB.HGetAll(Ctx, key).Result()
+	if err != nil || len(res) == 0 {
+		return "", 0, fmt.Errorf("cache miss")
 	}
-	var data AssetCacheData
-	if err := json.Unmarshal([]byte(val), &data); err != nil {
-		return "", 0, err
-	}
-	return data.SecretKey, data.OrgID, nil
+	orgID, _ := strconv.ParseUint(res["org_id"], 10, 32)
+	return res["secret_key"], uint(orgID), nil
 }
 
 // ============================= DISTRIBUTED RATE LIMIT =============================
 
-// AllowRequest thực hiện Rate Limit bằng Redis INCR + EXPIRE (Fixed Window)
+// AllowRequest thực hiện Rate Limit bằng Redis Sorted Set (Sliding Window Log)
 func AllowRequest(key string, limit int64, window time.Duration) bool {
-	count, err := RDB.Incr(Ctx, key).Result()
+	now := time.Now().UnixMilli()
+	windowMs := window.Milliseconds()
+	res, err := rateLimitScript.Run(Ctx, RDB, []string{key}, limit, windowMs, now).Result()
 	if err != nil {
-		return true // Fail-open: Nếu Redis lỗi tạm thời, không chặn request hợp lệ
+		return false // [BẢO MẬT] Đóng chặt (Fail-closed) khi Redis có lỗi
 	}
-	if count == 1 {
-		RDB.Expire(Ctx, key, window)
-	}
-	return count <= limit
+	return res.(int64) == 1
 }
 
 // RecordAssetFlood đếm số lượng request và băng thông của Asset qua Redis Pipeline
 func RecordAssetFlood(hwid string, bodySize int64) (bool, string) {
-	pipe := RDB.Pipeline()
 	reqKey := fmt.Sprintf("flood:req:%s", hwid)
 	byteKey := fmt.Sprintf("flood:byte:%s", hwid)
+	blKey := fmt.Sprintf("blacklist:%s", hwid)
 
-	reqIncr := pipe.Incr(Ctx, reqKey)
-	byteIncr := pipe.IncrBy(Ctx, byteKey, bodySize)
-
-	_, err := pipe.Exec(Ctx)
+	res, err := floodScript.Run(Ctx, RDB, []string{reqKey, byteKey, blKey}, bodySize).Result()
 	if err != nil {
-		return true, "" // Fail-open
+		return false, "Lỗi hệ thống kiểm tra Rate Limit" // [BẢO MẬT] Fail-closed
 	}
 
-	if reqIncr.Val() == 1 {
-		RDB.Expire(Ctx, reqKey, time.Minute)
-	}
-	if byteIncr.Val() == bodySize {
-		RDB.Expire(Ctx, byteKey, time.Minute)
-	}
-
-	// Giới hạn cấu hình: 100 req/phút hoặc 50MB/phút
-	if reqIncr.Val() > 100 {
-		SetBlacklist(hwid, 10*time.Minute)
+	status := res.(int64)
+	if status == 1 {
 		return false, "Vượt quá giới hạn request/phút"
-	}
-	if byteIncr.Val() > 50*1024*1024 {
-		SetBlacklist(hwid, 10*time.Minute)
+	} else if status == 2 {
 		return false, "Vượt quá giới hạn băng thông/phút"
 	}
 	return true, ""
@@ -118,29 +133,16 @@ func RecordAssetFlood(hwid string, bodySize int64) (bool, string) {
 // ============================= SEQUENCE NUMBER (ANTI-REPLAY) =============================
 
 // CheckSequenceNumber kiểm tra số thứ tự gói tin để chống Replay Attack tuyệt đối
-// Trả về true nếu sequence hợp lệ (lớn hơn số cũ)
 func CheckSequenceNumber(hwid string, newSeq int64) bool {
 	key := fmt.Sprintf("seq:%s", hwid)
 
-	// Lấy số thứ tự cũ từ Redis
-	lastSeqStr, err := RDB.Get(Ctx, key).Result()
-	if err == redis.Nil {
-		// Lần đầu tiên agent gửi request, chấp nhận và lưu lại
-		RDB.Set(Ctx, key, newSeq, 180*24*time.Hour) // Tăng TTL lên 6 tháng (Chống Replay dài hạn)
-		return true
-	}
-
-	var lastSeq int64
-	fmt.Sscanf(lastSeqStr, "%d", &lastSeq)
-
-	// Nếu số mới nhỏ hơn hoặc bằng số cũ -> Replay Attack Detected
-	if newSeq <= lastSeq {
+	// Lệnh Run trả về 1 nếu hợp lệ và được lưu mới, 0 nếu không.
+	// 15552000 là số giây cho TTL 180 ngày (180 * 24 * 60 * 60)
+	res, err := seqScript.Run(Ctx, RDB, []string{key}, newSeq, 15552000).Result()
+	if err != nil {
 		return false
 	}
-
-	// Cập nhật số thứ tự mới nhất vào Redis
-	RDB.Set(Ctx, key, newSeq, 180*24*time.Hour)
-	return true
+	return res.(int64) == 1
 }
 
 // ============================= TOKEN REVOCATION =============================
@@ -154,7 +156,7 @@ func RevokeToken(token string, expiration time.Duration) error {
 func IsTokenRevoked(token string) bool {
 	val, err := RDB.Exists(Ctx, fmt.Sprintf("revoked:%s", token)).Result()
 	if err != nil {
-		return false
+		return true // [BẢO MẬT] Fail-closed: Hủy mọi phiên nếu Redis sập
 	}
 	return val > 0
 }

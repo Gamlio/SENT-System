@@ -32,18 +32,18 @@ type softwareViolation struct {
 	Priority string
 }
 
-func ProcessSoftware(asset models.Asset, data interface{}) {
+func ProcessSoftware(asset models.Asset, data interface{}) error {
 	bytes, err := GetBytesFromData(data)
 	if err != nil {
-		return
+		return fmt.Errorf("dữ liệu đầu vào không hợp lệ: %w", err)
 	}
 
 	var records []assetSoftwareRecord
 	if err := json.Unmarshal(bytes, &records); err != nil {
-		return
+		return fmt.Errorf("lỗi giải mã JSON software: %w", err)
 	}
 	if database.SoftwareCollection == nil {
-		return
+		return fmt.Errorf("database SoftwareCollection chưa sẵn sàng")
 	}
 
 	incSvc := &incidents.IncidentService{}
@@ -51,14 +51,43 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 	var violations []softwareViolation // Slice để thu thập tất cả vi phạm từ payload này
 	var activeHashes []string
 
+	// [TỐI ƯU HIỆU NĂNG] Xử lý N+1 Query: Truy vấn PostgreSQL 1 lần duy nhất bằng IN clause
+	trustedHashes := make(map[string]bool)
+	trustedPubs := make(map[string]bool)
+	if asset.IsZeroTrust {
+		var hashes, pubs []string
+		for _, rec := range records {
+			if rec.FileHash != "" {
+				hashes = append(hashes, rec.FileHash)
+			}
+			if rec.Publisher != "" {
+				pubs = append(pubs, rec.Publisher)
+			}
+		}
+		var wlItems []models.WhitelistItem
+		if len(hashes) > 0 {
+			database.DB.Where("org_id = ? AND type = 'SOFTWARE_HASH' AND value IN ?", asset.OrgID, hashes).Find(&wlItems)
+			for _, item := range wlItems {
+				trustedHashes[item.Value] = true
+			}
+		}
+		wlItems = nil
+		if len(pubs) > 0 {
+			database.DB.Where("org_id = ? AND type = 'PUBLISHER' AND value IN ?", asset.OrgID, pubs).Find(&wlItems)
+			for _, item := range wlItems {
+				trustedPubs[item.Value] = true
+			}
+		}
+	}
+
 	for _, rec := range records {
 		activeHashes = append(activeHashes, rec.FileHash)
 
 		// TÍCH HỢP ORG_ID CHỐNG GHI ĐÈ CHÉO TỔ CHỨC
-		filter := bson.M{"asset_hwid": asset.AssetHWID, "org_id": asset.OrgID, "software_name": rec.SoftwareName, "file_hash": rec.FileHash}
+		filter := bson.M{"asset_hwid": asset.AssetHWID, "org_id": int64(asset.OrgID), "software_name": rec.SoftwareName, "file_hash": rec.FileHash}
 		update := bson.M{"$set": bson.M{
 			"asset_hwid":       asset.AssetHWID,
-			"org_id":           asset.OrgID,
+			"org_id":           int64(asset.OrgID),
 			"software_name":    rec.SoftwareName,
 			"version":          rec.Version,
 			"publisher":        rec.Publisher,
@@ -69,7 +98,9 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 			"updated_at":       time.Now(),
 		}}
 
-		_, _ = database.SoftwareCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true))
+		if _, err := database.SoftwareCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true)); err != nil {
+			return fmt.Errorf("lỗi cập nhật MongoDB (UpdateOne): %w", err)
+		}
 
 		// [FIX-EVENT-STORM] Thay vì gọi TriggerSecurityEvent ngay lập tức, chúng ta thu thập các vi phạm.
 		if rec.FileHash != "" && checkMaliciousHash(rec.FileHash) {
@@ -81,7 +112,8 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 		if checkBannedSoftware(rec.SoftwareName) {
 			violations = append(violations, softwareViolation{Name: rec.SoftwareName, Type: "Software Violation", Priority: "P3"})
 		}
-		if asset.IsZeroTrust && !VerifySoftware(rec, asset) {
+		// Tra cứu từ Hash Map siêu tốc (O(1)) thay vì truy vấn SQL
+		if asset.IsZeroTrust && !trustedPubs[rec.Publisher] && !trustedHashes[rec.FileHash] {
 			violations = append(violations, softwareViolation{Name: rec.SoftwareName, Type: "Zero Trust Violation", Priority: "P1"})
 		}
 	}
@@ -127,29 +159,29 @@ func ProcessSoftware(asset models.Asset, data interface{}) {
 
 	// [TỐI ƯU DIFFING] Thay vì kéo toàn bộ DB lên RAM rồi lặp (N+1 Query), sử dụng Bulk Update với $nin
 	if len(activeHashes) > 0 {
-		_, _ = database.SoftwareCollection.UpdateMany(context.TODO(), bson.M{
+		if _, err := database.SoftwareCollection.UpdateMany(context.TODO(), bson.M{
 			"asset_hwid": asset.AssetHWID,
-			"org_id":     asset.OrgID,
+			"org_id":     int64(asset.OrgID),
 			"is_running": true,
 			"file_hash":  bson.M{"$nin": activeHashes},
-		}, bson.M{"$set": bson.M{"is_running": false}})
+		}, bson.M{"$set": bson.M{"is_running": false}}); err != nil {
+			return fmt.Errorf("lỗi cập nhật trạng thái is_running (UpdateMany): %w", err)
+		}
 	}
+
+	return nil
 }
 
 // Xử lý nạp Baseline ban đầu
-func HandleSoftwareBaseline(asset models.Asset, data interface{}) {
+func HandleSoftwareBaseline(asset models.Asset, data interface{}) error {
 	bytes, err := GetBytesFromData(data)
 	if err != nil {
-		return
+		return err
 	}
 
 	var records []assetSoftwareRecord
 	if err := json.Unmarshal(bytes, &records); err != nil {
-		return
-	}
-
-	if database.SoftwareCollection != nil {
-		_, _ = database.SoftwareCollection.DeleteMany(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "org_id": asset.OrgID})
+		return err
 	}
 
 	// [GIẢM TẢI DB] Chuyển SQL Loop thành Insert Batch
@@ -173,16 +205,16 @@ func HandleSoftwareBaseline(asset models.Asset, data interface{}) {
 	if len(pubItems) > 0 {
 		tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(pubItems, 200)
 	}
-}
 
-func VerifySoftware(rec assetSoftwareRecord, asset models.Asset) bool {
-	var trusted models.WhitelistItem
-	err := database.DB.Where("org_id = ? AND type = ? AND value = ?", asset.OrgID, "PUBLISHER", rec.Publisher).First(&trusted).Error
-	if err == nil {
-		return true
+	if err := tx.Commit().Error; err != nil {
+		return err
 	}
-	err = database.DB.Where("org_id = ? AND type = ? AND value = ?", asset.OrgID, "SOFTWARE_HASH", rec.FileHash).First(&trusted).Error
-	return err == nil
+
+	// [ĐỒNG BỘ DỮ LIỆU] Chỉ xóa cấu hình cũ trên MongoDB KHI Postgres đã lưu an toàn cấu hình mới
+	if database.SoftwareCollection != nil {
+		_, _ = database.SoftwareCollection.DeleteMany(context.TODO(), bson.M{"asset_hwid": asset.AssetHWID, "org_id": int64(asset.OrgID)})
+	}
+	return nil
 }
 
 func checkMaliciousHash(hash string) bool {

@@ -4,7 +4,6 @@ import (
 	"SENT/internal/utils"
 
 	psnet "github.com/shirou/gopsutil/v3/net"
-	"github.com/shirou/gopsutil/v3/process"
 )
 
 // 1. Khai báo Struct cho Sensor
@@ -30,7 +29,7 @@ type OpenPortInfo struct {
 // 4. Đưa logic cũ vào hàm Collect()
 func (s *PortSensor) Collect() (interface{}, error) {
 	// BƯỚC 1: Chụp ảnh nhanh toàn bộ tiến trình TRƯỚC (Tránh Race Condition)
-	procs, _ := process.Processes()
+	procs, _ := GetProcessesCached() // Dùng bộ nhớ đệm để tránh gọi Syscall liên tục
 	procMap := make(map[int32]string)
 	for _, p := range procs {
 		if name, err := p.Name(); err == nil {

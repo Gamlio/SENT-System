@@ -19,18 +19,18 @@ type assetTelemetryRecord struct {
 	OpenPorts   []models.OpenPort `json:"open_ports"`
 }
 
-func ProcessPorts(asset models.Asset, data interface{}) {
+func ProcessPorts(asset models.Asset, data interface{}) error {
 	bytes, err := GetBytesFromData(data)
 	if err != nil {
-		return
+		return fmt.Errorf("dữ liệu port không hợp lệ: %w", err)
 	}
 
 	var payload assetTelemetryRecord
 	if err := json.Unmarshal(bytes, &payload); err != nil {
-		return
+		return fmt.Errorf("lỗi giải mã JSON port: %w", err)
 	}
 	if database.OpenPortCollection == nil {
-		return
+		return fmt.Errorf("database OpenPortCollection chưa sẵn sàng")
 	}
 
 	incSvc := &incidents.IncidentService{}
@@ -38,17 +38,19 @@ func ProcessPorts(asset models.Asset, data interface{}) {
 
 	for _, incomingPort := range payload.OpenPorts {
 		activePorts = append(activePorts, incomingPort.Port)
-		filter := bson.M{"asset_hwid": asset.AssetHWID, "org_id": asset.OrgID, "port": incomingPort.Port}
+		filter := bson.M{"asset_hwid": asset.AssetHWID, "org_id": int64(asset.OrgID), "port": incomingPort.Port}
 		update := bson.M{"$set": bson.M{
 			"asset_hwid":   asset.AssetHWID,
-			"org_id":       asset.OrgID,
+			"org_id":       int64(asset.OrgID),
 			"port":         incomingPort.Port,
 			"process_name": incomingPort.ProcessName,
 			"status":       "OPEN",
 			"updated_at":   time.Now(),
 		}}
 
-		_, _ = database.OpenPortCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true))
+		if _, err := database.OpenPortCollection.UpdateOne(context.TODO(), filter, update, options.Update().SetUpsert(true)); err != nil {
+			return fmt.Errorf("lỗi cập nhật cổng mở trên MongoDB: %w", err)
+		}
 
 		if incomingPort.Port == 3389 || incomingPort.Port == 22 || incomingPort.Port == 4444 {
 			incSvc.TriggerSecurityEvent(context.TODO(), asset, "Unauthorized Port",
@@ -59,11 +61,14 @@ func ProcessPorts(asset models.Asset, data interface{}) {
 
 	// TỐI ƯU ĐÓNG TRẠNG THÁI:
 	if len(activePorts) > 0 {
-		_, _ = database.OpenPortCollection.UpdateMany(context.TODO(), bson.M{
+		if _, err := database.OpenPortCollection.UpdateMany(context.TODO(), bson.M{
 			"asset_hwid": asset.AssetHWID,
-			"org_id":     asset.OrgID,
+			"org_id":     int64(asset.OrgID),
 			"status":     "OPEN",
 			"port":       bson.M{"$nin": activePorts},
-		}, bson.M{"$set": bson.M{"status": "CLOSED"}})
+		}, bson.M{"$set": bson.M{"status": "CLOSED"}}); err != nil {
+			return fmt.Errorf("lỗi đóng trạng thái các cổng cũ: %w", err)
+		}
 	}
+	return nil
 }

@@ -4,44 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sent_backend/internal/cache"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
-	"sync"
+	"strconv"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
-// Sử dụng sync.Map thay cho Mutex để loại bỏ thắt cổ chai (Lock Contention)
-var ioCache sync.Map
-
-// init: Khởi chạy một goroutine để dọn dẹp cache định kỳ, chống rò rỉ bộ nhớ.
-func init() {
-	// Chạy một tiến trình dọn dẹp mỗi 10 phút.
-	go func() {
-		ticker := time.NewTicker(10 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			cleanupExpiredCache()
-		}
-	}()
-}
-
-// cleanupExpiredCache: Xóa các entry trong ioCache của các máy trạm không hoạt động quá 5 phút.
-func cleanupExpiredCache() {
-	threshold := 5 * time.Minute
-	ioCache.Range(func(key, value interface{}) bool {
-		record := value.(models.AssetIOActivity)
-		if time.Since(record.Timestamp) > threshold {
-			ioCache.Delete(key)
-		}
-		return true // Tiếp tục lặp
-	})
-}
-
-func ProcessDataTransfer(asset models.Asset, data interface{}) {
+func ProcessDataTransfer(asset models.Asset, data interface{}) error {
 	// LOẠI BỎ CHAI CỔ CPU TỪ MARSHALLING NẾU CÓ THỂ
 	bytes, err := GetBytesFromData(data)
 	if err != nil {
-		return // Dữ liệu không hợp lệ
+		return fmt.Errorf("dữ liệu data_transfer không hợp lệ: %w", err)
 	}
 
 	// 1. ĐỊNH NGHĨA STRUCT KHỚP VỚI AGENT MỚI
@@ -55,26 +31,28 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) {
 	}
 
 	if err := json.Unmarshal(bytes, &payload); err != nil {
-		return
+		return fmt.Errorf("lỗi giải mã JSON data_transfer: %w", err)
 	}
 
-	// Tạo record hiện tại để lưu cache
-	current := models.AssetIOActivity{
-		Timestamp:    time.Now(),
-		NetBytesSent: payload.TotalNetSent,
+	// [HIỆU NĂNG & CLUSTER CLOUD] Chuyển đổi in-memory sync.Map sang Distributed Redis Cache
+	// Giải quyết triệt để rủi ro rò rỉ RAM và đồng bộ hóa state khi backend chạy đa Node (K8s).
+	cacheKey := fmt.Sprintf("io_activity:%s", asset.AssetHWID)
+	lastValStr, err := cache.RDB.Get(context.Background(), cacheKey).Result()
+
+	// Cập nhật giá trị mới với TTL 5 phút để Redis tự dọn dẹp (thay thế goroutine cleanup)
+	cache.RDB.Set(context.Background(), cacheKey, payload.TotalNetSent, 5*time.Minute)
+
+	if err == redis.Nil || err != nil {
+		return nil
 	}
 
-	// Đọc từ Concurrent Map không cần Lock
-	val, exists := ioCache.Load(asset.AssetHWID)
-	ioCache.Store(asset.AssetHWID, current)
-
-	if !exists {
-		return
-	}
-	lastRecord := val.(models.AssetIOActivity)
+	lastNetSent, _ := strconv.ParseUint(lastValStr, 10, 64)
 
 	// 1. TÍNH TOÁN DELTA
-	diffSent := current.NetBytesSent - lastRecord.NetBytesSent
+	var diffSent uint64
+	if payload.TotalNetSent > lastNetSent {
+		diffSent = payload.TotalNetSent - lastNetSent
+	}
 
 	// 2. NGƯỠNG CẢNH BÁO
 	isNetworkSpike := diffSent > 500*1024*1024 // 500MB
@@ -97,4 +75,5 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) {
 			"P1",
 		)
 	}
+	return nil
 }

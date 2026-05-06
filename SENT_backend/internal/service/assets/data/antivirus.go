@@ -3,17 +3,18 @@ package data // Đổi sang package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents" // Import service sự cố mới
 )
 
-func ProcessAntivirus(asset models.Asset, data interface{}) {
+func ProcessAntivirus(asset models.Asset, data interface{}) error {
 	var record struct {
 		HasThreat bool `json:"has_threat"`
 	}
 	bytes, err := GetBytesFromData(data)
 	if err != nil {
-		return
+		return fmt.Errorf("dữ liệu antivirus không hợp lệ: %w", err)
 	}
 
 	if err := json.Unmarshal(bytes, &record); err == nil && record.HasThreat {
@@ -26,4 +27,5 @@ func ProcessAntivirus(asset models.Asset, data interface{}) {
 			"P1",
 		)
 	}
+	return nil
 }

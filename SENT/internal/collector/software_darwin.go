@@ -3,7 +3,6 @@
 package collector
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,21 +10,37 @@ import (
 
 func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 	var softwareList []SoftwareRecord
-	apps, err := os.ReadDir("/Applications")
-	if err != nil {
-		return nil, fmt.Errorf("không thể đọc thư mục /Applications: %w", err)
-	} else {
-		for _, app := range apps {
-			if strings.HasSuffix(app.Name(), ".app") {
-				appName := strings.TrimSuffix(app.Name(), ".app")
-				isRunning := isProcessRunning(appName, runningProcs)
 
-				softwareList = append(softwareList, SoftwareRecord{
-					SoftwareName:    appName,
-					InstallLocation: filepath.Join("/Applications", app.Name()),
-					Status:          "INSTALLED",
-					IsRunning:       isRunning,
-				})
+	// [MỞ RỘNG] Quét cả thư mục gốc và các binary từ Homebrew (macOS)
+	searchPaths := []string{
+		"/Applications",
+		"/opt/homebrew/bin", // Apple Silicon brew
+		"/usr/local/bin",    // Intel brew
+	}
+
+	for _, dirPath := range searchPaths {
+		apps, err := os.ReadDir(dirPath)
+		if err == nil {
+			for _, app := range apps {
+				appName := app.Name()
+				// Ứng dụng GUI (.app) hoặc Executable nhị phân
+				if strings.HasSuffix(appName, ".app") || !app.IsDir() {
+					cleanName := strings.TrimSuffix(appName, ".app")
+					isRunning := isProcessRunning(cleanName, runningProcs)
+
+					publisher := "Unknown"
+					if strings.Contains(dirPath, "homebrew") || strings.Contains(dirPath, "local") {
+						publisher = "Homebrew/CLI"
+					}
+
+					softwareList = append(softwareList, SoftwareRecord{
+						SoftwareName:    cleanName,
+						Publisher:       publisher,
+						InstallLocation: filepath.Join(dirPath, appName),
+						Status:          "INSTALLED",
+						IsRunning:       isRunning,
+					})
+				}
 			}
 		}
 	}

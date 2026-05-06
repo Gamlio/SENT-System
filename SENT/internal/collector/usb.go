@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/windows/registry"
 )
 
 // Khai báo các biểu thức chính quy (Regex) ở cấp package để biên dịch một lần duy nhất.
@@ -50,42 +52,29 @@ func (s *USBSensor) Collect() (interface{}, error) {
 	defer cancel()
 
 	if runtime.GOOS == "windows" {
-		// [TỐI ƯU HIỆU SUẤT] Sử dụng WMIC định dạng danh sách (List Format)
-		cmd := exec.CommandContext(ctx, "wmic", "path", "Win32_PnPEntity", "where", "PNPDeviceID like 'USB%' and Status='OK'", "get", "Name,PNPDeviceID", "/format:list")
-		output, err := cmd.Output()
-		if err != nil {
-			return nil, fmt.Errorf("lỗi thực thi lệnh wmic: %w", err)
-		}
-
-		var currentName, currentPNP string
-		lines := strings.Split(string(output), "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			if strings.HasPrefix(line, "Name=") {
-				currentName = strings.TrimPrefix(line, "Name=")
-			} else if strings.HasPrefix(line, "PNPDeviceID=") {
-				currentPNP = strings.TrimPrefix(line, "PNPDeviceID=")
-
-				// Bóc tách VID, PID, Serial từ PNPDeviceID
-				vid, pid, serial := parseWindowsUSBID(currentPNP)
-
-				hash := generateDeviceHash(vid, pid, serial)
-
-				usbList = append(usbList, USBRecord{
-					DeviceName:   currentName,
-					DeviceID:     currentPNP,
-					VID:          vid,
-					PID:          pid,
-					SerialNumber: serial,
-					DeviceHash:   hash,
-					EventType:    "plugged",
-				})
-
-				currentName = ""
-				currentPNP = ""
+		// [TỐI ƯU HIỆU NĂNG] Đọc trực tiếp Registry thay vì gọi PowerShell để loại bỏ CPU Spikes
+		// Chỉ theo dõi USB Mass Storage (USBSTOR) vì đây là mục tiêu chính của Data Exfiltration
+		k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Services\USBSTOR\Enum`, registry.QUERY_VALUE)
+		if err == nil {
+			defer k.Close()
+			count, _, err := k.GetIntegerValue("Count")
+			if err == nil {
+				for i := 0; i < int(count); i++ {
+					val, _, err := k.GetStringValue(fmt.Sprintf("%d", i))
+					if err == nil {
+						vid, pid, serial := parseWindowsUSBID(val)
+						hash := generateDeviceHash(vid, pid, serial)
+						usbList = append(usbList, USBRecord{
+							DeviceName:   "USB Mass Storage Device",
+							DeviceID:     val,
+							VID:          vid,
+							PID:          pid,
+							SerialNumber: serial,
+							DeviceHash:   hash,
+							EventType:    "plugged",
+						})
+					}
+				}
 			}
 		}
 		return usbList, nil

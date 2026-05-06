@@ -3,16 +3,42 @@ package collector
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"log"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"SENT/internal/policy"
 
 	"github.com/shirou/gopsutil/v3/process"
 )
+
+// --- BỘ NHỚ ĐỆM TIẾN TRÌNH (TỐI ƯU HIỆU NĂNG) ---
+var (
+	cachedProcs   []*process.Process
+	procsMutex    sync.Mutex
+	lastProcFetch time.Time
+)
+
+// GetProcessesCached lấy danh sách tiến trình và lưu cache trong 2 giây để dùng chung cho cả batch
+func GetProcessesCached() ([]*process.Process, error) {
+	procsMutex.Lock()
+	defer procsMutex.Unlock()
+
+	if time.Since(lastProcFetch) < 2*time.Second && cachedProcs != nil {
+		return cachedProcs, nil
+	}
+
+	procs, err := process.Processes()
+	if err != nil {
+		return nil, err
+	}
+	cachedProcs = procs
+	lastProcFetch = time.Now()
+	return cachedProcs, nil
+}
 
 type SoftwareSensor struct{}
 
@@ -50,7 +76,7 @@ func EnforceSoftwarePolicy() {
 		blacklistMap[name] = true
 	}
 
-	procs, err := process.Processes()
+	procs, err := GetProcessesCached()
 	if err != nil {
 		log.Printf("Lỗi lấy danh sách tiến trình để kiểm tra chính sách: %v", err)
 		return
@@ -77,7 +103,7 @@ func EnforceSoftwarePolicy() {
 
 func getRunningProcesses() map[string]bool {
 	procMap := make(map[string]bool)
-	procs, err := process.Processes()
+	procs, err := GetProcessesCached()
 	if err != nil {
 		return procMap
 	}
@@ -113,10 +139,8 @@ func calculateSHA256(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Bỏ qua băm nếu file lớn hơn 50MB (50 * 1024 * 1024 bytes) để tránh nghẽn Disk I/O
-	if info.Size() > 50*1024*1024 {
-		return "", fmt.Errorf("file quá lớn (>50MB), bỏ qua để tối ưu hiệu suất")
-	}
+	// [BẢO MẬT] Đã gỡ bỏ rào cản bỏ qua file > 50MB để ngăn chặn tấn công chèn rác (Padding Bypass).
+	_ = info
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {

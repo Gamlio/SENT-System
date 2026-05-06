@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,16 @@ var (
 	mu             sync.RWMutex
 	currentVersion int64 // Lưu trữ version hiện hành của bộ luật
 )
+
+// [HIỆU NĂNG] Tái sử dụng HTTP Client với cấu hình Connection Pooling (Keep-Alive)
+var httpClient = &http.Client{
+	Timeout: 20 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:      10,
+		IdleConnTimeout:   30 * time.Second,
+		DisableKeepAlives: false,
+	},
+}
 
 // GetBlacklistedSoftware trả về danh sách tên các phần mềm bị cấm.
 func GetBlacklistedSoftware() []string {
@@ -106,8 +117,6 @@ func StartSync() {
 func fetchPolicies() {
 	log.Println("Đang đồng bộ chính sách bảo vệ từ server...")
 
-	client := &http.Client{Timeout: 20 * time.Second}
-
 	payload := map[string]interface{}{
 		"asset_hwid": config.GetHWID(),
 		"version":    currentVersion, // Gửi kèm version để server đối chiếu
@@ -124,7 +133,15 @@ func fetchPolicies() {
 	signature := utils.SignPayload(jsonPayload, config.GetSecretKey())
 	req.Header.Set("X-Sent-Signature", signature)
 
-	resp, err := client.Do(req)
+	// [BẢO MẬT] Bổ sung đầy đủ các Header chống Replay Attack để đồng bộ với Middleware Backend
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	seq := utils.GetGlobalSequence()
+	sequence := strconv.FormatInt(time.Now().UnixNano()+seq, 10)
+	req.Header.Set("X-Sent-Timestamp", timestamp)
+	req.Header.Set("X-Sent-Sequence", sequence)
+	req.Header.Set("X-Asset-HWID", config.GetHWID())
+
+	resp, err := httpClient.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		log.Printf("Đồng bộ chính sách thất bại. Lỗi: %v, Status: %s", err, resp.Status)
 		return

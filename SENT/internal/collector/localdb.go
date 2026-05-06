@@ -3,7 +3,6 @@ package collector
 import (
 	"encoding/json"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"go.etcd.io/bbolt"
@@ -13,7 +12,6 @@ var (
 	db          *bbolt.DB
 	fileBucket  = []byte("FileMetadata")
 	stateBucket = []byte("ModuleStates")
-	memCache    sync.Map
 )
 
 // FileMetadata stores the last known state of a file, including its hash.
@@ -53,11 +51,6 @@ func CloseLocalDB() {
 
 // GetFileMetadata retrieves the stored metadata for a given file path.
 func GetFileMetadata(filePath string) (meta FileMetadata, found bool) {
-	// Lấy từ Memory Cache trước để giảm thiểu Disk I/O đọc DB
-	if val, ok := memCache.Load(filePath); ok {
-		return val.(FileMetadata), true
-	}
-
 	if db == nil {
 		return FileMetadata{}, false
 	}
@@ -77,7 +70,6 @@ func GetFileMetadata(filePath string) (meta FileMetadata, found bool) {
 			return err // Corrupted data
 		}
 		found = true
-		memCache.Store(filePath, meta) // Nạp vào RAM
 		return nil
 	})
 
@@ -125,7 +117,6 @@ func UpdateFileMetadataBatch(metas map[string]FileMetadata) error {
 		for filePath, meta := range metas {
 			if buf, err := json.Marshal(meta); err == nil {
 				_ = b.Put([]byte(filePath), buf)
-				memCache.Store(filePath, meta) // Cập nhật đồng bộ vào RAM
 			}
 		}
 		return nil

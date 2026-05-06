@@ -15,6 +15,7 @@ const AssetDetail = () => {
     const [asset, setasset] = useState(null);
     const [logs, setLogs] = useState([]);
     const [activeTab, setActiveTab] = useState('LOGS'); // Tabs điều hướng khung phải
+    const [counts, setCounts] = useState({ software: 0, usb: 0, ports: 0 });
     const lastFetchTime = useRef(0);
 
     const fetchDetail = useCallback(async (force = false) => {
@@ -25,6 +26,19 @@ const AssetDetail = () => {
             setasset(res.data);
             const logRes = await axios.get(`/assets/${hwid}/logs`);
             setLogs(logRes.data);
+
+            // Tách riêng truy vấn đếm số lượng (Total Count) trực tiếp từ MongoDB 
+            // giúp độc lập hoàn toàn khỏi mảng dữ liệu đính kèm, tăng tốc Backend
+            const [swRes, usbRes, portRes] = await Promise.all([
+                axios.get(`/assets/${hwid}/software?limit=1`).catch(() => ({ data: { total: 0 } })),
+                axios.get(`/assets/${hwid}/usb?limit=1`).catch(() => ({ data: { total: 0 } })),
+                axios.get(`/assets/${hwid}/ports?limit=1`).catch(() => ({ data: { total: 0 } }))
+            ]);
+            setCounts({
+                software: swRes.data.total || 0,
+                usb: usbRes.data.total || 0,
+                ports: portRes.data.total || 0
+            });
             lastFetchTime.current = Date.now();
         } catch (err) { console.error(err); }
     }, [hwid]);
@@ -159,9 +173,9 @@ const AssetDetail = () => {
                     {/* TABS HEADER TRÀN NGANG */}
                     <div className="flex border-b border-slate-800 bg-[#0A101D] shrink-0 overflow-x-auto custom-scrollbar">
                         <TabButton active={activeTab === 'LOGS'} onClick={() => setActiveTab('LOGS')} icon={ShieldAlert} label={`Alert Logs (${logs?.length})`} color="text-red-400" />
-                        <TabButton active={activeTab === 'SOFTWARE'} onClick={() => setActiveTab('SOFTWARE')} icon={Package} label={`Software (${asset.software?.length || 0})`} color="text-blue-400" />
-                        <TabButton active={activeTab === 'USB'} onClick={() => setActiveTab('USB')} icon={Usb} label={`USB History (${asset.usb_logs?.length || 0})`} color="text-emerald-400" />
-                        <TabButton active={activeTab === 'PORTS'} onClick={() => setActiveTab('PORTS')} icon={Network} label={`Open Ports (${asset.open_ports?.length || 0})`} color="text-amber-400" />
+                        <TabButton active={activeTab === 'SOFTWARE'} onClick={() => setActiveTab('SOFTWARE')} icon={Package} label={`Software (${counts.software})`} color="text-blue-400" />
+                        <TabButton active={activeTab === 'USB'} onClick={() => setActiveTab('USB')} icon={Usb} label={`USB History (${counts.usb})`} color="text-emerald-400" />
+                        <TabButton active={activeTab === 'PORTS'} onClick={() => setActiveTab('PORTS')} icon={Network} label={`Open Ports (${counts.ports})`} color="text-amber-400" />
                     </div>
 
                     {/* TABS CONTENT (KHUNG ĐỦ TO ĐỂ CHỨA CÁC COMPONENT CON) */}

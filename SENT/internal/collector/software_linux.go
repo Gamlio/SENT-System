@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/shirou/gopsutil/v3/process"
 )
 
 func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
@@ -48,7 +46,7 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 	}
 
 	// Bổ sung: Bắt các App qua Snap/Flatpak hoặc Binary chạy trực tiếp
-	procs, _ := process.Processes()
+	procs, _ := GetProcessesCached()
 	processedNames := make(map[string]bool)
 	for _, sw := range allSoftware {
 		processedNames[strings.ToLower(sw.SoftwareName)] = true
