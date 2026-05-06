@@ -65,28 +65,77 @@ func (s *BehaviorService) getSeverityByPriority(p string) string {
 }
 
 // GetBehaviors: Truy vấn danh sách hành vi từ MongoDB theo OrgID
-func (s *BehaviorService) GetBehaviors(ctx context.Context, orgID int64, page, limit int64) ([]models.SecurityAlert, error) {
+func (s *BehaviorService) GetBehaviors(ctx context.Context, orgID int64, page, limit int64) ([]models.SecurityAlert, int64, error) {
 	alerts := []models.SecurityAlert{}
 	if database.SecurityAlertCollection == nil {
-		return alerts, nil
+		return alerts, 0, nil
 	}
 
-	// [FIX] Thêm logic phân trang
+	filter := bson.M{"org_id": orgID} // [BẢO MẬT] Luôn lọc theo org_id để tránh IDOR
+
+	// [HIỆU SUẤT] Đếm tổng số bản ghi trực tiếp từ MongoDB
+	total, err := database.SecurityAlertCollection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// [PHÂN TRANG] Chỉ lấy đúng số lượng cần thiết
 	skip := (page - 1) * limit
 	opts := options.Find().
 		SetSort(bson.D{{Key: "created_at", Value: -1}}).
 		SetSkip(skip).
 		SetLimit(limit)
-	filter := bson.M{"org_id": orgID}
 
 	cursor, err := database.SecurityAlertCollection.Find(ctx, filter, opts)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
 
 	if err = cursor.All(ctx, &alerts); err != nil {
+		return nil, 0, err
+	}
+
+	return alerts, total, nil
+}
+func (s *BehaviorService) GetBehaviorDetail(ctx context.Context, id string) (*models.SecurityAlert, error) {
+	objID, _ := primitive.ObjectIDFromHex(id)
+	filter := bson.M{"_id": objID}
+
+	var alert models.SecurityAlert
+	err := database.SecurityAlertCollection.FindOne(ctx, filter).Decode(&alert)
+	return &alert, err
+}
+func (s *BehaviorService) CreateIncident(ctx context.Context, alertID string, orgID uint, manualData models.Incident) (*models.Incident, error) {
+	objID, _ := primitive.ObjectIDFromHex(alertID)
+	var alert models.SecurityAlert
+	// Kiểm tra quyền sở hữu bản ghi
+	err := database.SecurityAlertCollection.FindOne(ctx, bson.M{"_id": objID, "org_id": int64(orgID)}).Decode(&alert)
+	if err != nil {
 		return nil, err
 	}
-	return alerts, nil
+
+	incident := models.Incident{
+		OrgID:       orgID,
+		AssetHWID:   alert.AssetHWID,
+		Type:        alert.AlertType,
+		Severity:    manualData.Severity,
+		Priority:    alert.Priority,
+		Status:      "OPEN",
+		Description: manualData.Description,
+	}
+
+	if err := database.DB.Create(&incident).Error; err != nil {
+		return nil, err
+	}
+
+	// Gắn ID sự cố vào log NoSQL
+	incidentID := int64(incident.ID)
+	_, err = database.SecurityAlertCollection.UpdateOne(
+		ctx,
+		bson.M{"_id": objID},
+		bson.M{"$set": bson.M{"incident_id": &incidentID, "is_resolved": true}},
+	)
+
+	return &incident, err
 }

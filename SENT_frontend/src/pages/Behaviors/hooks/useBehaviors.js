@@ -12,7 +12,8 @@ export const useBehaviors = () => {
     try {
       const response = await axios.get(`/behaviors?page=${page}&limit=${limit}`);
       // Xử lý dữ liệu trả về từ API
-      setBehaviors(response.data || []);
+      setBehaviors(response.data.items || []);
+      setLoading(false  );
     } catch (err) {
       setError(err.response?.data?.error || 'Lỗi khi tải danh sách hành vi');
     } finally {
@@ -22,9 +23,8 @@ export const useBehaviors = () => {
 
   const escalateToIncident = async (alertId) => {
     try {
-      const response = await axios.post('/behaviors/escalate', { alert_id: alertId });
+      const response = await axios.post('/behaviors/create-incident', { alert_id: alertId });
       
-      // Cập nhật lại UI: Xóa hành vi đã được nâng cấp khỏi danh sách (hoặc đánh dấu là đã Resolved)
       setBehaviors((prev) => 
         prev.map((b) => b.id === alertId ? { ...b, is_resolved: true, incident_id: response.data.incident.id } : b)
       );

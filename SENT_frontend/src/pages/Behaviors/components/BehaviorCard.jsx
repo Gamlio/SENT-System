@@ -1,100 +1,83 @@
 import React, { useState } from 'react';
-import { ShieldAlert, Zap, Monitor, Clock, Terminal, ArrowUpRight, Loader2 } from 'lucide-react';
+import { ShieldAlert, Zap, Monitor, Clock, Terminal, Search, Loader2, ArrowUpRight } from 'lucide-react';
 import axiosInstance from '../../../api/axios';
+import BehaviorDetailModal from './BehaviorDetail';
 
 const BehaviorCard = ({ behavior, onEscalated }) => {
     const [isEscalating, setIsEscalating] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const getPriorityStyle = (p) => {
         const styles = {
-            P1: "bg-red-500/10 text-red-500 border-red-500/50",
-            P2: "bg-orange-500/10 text-orange-500 border-orange-500/50",
-            P3: "bg-yellow-500/10 text-yellow-500 border-yellow-500/50",
-            P4: "bg-blue-500/10 text-blue-500 border-blue-500/50"
+            P1: "text-red-500 bg-red-500/10 border-red-500/20",
+            P2: "text-orange-500 bg-orange-500/10 border-orange-500/20",
+            P3: "text-yellow-500 bg-yellow-500/10 border-yellow-500/20",
+            P4: "text-blue-500 bg-blue-500/10 border-blue-500/20"
         };
-        return styles[p] || "bg-slate-800 text-slate-400 border-slate-700";
-    };
-
-    const handleEscalate = async () => {
-        if (!window.confirm("Xác nhận nâng cấp hành vi này thành Sự cố chính thức?")) return;
-        
-        setIsEscalating(true);
-        try {
-            // Gọi API nâng cấp
-            await axiosInstance.post('/incidents/escalate', {
-                alert_id: behavior.id || behavior._id
-            });
-            alert("Đã nâng cấp thành công!");
-            onEscalated(); // Tải lại danh sách
-        } catch (err) {
-            alert(err.response?.data?.error || "Lỗi nâng cấp");
-        } finally {
-            setIsEscalating(false);
-        }
+        return styles[p] || "text-slate-400 bg-slate-800";
     };
 
     return (
-        <div className={`relative bg-[#0A101D] border border-slate-800 rounded-2xl p-5 hover:border-indigo-500/40 transition-all group overflow-hidden ${behavior.is_resolved ? 'opacity-75 bg-slate-900/30' : ''}`}>
-            
-            {/* Tag trạng thái/mức độ */}
-            <div className="flex justify-between items-start mb-4">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border tracking-widest ${getPriorityStyle(behavior.priority)}`}>
-                    {behavior.priority} | {behavior.severity}
-                </span>
-                <span className="text-[10px] font-mono text-slate-600 italic">
-                    <Clock size={10} className="inline mr-1"/>
-                    {new Date(behavior.created_at).toLocaleTimeString()}
-                </span>
+                <>
+                <div className={`group flex flex-col md:flex-row items-center gap-4 bg-[#0A101D] border border-slate-800 p-4 rounded-xl hover:border-indigo-500/40 transition-all ${behavior.is_resolved ? 'opacity-60' : ''}`}>
+                    
+                {/* 1. Mức độ - Khớp w-24 */}
+            <div className={`w-full md:w-24 text-center py-1 rounded text-[10px] font-black border uppercase tracking-tighter ${getPriorityStyle(behavior.priority)}`}>
+                {behavior.priority} | {behavior.severity}
             </div>
 
-            {/* Nội dung hành vi */}
-            <h4 className="text-sm font-black text-slate-200 mb-2 truncate group-hover:text-white transition-colors">
-                {behavior.title}
-            </h4>
-            <div className="flex items-center gap-2 text-[10px] text-indigo-400 font-bold mb-3">
-                <Terminal size={12}/> {behavior.alert_type}
-            </div>
-            
-            <p className="text-[11px] text-slate-500 line-clamp-2 h-8 leading-relaxed mb-4">
-                {behavior.description}
-            </p>
-
-            {/* Thông tin thiết bị */}
-            <div className="pt-4 border-t border-slate-800/50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-slate-800/50 rounded-lg">
-                        <Monitor size={12} className="text-slate-400"/>
-                    </div>
-                    <code className="text-[10px] text-slate-400 font-mono">
-                        {behavior.asset_hwid.substring(0, 12)}...
-                    </code>
+            {/* 2. Nội dung chính - flex-1 */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                    <h4 className="text-sm font-bold text-slate-200 truncate group-hover:text-white">
+                        {behavior.title}
+                    </h4>
+                    <span className="text-[9px] text-indigo-400 font-mono px-2 py-0.5 bg-indigo-500/5 border border-indigo-500/10 rounded uppercase">
+                        {behavior.alert_type}
+                    </span>
                 </div>
+                <p className="text-[11px] text-slate-500 truncate italic">
+                    {behavior.description}
+                </p>
+            </div>
 
-                {/* Nút Escalate - Trái tim của giao diện mới */}
-                {!behavior.is_resolved ? (
-                    <button 
-                        onClick={handleEscalate}
-                        disabled={isEscalating}
-                        className="flex items-center gap-1.5 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 px-3 py-1.5 rounded-lg transition-all text-[10px] font-black uppercase"
-                    >
-                        {isEscalating ? <Loader2 size={12} className="animate-spin"/> : <Zap size={12}/>}
-                        Escalate
-                    </button>
-                ) : (
-                    <div className="flex items-center gap-2">
-                        <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-[0_0_15px_rgba(16,185,129,0.15)]">
-                            <ShieldAlert size={12} className="animate-pulse" />
-                            Đã thành Sự cố
-                        </span>
-                        {behavior.incident_id && (
-                            <a href={`/incidents/${behavior.incident_id}`} className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-400 rounded-lg transition-all border border-slate-700 hover:border-emerald-500/40" title="Xem chi tiết Sự cố">
-                                <ArrowUpRight size={14} />
-                            </a>
-                        )}
+            {/* 3. Thông tin máy & Thời gian - Khớp w-48 */}
+            <div className="flex flex-row md:flex-col items-center md:items-end gap-4 md:gap-1 text-[11px] font-mono whitespace-nowrap md:w-48">
+                <div className="flex items-center gap-1.5 text-indigo-300">
+                    <Monitor size={12}/>
+                    <span>{behavior.asset_hwid.substring(0, 16)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-slate-500">
+                    <Clock size={12}/>
+                    <span>{new Date(behavior.created_at).toLocaleString('vi-VN')}</span>
+                </div>
+            </div>
+
+            {/* 4. Nhóm nút thao tác - Khớp w-20 */}
+            <div className="flex items-center justify-end gap-2 pl-4 border-l border-slate-800 md:w-20">
+                <button 
+                    onClick={() => setIsModalOpen(true)}
+                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors border border-slate-700"
+                    title="Xem chi tiết"
+                >
+                    <Search size={14} />
+                </button>
+
+                {behavior.is_resolved && (
+                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg" title="Đã lập hồ sơ">
+                        <ShieldAlert size={16} />
                     </div>
                 )}
             </div>
         </div>
+
+        {isModalOpen && (
+            <BehaviorDetailModal 
+                behaviorId={behavior.id} 
+                onClose={() => setIsModalOpen(false)} 
+            />
+        )}
+        </>
     );
 };
 

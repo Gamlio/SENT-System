@@ -147,7 +147,8 @@ func main() {
 			behaviorGroup := protected.Group("/behaviors")
 			{
 				behaviorGroup.GET("", behavior.GetBehaviors)
-				behaviorGroup.POST("/escalate", incidents.EscalateHandler)
+				behaviorGroup.GET("/:id", behavior.GetBehaviorDetail)
+				behaviorGroup.POST("/create-incident", behavior.CreateIncidentHandler)
 			}
 			aiGroup := protected.Group("/ai")
 			{

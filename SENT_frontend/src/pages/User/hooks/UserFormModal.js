@@ -1,4 +1,4 @@
-// Thêm vào trong phần grid thông tin cơ bản của UserFormModal[cite: 44]
+// Thêm vào trong phần grid thông tin cơ bản của UserFormModal
 <InputRow label="Phòng ban / Nhóm" icon={Shield}>
     <select 
         value={formData.group_id || ''} 
