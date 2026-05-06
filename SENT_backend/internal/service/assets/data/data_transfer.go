@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sent_backend/internal/cache"
+	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
 	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 func ProcessDataTransfer(asset models.Asset, data interface{}) error {
@@ -31,7 +34,23 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) error {
 	}
 
 	if err := json.Unmarshal(bytes, &payload); err != nil {
+		// [DEBUG] Ghi log chi tiết nội dung Payload bị lỗi để phát hiện vấn đề cấu trúc gửi từ Agent
+		log.Printf("[DataTransfer] Lỗi giải mã JSON từ Agent (HWID: %s): %v | Payload: %s", asset.AssetHWID, err, string(bytes))
 		return fmt.Errorf("lỗi giải mã JSON data_transfer: %w", err)
+	}
+
+	// [LƯU VẾT LỊCH SỬ] Ghi nhận hoạt động mạng vào MongoDB để hiển thị biểu đồ trên Frontend
+	// Tuyệt đối sử dụng int64(asset.OrgID) từ Postgres để đảm bảo không bị lệch Tenant
+	if database.AssetIOActivityCollection != nil {
+		ioRecord := bson.M{
+			"asset_hwid":     asset.AssetHWID,
+			"org_id":         int64(asset.OrgID),
+			"timestamp":      time.Now(),
+			"total_net_sent": payload.TotalNetSent,
+			"total_net_recv": payload.TotalNetRecv,
+			"top_processes":  payload.TopProcesses,
+		}
+		_, _ = database.AssetIOActivityCollection.InsertOne(context.TODO(), ioRecord)
 	}
 
 	// [HIỆU NĂNG & CLUSTER CLOUD] Chuyển đổi in-memory sync.Map sang Distributed Redis Cache
@@ -55,7 +74,7 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) error {
 	}
 
 	// 2. NGƯỠNG CẢNH BÁO
-	isNetworkSpike := diffSent > 500*1024*1024 // 500MB
+	isNetworkSpike := diffSent > 10*1024*1024*1024 // 10GB
 
 	if isNetworkSpike {
 		incSvc := &incidents.IncidentService{}

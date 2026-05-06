@@ -2,6 +2,7 @@ package assets
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
@@ -43,14 +44,20 @@ func PushDataHandler(c *gin.Context) {
 		return
 	}
 
-	// 3. Quăng dữ liệu vào hàng đợi bất đồng bộ (Goroutine) cho Bộ não xử lý
-	assetService.ProcessassetData(assetService.AssetPayload{
+	// 3. Đẩy dữ liệu cho Bộ não xử lý và bắt trọn các lỗi trả về
+	err := assetService.ProcessassetData(assetService.AssetPayload{
 		Type:     "DATA",
 		LogType:  req.LogType,
 		AssetID:  req.AssetID,
 		Hostname: req.Hostname,
 		Data:     req.Data,
 	})
+
+	if err != nil {
+		log.Printf(" Lỗi xử lý máy %s: %v", req.AssetID, err)
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
 
 	// 4. Phản hồi ngay lập tức cho asset
 	c.JSON(http.StatusOK, gin.H{"message": "Dữ liệu đã được tiếp nhận và lưu trữ an toàn"})

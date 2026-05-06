@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"encoding/json"
 	"fmt"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
@@ -38,9 +39,26 @@ func ProcessassetData(payload AssetPayload) error {
 
 	// THÊM: Xử lý bóc tách cho các gói gộp batch_
 	if strings.HasPrefix(payload.LogType, "batch_") {
-		batch, ok := payload.Data.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("dữ liệu batch không hợp lệ")
+		var batch map[string]json.RawMessage
+
+		// Xử lý an toàn Data thô (RawMessage/Bytes) thành map các RawMessage con.
+		// Việc này giúp truyền chính xác Mảng (Array) hoặc Đối tượng (Object) con vào hàm Process
+		// mà không bị dính phím cha, đồng thời loại bỏ nguy cơ Double-Marshal làm vỡ chuỗi JSON.
+		switch v := payload.Data.(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &batch); err != nil {
+				return fmt.Errorf("lỗi giải mã batch từ RawMessage: %w", err)
+			}
+		case []byte:
+			if err := json.Unmarshal(v, &batch); err != nil {
+				return fmt.Errorf("lỗi giải mã batch từ []byte: %w", err)
+			}
+		default:
+			// Fallback trong trường hợp là map[string]interface{}
+			bytes, _ := json.Marshal(payload.Data)
+			if err := json.Unmarshal(bytes, &batch); err != nil {
+				return fmt.Errorf("lỗi giải mã batch từ cấu trúc object: %w", err)
+			}
 		}
 
 		// Phân phối dữ liệu vào các hàm chuyên biệt hiện có

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 )
@@ -56,6 +57,9 @@ func parseWindowsUSBID(pnpID string) (vid, pid, serial string) {
 	if len(parts) >= 3 {
 		serial = parts[len(parts)-1]
 	}
+
+	// [DEBUG] Ghi log để kiểm tra việc bóc tách chuỗi định danh USB
+	log.Printf("[USB Sensor] Đã bóc tách '%s' -> VID: %s, PID: %s, Serial: %s", pnpID, vid, pid, serial)
 
 	return vid, pid, serial
 }

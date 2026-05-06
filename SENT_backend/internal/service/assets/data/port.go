@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
@@ -24,7 +25,7 @@ func ProcessPorts(asset models.Asset, data interface{}) error {
 	if err != nil {
 		return fmt.Errorf("dữ liệu port không hợp lệ: %w", err)
 	}
-
+	log.Printf("[DEBUG] HWID: %s | Bytes: %s", asset.AssetHWID, string(bytes))
 	var payload assetTelemetryRecord
 	if err := json.Unmarshal(bytes, &payload); err != nil {
 		return fmt.Errorf("lỗi giải mã JSON port: %w", err)

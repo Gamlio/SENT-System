@@ -45,7 +45,7 @@ const AssetDetail = () => {
 
     useEffect(() => { fetchDetail(true); }, [fetchDetail]);
     
-    useSocketSubscription(['REFRESH_DATA', 'asset_UPDATE'], (data) => { 
+    useSocketSubscription(['REFRESH_DATA', 'ASSET_UPDATE'], (data) => { 
         if (data?.hwid === hwid || data?.asset_hwid === hwid) fetchDetail(); 
     });
 
@@ -64,7 +64,8 @@ const AssetDetail = () => {
     );
     
     const inv = asset.inventory || {}; 
-    const isOnline = asset.status === 'online';
+    // [SỬA LỖI LOGIC] Tính toán trạng thái Online dựa trên last_seen thay vì trường status của DB
+    const isOnline = asset.last_seen ? (new Date() - new Date(asset.last_seen)) < 120000 : false; // 2 phút
 
     return (
         <div className="h-[calc(100vh-60px)] bg-[#050B14] text-slate-200 flex flex-col font-sans overflow-hidden">

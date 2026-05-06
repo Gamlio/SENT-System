@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sent_backend/internal/database"
 	"sent_backend/internal/models"
 	"sent_backend/internal/service/incidents"
@@ -37,7 +38,7 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 	if err != nil {
 		return fmt.Errorf("dữ liệu đầu vào không hợp lệ: %w", err)
 	}
-
+	log.Printf("[DEBUG] HWID: %s | Bytes: %s", asset.AssetHWID, string(bytes))
 	var records []assetSoftwareRecord
 	if err := json.Unmarshal(bytes, &records); err != nil {
 		return fmt.Errorf("lỗi giải mã JSON software: %w", err)
