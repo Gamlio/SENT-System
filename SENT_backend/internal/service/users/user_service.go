@@ -11,17 +11,19 @@ type UserService struct{}
 
 // CreateUserRequest: Xử lý yêu cầu tạo nhân sự mới
 func (s *UserService) CreateUserRequest(req models.UserPayload, orgID uint, requester models.User) error {
-	// 1. Kiểm tra quyền hạn cấp phát
+	// 1. Kiểm tra quyền hạn cấp phát: "Không được cho đi thứ mình không có"
 	if (req.PermSystemConfig && !requester.PermSystemConfig) ||
 		(req.PermApprovalFinal && !requester.PermApprovalFinal) ||
 		(req.PermUserManage && !requester.PermUserManage) ||
 		(req.PermUserView && !requester.PermUserView) ||
 		(req.PermAssetMove && !requester.PermAssetMove) ||
+		(req.PermAssetView && !requester.PermAssetView) ||
+		(req.PermAssetAction && !requester.PermAssetAction) ||
+		(req.PermAssetDelete && !requester.PermAssetDelete) ||
 		(req.PermPolicyManage && !requester.PermPolicyManage) ||
 		(req.PermApprovalView && !requester.PermApprovalView) ||
-		(req.PermGroupManage && !requester.PermGroupManage) ||
-		(req.PermApprovalFinal && !requester.PermApprovalFinal) { // Thêm kiểm tra cho PermApprovalFinal
-		return fmt.Errorf("bạn không có quyền cấp phát các đặc quyền quản trị cao cấp")
+		(req.PermGroupManage && !requester.PermGroupManage) {
+		return fmt.Errorf("bạn không có quyền cấp phát các đặc quyền cao hơn quyền của mình")
 	}
 
 	// 2. Kiểm tra trùng lặp username
@@ -63,11 +65,13 @@ func (s *UserService) UpdateUserRequest(targetID uint, req models.UserPayload, o
 		(req.PermUserManage && !requester.PermUserManage) ||
 		(req.PermUserView && !requester.PermUserView) ||
 		(req.PermAssetMove && !requester.PermAssetMove) ||
+		(req.PermAssetView && !requester.PermAssetView) ||
+		(req.PermAssetAction && !requester.PermAssetAction) ||
+		(req.PermAssetDelete && !requester.PermAssetDelete) ||
 		(req.PermPolicyManage && !requester.PermPolicyManage) ||
 		(req.PermGroupManage && !requester.PermGroupManage) ||
-		(req.PermApprovalView && !requester.PermApprovalView) ||
-		(req.PermApprovalFinal && !requester.PermApprovalFinal) { // Thêm kiểm tra cho PermApprovalFinal
-		return fmt.Errorf("bạn không có quyền cấp phát đặc quyền quản trị")
+		(req.PermApprovalView && !requester.PermApprovalView) {
+		return fmt.Errorf("bạn không có quyền cấp phát các đặc quyền cao hơn quyền của mình")
 	}
 
 	snapshot, _ := json.Marshal(req)

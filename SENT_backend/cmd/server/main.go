@@ -85,73 +85,93 @@ func main() {
 		protected.Use(middleware.AuthRequired())
 		{
 			protected.GET("/ws", websocket.WsHandler)
+
 			usersGroup := protected.Group("/users")
 			{
-				usersGroup.GET("", users.GetUsers)
-				usersGroup.POST("", users.CreateUser)
-				usersGroup.PUT("/:id", users.UpdateUser)
-				usersGroup.DELETE("/:id", users.DeleteUser)
-			}
+				usersGroup.GET("", middleware.RequirePermission("user_view"), users.GetUsers)
 
+				userManage := middleware.RequirePermission("user_manage")
+				usersGroup.POST("", userManage, users.CreateUser)
+				usersGroup.PUT("/:id", userManage, users.UpdateUser)
+				usersGroup.DELETE("/:id", userManage, users.DeleteUser)
+			}
 			assetsGroup := protected.Group("/assets")
 			{
-				assetsGroup.GET("/stats", assets.GetStats)
-				assetsGroup.GET("", assets.GetAssets)
-				assetsGroup.GET("/:hwid", assets.GetAssetDetail)
-				assetsGroup.GET("/:hwid/logs", assets.GetAssetLogs)
-				assetsGroup.GET("/:hwid/software", assets.GetAssetSoftware)
-				assetsGroup.GET("/:hwid/usb", assets.GetAssetUSB)
-				assetsGroup.GET("/:hwid/ports", assets.GetAssetPorts)
-				assetsGroup.GET("/active-token", assets.GetActiveEnrollmentToken)
-				assetsGroup.POST("/generate-token", assets.GenerateEnrollmentToken)
-				assetsGroup.PUT("/:hwid/assign", assets.AssignManager)
-				assetsGroup.PUT("/types/:id", assets.UpdateAssetType)
-				assetsGroup.GET("/types", assets.GetAssetTypes)
-				assetsGroup.PUT("/:hwid/department", assets.UpdateDepartment)
-				assetsGroup.POST("/:hwid/request-delete", assets.RequestDeleteAsset)
-				assetsGroup.POST("/bulk-request-delete", assets.RequestBulkDeleteAssets)
+				viewAssets := middleware.RequirePermission("asset_view")
+				assetsGroup.GET("/stats", viewAssets, assets.GetStats)
+				assetsGroup.GET("", viewAssets, assets.GetAssets)
+				assetsGroup.GET("/:hwid", viewAssets, assets.GetAssetDetail)
+				assetsGroup.GET("/:hwid/logs", viewAssets, assets.GetAssetLogs)
+				assetsGroup.GET("/:hwid/software", viewAssets, assets.GetAssetSoftware)
+				assetsGroup.GET("/:hwid/usb", viewAssets, assets.GetAssetUSB)
+				assetsGroup.GET("/:hwid/ports", viewAssets, assets.GetAssetPorts)
+				assetsGroup.GET("/active-token", viewAssets, assets.GetActiveEnrollmentToken)
+				assetsGroup.GET("/types", viewAssets, assets.GetAssetTypes)
+
+				actionAssets := middleware.RequirePermission("asset_action")
+				assetsGroup.POST("/generate-token", actionAssets, assets.GenerateEnrollmentToken)
+				assetsGroup.PUT("/:hwid/assign", actionAssets, assets.AssignManager)
+				assetsGroup.PUT("/:hwid/department", actionAssets, assets.UpdateDepartment)
+
+				assetsGroup.PUT("/types/:id", middleware.RequirePermission("asset_move"), assets.UpdateAssetType)
+
+				deleteAssets := middleware.RequirePermission("asset_delete")
+				assetsGroup.POST("/:hwid/request-delete", deleteAssets, assets.RequestDeleteAsset)
+				assetsGroup.POST("/bulk-request-delete", deleteAssets, assets.RequestBulkDeleteAssets)
 			}
 
 			aiDocs := protected.Group("/docs")
 			{
-				aiDocs.GET("", docs.GetDocuments)
-				aiDocs.POST("/upload", docs.UploadDocument)
-				aiDocs.DELETE("/:id", docs.DeleteDocument)
-				aiDocs.PUT("/:id", docs.UpdateDocument)
-				aiDocs.POST("/:id/delete-request", docs.DeleteDocument)
+				aiDocs.GET("", middleware.RequirePermission("doc_view"), docs.GetDocuments)
+
+				docManage := middleware.RequirePermission("doc_manage")
+				aiDocs.POST("/upload", docManage, docs.UploadDocument)
+				aiDocs.DELETE("/:id", docManage, docs.DeleteDocument)
+				aiDocs.PUT("/:id", docManage, docs.UpdateDocument)
+				aiDocs.POST("/:id/delete-request", docManage, docs.DeleteDocument)
 			}
 
 			policiesGroup := protected.Group("/policies")
 			{
-				policiesGroup.GET("", policies.GetPoliciesByCategory)
-				policiesGroup.POST("/bulk", policies.AddBulkPolicies)
-				policiesGroup.DELETE("/:id", policies.DeletePolicy)
-				policiesGroup.POST("/bulk-delete", policies.DeleteBulkPolicies)
-				policiesGroup.GET("/groups", policies.GetPolicyGroups)
+				policyView := middleware.RequirePermission("policy_view")
+				policiesGroup.GET("", policyView, policies.GetPoliciesByCategory)
+				policiesGroup.GET("/groups", policyView, policies.GetPolicyGroups)
+
+				policyManage := middleware.RequirePermission("policy_manage")
+				policiesGroup.POST("/bulk", policyManage, policies.AddBulkPolicies)
+				policiesGroup.DELETE("/:id", policyManage, policies.DeletePolicy)
+				policiesGroup.POST("/bulk-delete", policyManage, policies.DeleteBulkPolicies)
 			}
+
 			dashGroup := protected.Group("/dashboard")
 			{
-				dashGroup.GET("/stats", dashboard.GetDashboardStats)
+				dashGroup.GET("/stats", middleware.RequirePermission("asset_view"), dashboard.GetDashboardStats)
 			}
 
 			incidentsGroup := protected.Group("/incidents")
 			{
-				incidentsGroup.GET("", incidents.GetIncidents)
-				incidentsGroup.GET("/:id", incidents.GetIncidentDetail)
-				incidentsGroup.POST("/audit/upload", incidents.AddAuditLogHandler)
+				incidentView := middleware.RequirePermission("incident_view")
+				incidentsGroup.GET("", incidentView, incidents.GetIncidents)
+				incidentsGroup.GET("/:id", incidentView, incidents.GetIncidentDetail)
 
-				actionRequired := middleware.RequirePermission("PermIncidentAction")
-				incidentsGroup.PUT("/:id/assign", actionRequired, incidents.AssignIncident)
-				incidentsGroup.POST("/close", actionRequired, incidents.CloseIncident)
-				incidentsGroup.GET("/audit/:audit_id/verify", incidents.VerifyAuditIntegrity)
-
+				incidentAction := middleware.RequirePermission("incident_action")
+				incidentsGroup.POST("/audit/upload", incidentAction, incidents.AddAuditLogHandler)
+				incidentsGroup.PUT("/:id/assign", incidentAction, incidents.AssignIncident)
+				incidentsGroup.POST("/close", incidentAction, incidents.CloseIncident)
+				incidentsGroup.GET("/audit/:audit_id/verify", incidentAction, incidents.VerifyAuditIntegrity)
 			}
+
+			// --- MODULE: BEHAVIORS ---
 			behaviorGroup := protected.Group("/behaviors")
 			{
-				behaviorGroup.GET("", behavior.GetBehaviors)
-				behaviorGroup.GET("/:id", behavior.GetBehaviorDetail)
-				behaviorGroup.POST("/create-incident", behavior.CreateIncidentHandler)
+				incidentView := middleware.RequirePermission("incident_view")
+				behaviorGroup.GET("", incidentView, behavior.GetBehaviors)
+				behaviorGroup.GET("/:id", incidentView, behavior.GetBehaviorDetail)
+
+				incidentAction := middleware.RequirePermission("incident_action")
+				behaviorGroup.POST("/create-incident", incidentAction, behavior.CreateIncidentHandler)
 			}
+
 			aiGroup := protected.Group("/ai")
 			{
 				aiGroup.POST("/chat", ai.ChatHandler)
@@ -163,12 +183,15 @@ func main() {
 				aiGroup.PUT("/sessions/:id", ai.RenameSession)
 				aiGroup.GET("/chat/:session_id", ai.GetChatHistory)
 			}
+
 			approvalsGroup := protected.Group("/approvals")
 			{
-				approvalsGroup.GET("", approvals.GetTickets)
-				approvalsGroup.PUT("/:id/review", approvals.ReviewTicket)
+				approvalsGroup.GET("", middleware.RequirePermission("approval_view"), approvals.GetTickets)
+				approvalsGroup.PUT("/:id/review", middleware.RequirePermission("approval_final"), approvals.ReviewTicket)
 			}
+
 			groupsGroup := protected.Group("/groups")
+			groupsGroup.Use(middleware.RequirePermission("group_manage"))
 			{
 				groupsGroup.GET("", group.HandleGetGroups)
 				groupsGroup.POST("", group.HandleCreateGroup)

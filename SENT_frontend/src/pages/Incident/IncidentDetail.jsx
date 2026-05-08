@@ -3,8 +3,10 @@ import { useIncidents } from './hooks/useIncidents';
 import AuditChat from './components/AuditChat';
 import { ChevronLeft, Monitor, Terminal, ShieldAlert, CheckCircle2, Lock, AlertCircle } from 'lucide-react';
 import axiosInstance from '../../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 
-const IncidentDetail = ({ incidentId, onBack, currentUser }) => {
+const IncidentDetail = ({ incidentId, onBack }) => {
+    const { user } = useAuth();
     const { detail, loading, fetchDetail } = useIncidents();
     const [isClosing, setIsClosing] = useState(false);
 
@@ -67,7 +69,7 @@ const IncidentDetail = ({ incidentId, onBack, currentUser }) => {
                 <div className="flex items-center gap-3">
                     {/* Hiển thị nút đóng case nếu chưa resolved và có quyền */}
                     {incident.status !== 'Resolved' ? (
-                        currentUser?.perm_incident_action && (
+                        user?.permissions?.incident_action && (
                             <button 
                                 onClick={handleCloseCase}
                                 disabled={isClosing}
@@ -80,7 +82,7 @@ const IncidentDetail = ({ incidentId, onBack, currentUser }) => {
                     ) : (
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded">
                             <Lock size={12} className="text-emerald-500"/>
-                            <span className="text-[9px] font-mono text-emerald-500 font-bold uppercase">Case Sealed & Immutable</span>
+                            <span className="text-[9px] font-mono text-emerald-500 font-bold uppercase">Case Sealed</span>
                         </div>
                     )}
                 </div>

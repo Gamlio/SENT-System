@@ -30,19 +30,38 @@ func RequirePermission(permissionField string) gin.HandlerFunc {
 		// Ánh xạ tên quyền truyền vào với các trường boolean trong struct User
 		hasPermission := false
 		switch permissionField {
-		case "PermIncidentAction":
-			hasPermission = user.PermIncidentAction
-		case "PermIncidentView":
-			hasPermission = user.PermIncidentView
-		case "PermAssetAction":
-			hasPermission = user.PermAssetAction
-		case "PermAssetView":
+		case "asset_view":
 			hasPermission = user.PermAssetView
-		case "PermPolicyManage":
+		case "asset_action":
+			hasPermission = user.PermAssetAction
+		case "asset_delete":
+			hasPermission = user.PermAssetDelete
+		case "asset_move":
+			hasPermission = user.PermAssetMove
+		case "doc_view":
+			hasPermission = user.PermDocView
+		case "doc_manage":
+			hasPermission = user.PermDocManage
+		case "policy_view":
+			hasPermission = user.PermPolicyView
+		case "policy_manage":
 			hasPermission = user.PermPolicyManage
-		case "PermApprovalFinal":
+		case "incident_view":
+			hasPermission = user.PermIncidentView
+		case "incident_action":
+			hasPermission = user.PermIncidentAction
+		case "user_view":
+			hasPermission = user.PermUserView
+		case "user_manage":
+			hasPermission = user.PermUserManage
+		case "approval_view":
+			hasPermission = user.PermApprovalView
+		case "approval_final":
 			hasPermission = user.PermApprovalFinal
-		// Thêm các case khác tương ứng với các trường trong models.User nếu cần
+		case "system_config":
+			hasPermission = user.PermSystemConfig
+		case "group_manage":
+			hasPermission = user.PermGroupManage
 		default:
 			hasPermission = false
 		}
