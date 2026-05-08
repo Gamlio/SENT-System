@@ -4,6 +4,7 @@ node_modules/
 .venv/
 *.pyc
 uploads/
+/uploads/
 pkg/
 asset_history.log
 *.json

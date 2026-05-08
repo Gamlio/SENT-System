@@ -39,6 +39,7 @@ func main() {
 
 	r := gin.New()
 	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
 	r.RedirectTrailingSlash = false
 	r.Use(middleware.IPBlacklistMiddleware())
 	r.Use(middleware.SecurityValidationMiddleware())
@@ -137,10 +138,11 @@ func main() {
 			{
 				incidentsGroup.GET("", incidents.GetIncidents)
 				incidentsGroup.GET("/:id", incidents.GetIncidentDetail)
-				incidentsGroup.POST("/close", incidents.CloseIncident)
-				incidentsGroup.PUT("/:id/playbook", incidents.UpdatePlaybookProgress)
+				incidentsGroup.POST("/audit/upload", incidents.AddAuditLogHandler)
 
-				incidentsGroup.PUT("/:id/assign", incidents.AssignIncident)
+				actionRequired := middleware.RequirePermission("PermIncidentAction")
+				incidentsGroup.PUT("/:id/assign", actionRequired, incidents.AssignIncident)
+				incidentsGroup.POST("/close", actionRequired, incidents.CloseIncident)
 				incidentsGroup.GET("/audit/:audit_id/verify", incidents.VerifyAuditIntegrity)
 
 			}

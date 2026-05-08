@@ -2,8 +2,7 @@ import React, { useState, useEffect, memo } from 'react';
 import { ShieldCheck, Clock, Copy, CheckCircle2, RefreshCw } from 'lucide-react';
 import axios from '../../../api/axios';
 
-// Tách riêng logic đếm giờ thành Component con và bọc React.memo
-// Điều này giúp GenerateTokenButton (Cha) KHÔNG bị re-render mỗi giây!
+// CountdownTimer được tinh chỉnh để giống các Tag trạng thái trong Assets.jsx
 const CountdownTimer = memo(({ initialSeconds, onExpire }) => {
     const [timeLeft, setTimeLeft] = useState(initialSeconds);
 
@@ -32,8 +31,8 @@ const CountdownTimer = memo(({ initialSeconds, onExpire }) => {
     const s = (timeLeft % 60).toString().padStart(2, '0');
 
     return (
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg text-xs font-bold font-mono">
-            <Clock size={14} className="animate-pulse" />
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded text-[10px] font-black font-mono tracking-tighter">
+            <Clock size={10} className="animate-pulse" />
             {m}:{s}
         </div>
     );
@@ -44,7 +43,6 @@ const EnrollmentTokenDisplay = () => {
     const [copied, setCopied] = useState(false);
     const [fetching, setFetching] = useState(false);
 
-    // Hàm lấy mã từ Backend (Backend sẽ tự tạo nếu chưa có)
     const fetchToken = async () => {
         setFetching(true);
         try {
@@ -72,32 +70,43 @@ const EnrollmentTokenDisplay = () => {
     };
 
     return (
-        <div className="bg-[#1e293b] p-4 rounded-2xl border border-slate-800 shadow-lg flex flex-col md:flex-row items-start md:items-center gap-4 max-w-3xl mb-6">
-            {/* Nhãn trạng thái */}
-            <div className="flex items-center gap-2 px-4 py-3 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-xl text-sm font-bold whitespace-nowrap">
-                <ShieldCheck size={18} />
-                Mã cài đặt hệ thống
+        <div className="bg-[#0A101D] p-1.5 pl-3 rounded-xl border border-slate-800 shadow-2xl flex items-center gap-4 group transition-all hover:border-slate-700">
+            {/* Label trái - Font style giống tiêu đề nhỏ trong Assets */}
+            <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-indigo-400">
+                    <ShieldCheck size={14} />
+                </div>
+                <div className="hidden md:block">
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none mb-0.5">Enrollment</p>
+                    <p className="text-[10px] font-bold text-white uppercase tracking-tight leading-none">Mã cài đặt</p>
+                </div>
             </div>
 
-            {/* Khu vực hiển thị mã */}
-            <div className="flex-1 flex items-center gap-3 bg-slate-900 border border-slate-700 px-4 py-3 rounded-xl w-full relative overflow-hidden">
-                {fetching && <div className="absolute inset-0 bg-slate-900/50 flex items-center justify-center"><RefreshCw size={16} className="animate-spin text-indigo-400" /></div>}
+            {/* Khu vực Token - Sử dụng font mono và style của IP address */}
+            <div className="flex items-center gap-3 bg-[#050B14] border border-slate-800 px-3 py-1.5 rounded-lg relative overflow-hidden min-w-[180px]">
+                {fetching && (
+                    <div className="absolute inset-0 bg-[#050B14]/80 flex items-center justify-center z-10">
+                        <RefreshCw size={12} className="animate-spin text-indigo-500" />
+                    </div>
+                )}
                 
-                <span className="font-mono text-lg md:text-xl tracking-widest font-bold flex-1 text-indigo-400 select-all">
-                    {tokenInfo ? tokenInfo.token : "Đang tải..."}
+                <span className="font-mono text-xs md:text-sm tracking-[0.2em] font-black text-indigo-400 select-all">
+                    {tokenInfo ? tokenInfo.token : "--------"}
                 </span>
 
-                {tokenInfo && tokenInfo.expires_in > 0 && (
-                    <>
+                <div className="flex items-center gap-2 ml-auto">
+                    {tokenInfo && tokenInfo.expires_in > 0 && (
                         <CountdownTimer initialSeconds={tokenInfo.expires_in} onExpire={fetchToken} />
-                        <button 
-                            onClick={handleCopy}
-                            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition"
-                        >
-                            {copied ? <CheckCircle2 size={18} className="text-emerald-400" /> : <Copy size={18} />}
-                        </button>
-                    </>
-                )}
+                    )}
+                    
+                    <button 
+                        onClick={handleCopy}
+                        className="p-1.5 hover:bg-slate-800 text-slate-500 hover:text-white rounded-md transition-colors border border-transparent hover:border-slate-700"
+                        title="Copy to clipboard"
+                    >
+                        {copied ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                    </button>
+                </div>
             </div>
         </div>
     );

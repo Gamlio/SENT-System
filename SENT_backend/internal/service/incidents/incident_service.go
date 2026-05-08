@@ -18,108 +18,70 @@ import (
 
 type IncidentService struct{}
 
-// GetIncidentList: Lấy danh sách sự cố từ PostgreSQL
-func (s *IncidentService) GetIncidentList(orgID uint) ([]models.Incident, error) {
+// 1. TRUY VẤN DỮ LIỆU
+
+// GetIncidentList: Lấy danh sách sự cố có phân trang
+func (s *IncidentService) GetIncidentList(orgID uint, page, limit int) ([]models.Incident, int64, error) {
 	var incidents []models.Incident
-	// Preload Asset để hiển thị thông tin máy trạm trong danh sách
-	err := database.DB.Preload("Asset").Where("org_id = ?", orgID).Order("created_at DESC").Find(&incidents).Error
-	return incidents, err
+	var total int64
+
+	// Đếm tổng số bản ghi trước để tính số trang[cite: 58]
+	database.DB.Model(&models.Incident{}).Where("org_id = ?", orgID).Count(&total)
+
+	offset := (page - 1) * limit
+
+	err := database.DB.Preload("Asset").Preload("Assignee").
+		Where("org_id = ?", orgID).
+		Offset(offset).
+		Limit(limit).
+		Order("created_at DESC").
+		Find(&incidents).Error
+
+	return incidents, total, err
 }
 
-// GetIncidentDetail: Lấy chi tiết sự cố và toàn bộ Audit Logs
+// GetIncidentDetail: Lấy chi tiết sự cố và toàn bộ Audit Logs[cite: 58]
 func (s *IncidentService) GetIncidentDetail(ctx context.Context, incidentID uint, orgID uint) (*models.Incident, []models.IncidentAudit, error) {
-	// 1. Lấy thông tin chính từ Postgres
 	var incident models.Incident
-	// [FIX] Thêm điều kiện Where("org_id = ?") để chống IDOR
-	err := database.DB.Preload("Asset").Preload("Assignee").Where("org_id = ?", orgID).First(&incident, incidentID).Error
+	// Chống IDOR bằng cách lọc theo org_id[cite: 58]
+	err := database.DB.Preload("Asset").Preload("Assignee").
+		Where("id = ? AND org_id = ?", incidentID, orgID).First(&incident).Error
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// 2. Lấy toàn bộ Audit Logs từ MongoDB
-	var audits []models.IncidentAudit
-	// FIX: Phải cast incidentID sang int64 để khớp với dữ liệu trong Mongo
+	// 2. [QUAN TRỌNG] Lấy bằng chứng USB/Hành vi từ MongoDB để hiện ở cột trái
+	alerts := []models.SecurityAlert{}
+	alertFilter := bson.M{"incident_id": int64(incidentID)}
+	if database.SecurityAlertCollection != nil {
+		alertCursor, _ := database.SecurityAlertCollection.Find(ctx, alertFilter)
+		if alertCursor != nil {
+			alertCursor.All(ctx, &alerts)
+			incident.Alerts = alerts // Gán vào struct Incident để trả về cho Frontend
+		}
+	}
+
+	// Luôn khởi tạo mảng rỗng để tránh trả về 'null' cho Frontend gây crash[cite: 58]
+	audits := []models.IncidentAudit{}
 	filter := bson.M{"incident_id": int64(incidentID)}
-	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}).SetLimit(500) // Tránh OOM do load quá nhiều Audit
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(500)
+
 	cursor, err := database.IncidentAuditCollection.Find(ctx, filter, opts)
 	if err != nil {
-		return &incident, nil, err
+		return nil, nil, err
 	}
 	defer cursor.Close(ctx)
 
 	if err = cursor.All(ctx, &audits); err != nil {
-		return &incident, nil, err
+		return &incident, audits, err
 	}
 
 	return &incident, audits, nil
 }
 
-// isNoteComplexEnough kiểm tra xem ghi chú đóng case có đủ chi tiết không.
-func isNoteComplexEnough(note string) bool {
-	// Tối thiểu 15 ký tự
-	if len(strings.TrimSpace(note)) < 15 {
-		return false
-	}
-	// Tối thiểu 3 từ
-	if len(strings.Fields(note)) < 3 {
-		return false
-	}
-	// Kiểm tra các ký tự lặp lại (ví dụ: "1111111111", "aaaaaaaaaa")
-	uniqueChars := make(map[rune]bool)
-	for _, r := range note {
-		if r != ' ' { // Bỏ qua khoảng trắng
-			uniqueChars[r] = true
-		}
-	}
-	// Nếu ghi chú dài hơn 10 ký tự nhưng có ít hơn 4 ký tự duy nhất (không phải khoảng trắng), nó có thể là rác.
-	if len(note) > 10 && len(uniqueChars) < 4 {
-		return false
-	}
-	return true
-}
+// 2. LOGIC NGHIỆP VỤ CHÍNH (VÒNG ĐỜI SỰ CỐ)
 
-// CloseIncidentWorkflow: Luồng đóng sự cố bắt buộc có Audit
-func (s *IncidentService) CloseIncidentWorkflow(ctx context.Context, audit *models.IncidentAudit, orgID uint) error {
-	// Kiểm tra bằng chứng Baseline Scan trước khi cho phép đóng
-	if audit.EvidenceData == "" || audit.EvidenceData == "{}" {
-		return errors.New("không thể đóng: Thiếu bằng chứng quét Baseline Scan để xác minh an toàn")
-	}
-
-	// [MỚI] Kiểm tra độ phức tạp của ghi chú đóng case
-	if !isNoteComplexEnough(audit.Content) {
-		return errors.New("ghi chú đóng sự cố không đủ chi tiết hoặc không hợp lệ. Vui lòng cung cấp mô tả rõ ràng (tối thiểu 15 ký tự và 3 từ).")
-	}
-
-	// [MỚI] Kiểm tra bằng chứng đính kèm cho sự cố P1
-	var incident models.Incident
-	if err := database.DB.Select("priority").Where("id = ? AND org_id = ?", audit.IncidentID, orgID).First(&incident).Error; err != nil {
-		return errors.New("không tìm thấy sự cố tương ứng để kiểm tra mức độ ưu tiên")
-	}
-
-	if incident.Priority == "P1" && audit.Images == "" {
-		return errors.New("không thể đóng: Sự cố P1 bắt buộc phải có tệp bằng chứng (ảnh chụp màn hình) đính kèm")
-	}
-
-	// Sử dụng transaction để đảm bảo tính toàn vẹn giữa SQL và NoSQL
-	return database.DB.Transaction(func(tx *gorm.DB) error {
-		// 1. Niêm phong bản ghi Audit
-		audit.CreatedAt = time.Now()
-		audit.ActionType = "CLOSE"
-		audit.NewStatus = "Resolved"
-
-		// 2. Tạo chuỗi hash, lưu log vào MongoDB, và cập nhật Golden Hash trong Postgres
-		if err := s.createAndChainAudit(ctx, tx, audit); err != nil {
-			return err
-		}
-
-		// 3. Cập nhật trạng thái sự cố và tóm tắt xử lý vào Postgres
-		return tx.Model(&models.Incident{}).Where("id = ?", audit.IncidentID).Updates(map[string]interface{}{
-			"status":             "Resolved",
-			"resolution_summary": audit.Content,
-		}).Error
-	})
-}
-
+// AssignIncident: Admin phân công và ghi log[cite: 58]
 func (s *IncidentService) AssignIncident(ctx context.Context, incidentID, assigneeID, userID uint, orgID uint) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var incident models.Incident
@@ -128,7 +90,6 @@ func (s *IncidentService) AssignIncident(ctx context.Context, incidentID, assign
 		}
 
 		oldStatus := incident.Status
-		// Cập nhật người xử lý trong Postgres
 		if err := tx.Model(&incident).Updates(map[string]interface{}{
 			"assignee_id": assigneeID,
 			"status":      "Investigating",
@@ -136,21 +97,144 @@ func (s *IncidentService) AssignIncident(ctx context.Context, incidentID, assign
 			return err
 		}
 
+		uid64 := int64(userID)
 		audit := models.IncidentAudit{
 			IncidentID: int64(incidentID),
-			UserID:     nil,
+			UserID:     &uid64,
 			ActionType: "ASSIGN",
-			Content:    fmt.Sprintf("Chỉ định nhân viên (ID: %d) xử lý sự cố.", assigneeID),
+			Content:    fmt.Sprintf("Chỉ định nhân viên xử lý sự cố."),
 			OldStatus:  oldStatus,
 			NewStatus:  "Investigating",
 			CreatedAt:  time.Now(),
 		}
-		// Tạo chuỗi hash và cập nhật Golden Hash
 		return s.createAndChainAudit(ctx, tx, &audit)
 	})
 }
 
-// getLastAuditHash retrieves the hash of the last audit record for a given incident.
+// CloseIncidentWorkflow: Kiểm tra điều kiện và đóng sự cố[cite: 58]
+func (s *IncidentService) CloseIncidentWorkflow(ctx context.Context, audit *models.IncidentAudit, orgID uint) error {
+	// Kiểm tra bằng chứng quét Baseline[cite: 58]
+	if audit.EvidenceData == "" || audit.EvidenceData == "{}" {
+		return errors.New("thiếu bằng chứng Baseline Scan để xác minh an toàn")
+	}
+
+	// Kiểm tra tính nghiêm túc của báo cáo điều tra[cite: 58]
+	if !s.isNoteComplexEnough(audit.Content) {
+		return errors.New("ghi chú không đủ chi tiết (tối thiểu 15 ký tự và 3 từ)")
+	}
+
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var incident models.Incident
+		if err := tx.Where("id = ? AND org_id = ?", audit.IncidentID, orgID).First(&incident).Error; err != nil {
+			return err
+		}
+
+		// P1 bắt buộc phải có ảnh bằng chứng[cite: 58]
+		if incident.Priority == "P1" && (audit.Images == nil || len(audit.Images) == 0) {
+			return errors.New("sự cố P1 bắt buộc phải có ảnh bằng chứng đính kèm")
+		}
+
+		audit.CreatedAt = time.Now()
+		audit.ActionType = "CLOSE"
+		audit.NewStatus = "Resolved"
+
+		if err := s.createAndChainAudit(ctx, tx, audit); err != nil {
+			return err
+		}
+
+		return tx.Model(&incident).Updates(map[string]interface{}{
+			"status":             "Resolved",
+			"resolution_summary": audit.Content,
+		}).Error
+	})
+}
+
+// EscalateToIncident: Nâng cấp Alert (MongoDB) lên Incident (Postgres)[cite: 58]
+func (s *IncidentService) EscalateToIncident(ctx context.Context, alertIDStr string, adminID uint, orgID uint) (*models.Incident, error) {
+	alertID, err := primitive.ObjectIDFromHex(alertIDStr)
+	if err != nil {
+		return nil, errors.New("ID hành vi không hợp lệ")
+	}
+
+	var alert models.SecurityAlert
+	err = database.SecurityAlertCollection.FindOne(ctx, bson.M{"_id": alertID, "org_id": int64(orgID)}).Decode(&alert)
+	if err != nil {
+		return nil, errors.New("không tìm thấy hành vi vi phạm")
+	}
+
+	if alert.IsResolved {
+		return nil, errors.New("hành vi này đã được xử lý")
+	}
+
+	incident := models.Incident{
+		OrgID:       uint(alert.OrgID),
+		AssetHWID:   alert.AssetHWID,
+		Type:        alert.AlertType,
+		Priority:    alert.Priority,
+		Severity:    alert.Severity,
+		Status:      "Open",
+		Description: fmt.Sprintf("Nâng cấp từ hành vi: %s\nChi tiết: %s", alert.Title, alert.Description),
+	}
+
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&incident).Error; err != nil {
+			return err
+		}
+
+		// Đánh dấu alert đã xử lý trong Mongo
+		update := bson.M{"$set": bson.M{"incident_id": incident.ID, "is_resolved": true}}
+		if _, err := database.SecurityAlertCollection.UpdateOne(ctx, bson.M{"_id": alertID}, update); err != nil {
+			return err
+		}
+
+		adminID64 := int64(adminID)
+		audit := models.IncidentAudit{
+			IncidentID: int64(incident.ID),
+			UserID:     &adminID64,
+			ActionType: "ESCALATE",
+			Content:    fmt.Sprintf("Hệ thống nâng cấp hành vi thành sự cố chính thức."),
+			NewStatus:  "Open",
+			CreatedAt:  time.Now(),
+		}
+		return s.createAndChainAudit(ctx, tx, &audit)
+	})
+
+	return &incident, err
+}
+
+// 3. HỆ THỐNG CHAINING HASH (BLOCKCHAIN CORE)
+
+// CreateChainedAudit: Public API để tạo Log xâu chuỗi (Dùng cho AuditChat)
+func (s *IncidentService) CreateChainedAudit(ctx context.Context, audit *models.IncidentAudit, orgID uint) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		return s.createAndChainAudit(ctx, tx, audit)
+	})
+}
+
+// createAndChainAudit: (Private) Logic lõi để nối chuỗi Hash[cite: 58]
+func (s *IncidentService) createAndChainAudit(ctx context.Context, tx *gorm.DB, audit *models.IncidentAudit) error {
+	// Lấy mã băm của bản ghi cuối cùng để nối chuỗi[cite: 58]
+	previousHash, err := s.getLastAuditHash(ctx, audit.IncidentID)
+	if err != nil {
+		return err
+	}
+	audit.PreviousHash = previousHash
+
+	// Niêm phong bản ghi hiện tại[cite: 57, 58]
+	audit.GenerateAuditHash()
+
+	// Lưu vào MongoDB
+	if _, err := database.IncidentAuditCollection.InsertOne(ctx, audit); err != nil {
+		return err
+	}
+	fmt.Println("Audit saved with ID:", audit.IncidentID)
+
+	// Cập nhật Golden Hash vào Postgres để đối soát[cite: 58]
+	return tx.Model(&models.Incident{}).Where("id = ?", audit.IncidentID).
+		Update("last_audit_hash", audit.AuditHash).Error
+}
+
+// getLastAuditHash: Tìm hash của bản ghi gần nhất[cite: 58]
 func (s *IncidentService) getLastAuditHash(ctx context.Context, incidentID int64) (string, error) {
 	var lastAudit models.IncidentAudit
 	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
@@ -159,165 +243,60 @@ func (s *IncidentService) getLastAuditHash(ctx context.Context, incidentID int64
 	err := database.IncidentAuditCollection.FindOne(ctx, filter, opts).Decode(&lastAudit)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			// Đây là bản ghi đầu tiên, không có hash trước đó.
-			return "", nil
+			return "", nil // Bản ghi đầu tiên
 		}
 		return "", err
 	}
 	return lastAudit.AuditHash, nil
 }
 
-// createAndChainAudit tạo một bản ghi audit mới, liên kết nó với bản ghi trước đó,
-// và cập nhật "golden hash" trong bản ghi sự cố chính.
-func (s *IncidentService) createAndChainAudit(ctx context.Context, tx *gorm.DB, audit *models.IncidentAudit) error {
-	// 1. Lấy mã băm của bản ghi audit cuối cùng.
-	previousHash, err := s.getLastAuditHash(ctx, audit.IncidentID)
-	if err != nil {
-		return fmt.Errorf("không thể lấy mã băm trước đó: %w", err)
-	}
-	audit.PreviousHash = previousHash // [SỬA LỖI BROKEN CHAIN] Gán vào trường PreviousHash
-
-	// 2. Tạo mã băm mới cho bản ghi hiện tại.
-	// QUAN TRỌNG: Phương thức GenerateAuditHash() trong model phải được sửa để bao gồm cả `PreviousHash` vào chuỗi dữ liệu cần băm.
-	audit.GenerateAuditHash()
-
-	// 3. Chèn bản ghi audit mới vào MongoDB.
-	_, err = database.IncidentAuditCollection.InsertOne(ctx, audit)
-	if err != nil {
-		return fmt.Errorf("không thể chèn bản ghi audit mới: %w", err)
-	}
-
-	// 4. Cập nhật "Golden Hash" trong bảng sự cố PostgreSQL.
-	// Giả định models.Incident có trường `LastAuditHash`
-	if err := tx.Model(&models.Incident{}).Where("id = ?", audit.IncidentID).Update("last_audit_hash", audit.AuditHash).Error; err != nil {
-		return fmt.Errorf("không thể cập nhật golden hash: %w", err)
-	}
-
-	return nil
-}
-
-// VerifyIncidentAuditChain kiểm tra tính toàn vẹn của toàn bộ chuỗi audit log cho một sự cố.
+// VerifyIncidentAuditChain: Xác minh toàn bộ chuỗi log[cite: 58]
 func (s *IncidentService) VerifyIncidentAuditChain(ctx context.Context, incidentID uint, orgID uint) (bool, string, error) {
-	// 1. Lấy sự cố từ Postgres để truy xuất "Golden Hash".
 	var incident models.Incident
 	if err := database.DB.Where("id = ? AND org_id = ?", incidentID, orgID).First(&incident).Error; err != nil {
-		return false, "Sự cố không tồn tại trong SQL", err
+		return false, "Sự cố không tồn tại", err
 	}
-	goldenHash := incident.LastAuditHash // Giả định models.Incident có trường `LastAuditHash`
 
-	// 2. Lấy tất cả các audit log cho sự cố từ MongoDB, sắp xếp theo thứ tự thời gian.
-	// [TỐI ƯU BẢO MẬT & HIỆU NĂNG] Giới hạn xác minh 100 bản ghi mới nhất để chống DoS
 	filter := bson.M{"incident_id": int64(incidentID)}
-	limit := int64(100)
-	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(limit)
-	cursor, err := database.IncidentAuditCollection.Find(ctx, filter, opts)
+	cursor, err := database.IncidentAuditCollection.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}))
 	if err != nil {
-		return false, "Lỗi truy vấn audit logs từ MongoDB", err
+		return false, "Lỗi truy vấn Mongo", err
 	}
 	defer cursor.Close(ctx)
 
 	var audits []models.IncidentAudit
 	if err = cursor.All(ctx, &audits); err != nil {
-		return false, "Lỗi đọc danh sách audit logs", err
+		return false, "Lỗi đọc dữ liệu", err
 	}
 
-	if len(audits) == 0 {
-		if goldenHash == "" {
-			return true, "Không có audit log, chuỗi hợp lệ.", nil
-		}
-		return false, "Golden hash tồn tại nhưng không có audit log.", nil
-	}
-
-	// Đảo ngược do sử dụng Sort descending để Limit 100 block trên Mongo
-	for i, j := 0, len(audits)-1; i < j; i, j = i+1, j-1 {
-		audits[i], audits[j] = audits[j], audits[i]
-	}
-
-	// 3. Lặp qua chuỗi và xác minh từng liên kết.
-	var currentPreviousHash string = "" // Hash của block đầu tiên luôn là chuỗi rỗng
-	for i, auditRecord := range audits {
-
-		// 3.1. Kiểm tra tính liên kết của chuỗi Blockchain
-		if auditRecord.PreviousHash != currentPreviousHash {
-			return false, fmt.Sprintf("Chuỗi bị đứt gãy tại bản ghi #%d. Liên kết hash không khớp.", i+1), nil
+	currentPrevHash := ""
+	for i, record := range audits {
+		// 1. Kiểm tra tính liên kết[cite: 58]
+		if record.PreviousHash != currentPrevHash {
+			return false, fmt.Sprintf("Đứt gãy tại bản ghi #%d", i+1), nil
 		}
 
-		// 3.2. Tính toán lại hash của khối hiện tại để xác minh nội dung không bị giả mạo.
-		storedHash := auditRecord.AuditHash
-		auditRecord.AuditHash = "" // Tạm thời xóa hash để tính toán lại
-		auditRecord.GenerateAuditHash()
-		calculatedHash := auditRecord.AuditHash
-		auditRecord.AuditHash = storedHash // Khôi phục lại
-
-		if storedHash != calculatedHash {
-			return false, fmt.Sprintf("Nội dung bản ghi #%d đã bị thay đổi. Hash không khớp.", i+1), nil
+		// 2. Tính toán lại hash để phát hiện sửa đổi nội dung[cite: 58]
+		storedHash := record.AuditHash
+		record.AuditHash = ""
+		record.GenerateAuditHash()
+		if storedHash != record.AuditHash {
+			return false, fmt.Sprintf("Nội dung bản ghi #%d bị thay đổi", i+1), nil
 		}
-
-		// Cập nhật currentPreviousHash cho vòng lặp tiếp theo
-		currentPreviousHash = storedHash
+		currentPrevHash = storedHash
 	}
 
-	// 4. Cuối cùng, kiểm tra xem hash của khối cuối cùng có khớp với golden hash không.
-	lastHash := audits[len(audits)-1].AuditHash
-	if lastHash != goldenHash {
-		return false, "Mã băm cuối cùng trong chuỗi không khớp với golden hash.", nil
+	// 3. Đối soát với Golden Hash trong SQL[cite: 58]
+	if len(audits) > 0 && audits[len(audits)-1].AuditHash != incident.LastAuditHash {
+		return false, "Golden Hash không khớp", nil
 	}
 
-	return true, "Toàn vẹn chuỗi audit log được xác thực.", nil
+	return true, "Dữ liệu nguyên bản", nil
 }
 
-// EscalateToIncident: Nâng cấp một hành vi vi phạm (SecurityAlert) thành Sự cố (Incident)
-func (s *IncidentService) EscalateToIncident(ctx context.Context, alertIDStr string, adminID uint, orgID uint) (*models.Incident, error) {
-	// 1. Tìm bản ghi Alert từ MongoDB
-	alertID, err := primitive.ObjectIDFromHex(alertIDStr)
-	if err != nil {
-		return nil, errors.New("ID hành vi không hợp lệ")
-	}
+// 4. UTILS
 
-	var alert models.SecurityAlert
-	err = database.SecurityAlertCollection.FindOne(ctx, bson.M{"_id": alertID, "org_id": int64(orgID)}).Decode(&alert) // Ngăn IDOR cross-org
-	if err != nil {
-		return nil, errors.New("không tìm thấy hành vi vi phạm trong hệ thống")
-	}
-
-	if alert.IsResolved {
-		return nil, errors.New("hành vi này đã được xử lý hoặc đã được nâng cấp trước đó")
-	}
-
-	// 2. Tạo Incident trong PostgreSQL
-	incident := models.Incident{
-		OrgID:       uint(alert.OrgID),
-		AssetHWID:   alert.AssetHWID,
-		Type:        alert.AlertType,
-		Priority:    alert.Priority,
-		Severity:    alert.Severity,
-		Status:      "Open",
-		Description: fmt.Sprintf("Nâng cấp thủ công từ hành vi vi phạm: %s\nChi tiết: %s", alert.Title, alert.Description),
-	}
-
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&incident).Error; err != nil {
-			return err
-		}
-
-		// 3. Đánh dấu Alert là đã xử lý và liên kết với IncidentID
-		update := bson.M{"$set": bson.M{"incident_id": incident.ID, "is_resolved": true}}
-		if _, err := database.SecurityAlertCollection.UpdateOne(ctx, bson.M{"_id": alertID}, update); err != nil {
-			return err
-		}
-
-		// 4. Tạo Audit Log đầu tiên cho Sự cố này để ghi lại lịch sử Escalation
-		adminID64 := int64(adminID)
-		audit := models.IncidentAudit{
-			IncidentID: int64(incident.ID),
-			UserID:     &adminID64,
-			ActionType: "ESCALATE",
-			Content:    fmt.Sprintf("Admin (ID: %d) đã nâng cấp hành vi (Alert ID: %s) thành sự cố.", adminID, alertIDStr),
-			NewStatus:  "Open",
-			CreatedAt:  time.Now(),
-		}
-		return s.createAndChainAudit(ctx, tx, &audit)
-	})
-
-	return &incident, err
+func (s *IncidentService) isNoteComplexEnough(note string) bool {
+	cleanNote := strings.TrimSpace(note)
+	return len(cleanNote) >= 15 && len(strings.Fields(cleanNote)) >= 3
 }

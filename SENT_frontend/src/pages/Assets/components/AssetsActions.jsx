@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MoreVertical, Cpu, Server, Briefcase, UserX, Trash2, X, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AppDialog from '../../../components/AppDialog';
-import axios from '../../../api/axios'; // Đảm bảo đường dẫn axios chuẩn
+import axios from '../../../api/axios';
 
 const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
     const navigate = useNavigate();

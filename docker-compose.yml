@@ -47,7 +47,13 @@ services:
       - MONGO_HOST=mongodb
       - REDIS_HOST=redis
     volumes:
-      - ./SENT_backend/uploads:/app/uploads
+      - ./SENT_backend/uploads/pdf_previews:/app/uploads/pdf_previews
+      - ./SENT_backend/uploads/documents:/app/uploads/documents
+      - ./SENT_backend/uploads/audits:/app/uploads/audits
+      - ./SENT_backend/uploads/incidents:/app/uploads/incidents
+      # - ./data/uploads/audits:/app/uploads/audits
+      # - ./data/uploads/documents:/app/uploads/documents 
+      # - ./data/uploads/incidents:/app/uploads/incidents
     networks:
       - sent_net
   gotenberg:

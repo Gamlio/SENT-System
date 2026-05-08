@@ -200,26 +200,24 @@ type Incident struct {
 	gorm.Model // ID, CreatedAt, UpdatedAt, DeletedAt
 	// Lưu ý: ID ở đây là uint
 
-	OrgID        uint   `json:"org_id" binding:"required"`
-	AssetHWID    string `gorm:"type:varchar(64);column:asset_hwid;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"asset_hwid"`
-	Asset        Asset  `gorm:"foreignKey:AssetHWID;references:AssetHWID" json:"asset"`
-	Type         string `json:"type"`          // Loại sự cố (VD: Malware, DDoS)
-	Severity     string `json:"severity"`      // Low, Medium, High, Critical
-	Priority     string `json:"priority"`      // P1, P2, P3, P4
-	Status       string `json:"status"`        // Open, Investigating, Resolved, False Positive
-	Description  string `json:"description"`   // Mô tả ngắn gọn
-	PlaybookName string `json:"playbook_name"` // Tên quy trình xử lý áp dụng
-	AIAnalysis   string `json:"ai_analysis"`   // Kết quả phân tích từ AI
-	AssigneeID   *uint  `json:"assignee_id" gorm:"index"`
-	Assignee     *User  `json:"assignee" gorm:"foreignKey:AssigneeID"`
+	OrgID       uint   `json:"org_id" binding:"required"`
+	AssetHWID   string `gorm:"type:varchar(64);column:asset_hwid;index;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"asset_hwid"`
+	Asset       Asset  `gorm:"foreignKey:AssetHWID;references:AssetHWID" json:"asset"`
+	Type        string `json:"type"`
+	Severity    string `json:"severity"`
+	Priority    string `json:"priority"`
+	Status      string `json:"status"`
+	Description string `json:"description"`
+	AIAnalysis  string `json:"ai_analysis"`
+	AssigneeID  *uint  `json:"assignee_id" gorm:"index"`
+	Assignee    *User  `json:"assignee" gorm:"foreignKey:AssigneeID"`
 
 	// [MỚI THÊM] Báo cáo sau khi đóng Case
 	ResolutionSummary string `json:"resolution_summary" gorm:"type:text"`
 	// Alerts liên quan
-	Alerts        []SecurityAlert `gorm:"-" json:"alerts"` // Virtual field, dữ liệu lấy từ MongoDB
-	LastAuditHash string          `json:"last_audit_hash"` // Lưu hash của bản ghi audit mới nhất để làm Golden Hash cho chuỗi kế tiếp
-	// [MỚI] Link sang bảng hoạt động
-	Activities       []IncidentAudit `gorm:"-" json:"activities"` // Virtual field, dữ liệu lấy từ MongoDB
+	Alerts           []SecurityAlert `gorm:"-" json:"alerts"`
+	LastAuditHash    string          `json:"last_audit_hash"`
+	Activities       []IncidentAudit `gorm:"-" json:"activities"`
 	PlaybookProgress string          `json:"playbook_progress" gorm:"type:text"`
 }
 

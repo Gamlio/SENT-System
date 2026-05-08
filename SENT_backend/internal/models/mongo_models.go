@@ -4,19 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// =========================================================================
-// PHÂN VÙNG NOSQL (MONGODB) - THE BIG DATA
-// Dành cho các log phát sinh liên tục, không cần JOIN DB phức tạp
-// =========================================================================
-
-// --- NHÓM INVENTORY & LOGS ---
-
-// SoftwareItem: Mỗi máy có thể có hàng trăm phần mềm.
 type SoftwareItem struct {
 	ID              primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	AssetHWID       string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64"`
@@ -30,19 +23,16 @@ type SoftwareItem struct {
 	IsRunning       bool               `bson:"is_running" json:"is_running"`
 	UpdatedAt       time.Time          `bson:"updated_at" json:"updated_at"`
 }
-
-// OpenPort: Danh sách cổng mở thay đổi theo phiên làm việc.
 type OpenPort struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	AssetHWID   string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64"`
 	OrgID       int64              `bson:"org_id" json:"org_id" binding:"required"`
 	Port        int                `bson:"port" json:"port" binding:"required,min=1,max=65535"`
 	ProcessName string             `bson:"process_name" json:"process_name" binding:"max=255"`
-	Status      string             `bson:"status" json:"status" binding:"required,oneof=OPEN CLOSED"` // Mặc định OPEN
+	Status      string             `bson:"status" json:"status" binding:"required,oneof=OPEN CLOSED"`
 	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
 }
 
-// USBLog: Lịch sử cắm/rút thiết bị ngoại vi.
 type USBLog struct {
 	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	AssetHWID     string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64"`
@@ -58,7 +48,6 @@ type USBLog struct {
 	Timestamp     time.Time          `bson:"timestamp" json:"timestamp"`
 }
 
-// AssetIOActivity: Dữ liệu truyền tải mạng và ổ đĩa.
 type AssetIOActivity struct {
 	ID               primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	AssetHWID        string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64"`
@@ -70,7 +59,6 @@ type AssetIOActivity struct {
 	Timestamp        time.Time          `bson:"timestamp" json:"timestamp" binding:"required"`
 }
 
-// AssetInventory: Thông tin phần cứng của asset, lưu trên MongoDB.
 type AssetInventory struct {
 	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	AssetHWID  string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64"`
@@ -80,15 +68,11 @@ type AssetInventory struct {
 	OSInfo     string             `bson:"os_info" json:"os_info" binding:"required,min=1,max=500"`
 	UpdatedAt  time.Time          `bson:"updated_at" json:"updated_at" binding:"required"`
 }
-
-// --- NHÓM TELEMETRY & CHAT (PHI CẤU TRÚC) ---
-
-// SecurityAlert: Các cảnh báo bảo mật từ asset.
 type SecurityAlert struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	OrgID       int64              `bson:"org_id" json:"org_id" binding:"required"`
 	AssetHWID   string             `bson:"asset_hwid" json:"asset_hwid" binding:"required,max=64"`
-	IncidentID  *int64             `bson:"incident_id,omitempty" json:"incident_id"` // Đổi từ *uint sang *int64 cho đồng bộ
+	IncidentID  *int64             `bson:"incident_id,omitempty" json:"incident_id"`
 	Priority    string             `bson:"priority" json:"priority" binding:"required,oneof=P1 P2 P3 P4"`
 	AlertType   string             `bson:"alert_type" json:"alert_type" binding:"required,max=50"`
 	Title       string             `bson:"title" json:"title" binding:"required,min=1,max=255"`
@@ -98,58 +82,65 @@ type SecurityAlert struct {
 	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
 }
 
-// IncidentAudit: Nhật ký chi tiết quá trình xử lý sự cố (Timeline).
 type IncidentAudit struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	CreatedAt  time.Time          `bson:"created_at" json:"created_at"`
-	IncidentID int64              `bson:"incident_id" json:"incident_id" binding:"required"`
-	UserID     *int64             `bson:"user_id,omitempty" json:"user_id"` // Đổi thành *int64
-	User       *User              `bson:"-" json:"user,omitempty"`
-	ActionType string             `bson:"action_type" json:"action_type" binding:"required,max=50"`
-	Content    string             `bson:"content" json:"content" binding:"required,min=1,max=5000"`
-	OldStatus  string             `bson:"old_status" json:"old_status" binding:"max=50"`
-	NewStatus  string             `bson:"new_status" json:"new_status" binding:"max=50"`
-	Images     string             `bson:"images" json:"images" binding:"max=1000"`
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
+	IncidentID  int64              `bson:"incident_id" json:"incident_id" binding:"required"`
+	UserID      *int64             `bson:"user_id,omitempty" json:"user_id"`
+	User        *User              `bson:"-" json:"user,omitempty"`
+	UserName    string             `bson:"user_name" json:"user_name"`
+	ActionType  string             `bson:"action_type" json:"action_type" binding:"required,max=50"`
+	Content     string             `bson:"content" json:"content" binding:"required,min=1,max=5000"`
+	OldStatus   string             `bson:"old_status" json:"old_status" binding:"max=50"`
+	NewStatus   string             `bson:"new_status" json:"new_status" binding:"max=50"`
+	Images      []string           `bson:"images" json:"images"`
+	ImageHashes []string           `bson:"image_hashes" json:"image_hashes"`
 
-	// --- [MỚI] AUDIT TRAIL FIELDS ---
-	IPAddress    string `bson:"ip_address" json:"ip_address"` // Lưu IP của người thao tác
+	IPAddress    string `bson:"ip_address" json:"ip_address"`
 	EvidenceData string `bson:"evidence_data" json:"evidence_data"`
 	PreviousHash string `bson:"previous_hash" json:"previous_hash"`
-	AuditHash    string `bson:"audit_hash" json:"audit_hash"`     // Mã băm niêm phong bản ghi
-	IsImmutable  bool   `bson:"is_immutable" json:"is_immutable"` // Đánh dấu log không được phép xóa sửa
+	AuditHash    string `bson:"audit_hash" json:"audit_hash"`
+	IsImmutable  bool   `bson:"is_immutable" json:"is_immutable"`
 }
 
-// Hàm Helper để tạo Mã băm niêm phong (Chống sửa trực tiếp trong DB)
 func (act *IncidentAudit) GenerateAuditHash() {
 	var uid int64 = 0
 	if act.UserID != nil {
-		uid = *act.UserID // Giải tham chiếu nếu không nil
+		uid = *act.UserID
 	}
-
-	// Ép kiểu Unix() cũng là int64, đồng bộ luôn cho sếp!
-	dataStr := fmt.Sprintf("%v|%v|%s|%d|%s|%s|%s",
-		act.IncidentID, uid, act.ActionType, act.CreatedAt.Unix(), act.Content, act.EvidenceData, act.PreviousHash)
+	imagesStr := strings.Join(act.Images, ",")
+	imgHashesStr := strings.Join(act.ImageHashes, ",")
+	dataStr := fmt.Sprintf("%v|%v|%s|%s|%d|%s|%s|%s|%s|%s|%s",
+		act.IncidentID,
+		uid,
+		act.UserName,
+		act.ActionType,
+		act.CreatedAt.Unix(),
+		act.Content,
+		act.EvidenceData,
+		act.PreviousHash,
+		act.IPAddress,
+		imagesStr,
+		imgHashesStr,
+	)
 
 	hash := sha256.Sum256([]byte(dataStr))
 	act.AuditHash = hex.EncodeToString(hash[:])
 	act.IsImmutable = true
 }
 
-// AIChatSession: Lịch sử trò chuyện với trợ lý AI.
 type AIChatSession struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
-	UserID    uint               `bson:"user_id" json:"user_id" binding:"required"` // Cross-DB Link
+	UserID    uint               `bson:"user_id" json:"user_id" binding:"required"`
 	Title     string             `bson:"title" json:"title" binding:"required,min=1,max=255"`
 }
-
-// AIChatLog: Lịch sử các dòng chat trong Session.
 type AIChatLog struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
-	SessionID primitive.ObjectID `bson:"session_id" json:"session_id" binding:"required"` // Khóa ngoại sang AIChatSession trong Mongo
-	UserID    uint               `bson:"user_id" json:"user_id" binding:"required"`       // Cross-DB Link
+	SessionID primitive.ObjectID `bson:"session_id" json:"session_id" binding:"required"`
+	UserID    uint               `bson:"user_id" json:"user_id" binding:"required"`
 	Role      string             `bson:"role" json:"role" binding:"required,oneof=user assistant"`
 	Content   string             `bson:"content" json:"content" binding:"required,min=1,max=10000"`
 	Thought   string             `bson:"thought" json:"thought" binding:"max=10000"`
