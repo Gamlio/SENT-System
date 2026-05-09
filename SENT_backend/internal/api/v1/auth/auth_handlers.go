@@ -74,3 +74,38 @@ func LoginHandler(c *gin.Context) {
 		},
 	})
 }
+func ForgotPasswordHandler(c *gin.Context) {
+	var req struct {
+		CompanyCode string `json:"company_code" binding:"required"`
+		Email       string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	svc := auth.AuthService{}
+	if err := svc.ForgotPassword(req.CompanyCode, req.Email); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"message": "Link khôi phục đã được gửi tới Email của bạn"})
+}
+
+func ResetPasswordHandler(c *gin.Context) {
+	var req struct {
+		Token       string `json:"token" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Mật khẩu tối thiểu 8 ký tự"})
+		return
+	}
+
+	svc := auth.AuthService{}
+	if err := svc.ResetPassword(req.Token, req.NewPassword); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"message": "Đổi mật khẩu thành công. Vui lòng đăng nhập lại"})
+}

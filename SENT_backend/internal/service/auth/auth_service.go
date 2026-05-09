@@ -10,6 +10,7 @@ import (
 	"sent_backend/internal/models"
 	"sent_backend/internal/utils"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -114,4 +115,62 @@ func (s *AuthService) sendWelcomeEmail(comp, email, code, user, url string) {
 	subject := "Khởi tạo thành công Không gian SOC - SENT System"
 	body := fmt.Sprintf("<h2>Chào mừng %s!</h2> Mã Workspace: <b>%s</b>", comp, code)
 	_ = utils.SendEmail([]string{email}, subject, body)
+}
+func (s *AuthService) ForgotPassword(companyCode, email string) error {
+	var org models.Organization
+	if err := database.DB.Where("company_code = ?", companyCode).First(&org).Error; err != nil {
+		return fmt.Errorf("không gian làm việc không tồn tại")
+	}
+
+	var user models.User
+	if err := database.DB.Where("email = ? AND org_id = ?", email, org.ID).First(&user).Error; err != nil {
+		return fmt.Errorf("không tìm thấy tài khoản với email này trong tổ chức")
+	}
+
+	// 1. Tạo token ngẫu nhiên
+	b := make([]byte, 20)
+	rand.Read(b)
+	token := hex.EncodeToString(b)
+	expiry := time.Now().Add(1 * time.Hour) // Hết hạn sau 1 giờ
+
+	// 2. Lưu vào DB
+	user.ResetToken = token
+	user.ResetTokenExpiry = &expiry
+	if err := database.DB.Save(&user).Error; err != nil {
+		return err
+	}
+
+	// 3. Gửi Email
+	resetURL := fmt.Sprintf("%s/reset-password/%s", os.Getenv("APP_URL"), token)
+	subject := "Yêu cầu khôi phục mật khẩu - SENT SOC"
+	body := fmt.Sprintf(`
+        <h3>Yêu cầu khôi phục mật khẩu</h3>
+        <p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản <b>%s</b> tại workspace <b>%s</b>.</p>
+        <p>Vui lòng nhấn vào link bên dưới để tạo mật khẩu mới (có hiệu lực trong 60 phút):</p>
+        <a href="%s" style="padding:10px 20px; background:#4f46e5; color:white; text-decoration:none; border-radius:5px;">Đặt lại mật khẩu</a>
+    `, user.Username, companyCode, resetURL)
+
+	return utils.SendEmail([]string{email}, subject, body)
+}
+
+// ResetPassword: Xác thực token và cập nhật mật khẩu mới
+func (s *AuthService) ResetPassword(token, newPassword string) error {
+	var user models.User
+	now := time.Now()
+
+	// Kiểm tra token và thời hạn
+	err := database.DB.Where("reset_token = ? AND reset_token_expiry > ?", token, now).First(&user).Error
+	if err != nil {
+		return fmt.Errorf("mã khôi phục không hợp lệ hoặc đã hết hạn")
+	}
+
+	// Hash mật khẩu mới
+	hashed, _ := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	user.PasswordHash = string(hashed)
+
+	// Xóa token sau khi dùng xong
+	user.ResetToken = ""
+	user.ResetTokenExpiry = nil
+
+	return database.DB.Save(&user).Error
 }

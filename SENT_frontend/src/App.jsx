@@ -7,6 +7,7 @@ import Navbar from './components/Navbar.jsx';
 import Profile from './components/Profile.jsx';
 import VersionsPage from './pages/Versions/VersionsPage.jsx';
 import Login from './pages/Auth/Login.jsx';
+import ResetPassword from './pages/Auth/ResetPassword.jsx';
 import Register from './pages/Auth/Register.jsx';
 import Dashboard from './pages/Dashboard/Dashboard.jsx';
 import AssetList from './pages/Assets/Assets.jsx';
@@ -63,6 +64,7 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/login/:companyCode" element={<Login />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/reset-password/:token" element={<ResetPassword />} />
                     {/* Protected Routes */}
                     {/* Core Routes */}
                     <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

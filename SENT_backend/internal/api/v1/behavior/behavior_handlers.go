@@ -18,7 +18,7 @@ func GetBehaviors(c *gin.Context) {
 	svc := behaviorSvc.BehaviorService{}
 
 	// [FIX] Sử dụng biến total để trả về cho Frontend
-	alerts, total, err := svc.GetBehaviors(c.Request.Context(), int64(orgID), page, limit)
+	alerts, total, err := svc.GetBehaviors(c.Request.Context(), orgID, page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu"})
 		return
@@ -35,7 +35,7 @@ func GetBehaviors(c *gin.Context) {
 func GetBehaviorDetail(c *gin.Context) {
 	id := c.Param("id")
 	// [SECURITY] Lấy org_id từ context để đảm bảo đúng phạm vi truy cập
-	orgID := int64(c.GetUint("org_id"))
+	orgID := c.GetUint("org_id")
 
 	svc := behaviorSvc.BehaviorService{}
 

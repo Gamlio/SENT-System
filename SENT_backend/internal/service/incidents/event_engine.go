@@ -51,7 +51,7 @@ func (s *IncidentService) TriggerSecurityEvent(ctx context.Context, asset models
 	finalPriority := s.applyContextualMatrix(alertType, priority, asset.DepartmentTag)
 
 	alert := models.SecurityAlert{
-		OrgID:       int64(asset.OrgID), // Ép kiểu cho MongoDB
+		OrgID:       asset.OrgID,
 		AssetHWID:   asset.AssetHWID,
 		AlertType:   alertType,
 		Title:       title,
@@ -95,7 +95,7 @@ func (s *IncidentService) AutoResolveIncident(hwid string, alertType string) {
 
 			// [SỬA LỖI] Ghi log vào MongoDB, không dùng tx.Create vì IncidentAudit là NoSQL
 			audit := models.IncidentAudit{
-				IncidentID:   int64(incident.ID),
+				IncidentID:   uint(incident.ID),
 				UserID:       nil,
 				ActionType:   "RESOLVE",
 				Content:      "AI SOC xác nhận thiết bị đã sạch vi phạm. Tự động đóng hồ sơ.",

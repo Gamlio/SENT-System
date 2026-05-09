@@ -38,47 +38,40 @@ type User struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	// Bỏ gorm:"unique", thay bằng uniqueIndex kết hợp với org_id
-	Username     string `gorm:"uniqueIndex:idx_org_user;not null" json:"username"`
-	OrgID        *uint  `gorm:"uniqueIndex:idx_org_user" json:"org_id"`
-	PasswordHash string `gorm:"not null" json:"-"`
-	FullName     string `json:"full_name"`
-	Phone        string `json:"phone"`
-	Email        string `json:"email"`
-	GroupID      *uint  `json:"group_id" gorm:"index"`
+	Username         string     `gorm:"uniqueIndex:idx_org_user;not null" json:"username"`
+	OrgID            *uint      `gorm:"uniqueIndex:idx_org_user" json:"org_id"`
+	PasswordHash     string     `gorm:"not null" json:"-"`
+	FullName         string     `json:"full_name"`
+	Phone            string     `json:"phone"`
+	Email            string     `json:"email"`
+	GroupID          *uint      `json:"group_id" gorm:"index"`
+	ResetToken       string     `json:"-"`
+	ResetTokenExpiry *time.Time `json:"-"`
 
-	// THAY ĐỔI 1: Thay RoleLevel bằng RoleName rõ ràng
-
-	RiskScore int `json:"risk_score" gorm:"default:0"`
-	// Nhóm Assets
+	RiskScore       int  `json:"risk_score" gorm:"default:0"`
 	PermAssetView   bool `json:"perm_asset_view" gorm:"default:false"`
-	PermAssetAction bool `json:"perm_asset_action" gorm:"default:false"` // Chạy lệnh: Quét virus, Khởi động lại
-	PermAssetDelete bool `json:"perm_asset_delete" gorm:"default:false"` // Xóa mềm asset
-	PermAssetMove   bool `json:"perm_asset_move" gorm:"default:false"`   // Quyền chuyển máy vào các Nhóm động
+	PermAssetAction bool `json:"perm_asset_action" gorm:"default:false"`
+	PermAssetDelete bool `json:"perm_asset_delete" gorm:"default:false"`
+	PermAssetMove   bool `json:"perm_asset_move" gorm:"default:false"`
 
-	// Nhóm Policy
 	PermPolicyView   bool `json:"perm_policy_view" gorm:"default:false"`
-	PermPolicyManage bool `json:"perm_policy_manage" gorm:"default:false"` // Tạo đơn (Maker) thêm/xóa luật
+	PermPolicyManage bool `json:"perm_policy_manage" gorm:"default:false"`
 
-	// Nhóm Incident (giữ nguyên)
 	PermIncidentView   bool `json:"perm_incident_view" gorm:"default:false"`
 	PermIncidentAction bool `json:"perm_incident_action" gorm:"default:false"`
 
-	// Nhóm Document (giữ nguyên)
 	PermDocView   bool `json:"perm_doc_view" gorm:"default:false"`
 	PermDocManage bool `json:"perm_doc_manage" gorm:"default:false"`
 
-	// Nhóm User & System
-	PermUserView     bool `json:"perm_user_view" gorm:"default:false"`     // Xem danh sách nhân sự
-	PermUserManage   bool `json:"perm_user_manage" gorm:"default:false"`   // Tạo đơn (Maker) thêm/sửa/xóa user
-	PermSystemConfig bool `json:"perm_system_config" gorm:"default:false"` // Tạo/Xóa các Nhóm (Kế toán, IT...)
-	PermGroupManage  bool `json:"perm_group_manage" gorm:"default:false"`  // Quyền quản lý Nhóm (Policy Groups)
+	PermUserView     bool `json:"perm_user_view" gorm:"default:false"`
+	PermUserManage   bool `json:"perm_user_manage" gorm:"default:false"`
+	PermSystemConfig bool `json:"perm_system_config" gorm:"default:false"`
+	PermGroupManage  bool `json:"perm_group_manage" gorm:"default:false"`
 
-	// Nhóm Approval
-	PermApprovalView  bool `json:"perm_approval_view" gorm:"default:false"`  // Xem danh sách đơn (Ticket)
-	PermApprovalFinal bool `json:"perm_approval_final" gorm:"default:false"` // [CHECKER] Quyền bấm nút "Duyệt" cuối cùng
+	PermApprovalView  bool `json:"perm_approval_view" gorm:"default:false"`
+	PermApprovalFinal bool `json:"perm_approval_final" gorm:"default:false"`
 
-	// [MỚI] ĐỒNG BỘ: Luồng phê duyệt tài khoản mới tạo (Maker - Checker)
-	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"` // PENDING, APPROVED, REJECTED
+	ApprovalStatus string `json:"approval_status" gorm:"default:'PENDING'"`
 	ApprovedBy     string `json:"approved_by"`
 }
 type UserPayload struct {
@@ -230,12 +223,12 @@ type Policy struct {
 
 	OrgID      uint   `json:"org_id" binding:"required" gorm:"index:idx_policy_org_status"`
 	Title      string `json:"title"`
-	Category   string `json:"category"` // SOFTWARE, USB, NETWORK
-	Value      string `json:"value"`    // Tên exe, mã USB, Port...
+	Category   string `json:"category"`
+	Value      string `json:"value"`
 	PolicyType string `json:"policy_type" gorm:"default:'BLACKLIST'"`
 	IsActive   bool   `json:"is_active" gorm:"default:true"`
 
-	GroupID *uint `json:"group_id" gorm:"index"` // Nếu NULL = Global Policy
+	GroupID *uint `json:"group_id" gorm:"index"`
 
 	IncidentID *uint `json:"incident_id"`
 

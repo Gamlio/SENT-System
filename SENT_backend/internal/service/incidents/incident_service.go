@@ -52,7 +52,7 @@ func (s *IncidentService) GetIncidentDetail(ctx context.Context, incidentID uint
 
 	// 2. [QUAN TRỌNG] Lấy bằng chứng USB/Hành vi từ MongoDB để hiện ở cột trái
 	alerts := []models.SecurityAlert{}
-	alertFilter := bson.M{"incident_id": int64(incidentID)}
+	alertFilter := bson.M{"incident_id": incidentID}
 	if database.SecurityAlertCollection != nil {
 		alertCursor, _ := database.SecurityAlertCollection.Find(ctx, alertFilter)
 		if alertCursor != nil {
@@ -63,7 +63,7 @@ func (s *IncidentService) GetIncidentDetail(ctx context.Context, incidentID uint
 
 	// Luôn khởi tạo mảng rỗng để tránh trả về 'null' cho Frontend gây crash[cite: 58]
 	audits := []models.IncidentAudit{}
-	filter := bson.M{"incident_id": int64(incidentID)}
+	filter := bson.M{"incident_id": incidentID}
 	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(500)
 
 	cursor, err := database.IncidentAuditCollection.Find(ctx, filter, opts)
@@ -97,10 +97,9 @@ func (s *IncidentService) AssignIncident(ctx context.Context, incidentID, assign
 			return err
 		}
 
-		uid64 := int64(userID)
 		audit := models.IncidentAudit{
-			IncidentID: int64(incidentID),
-			UserID:     &uid64,
+			IncidentID: uint(incidentID),
+			UserID:     &userID,
 			ActionType: "ASSIGN",
 			Content:    fmt.Sprintf("Chỉ định nhân viên xử lý sự cố."),
 			OldStatus:  oldStatus,
@@ -113,25 +112,11 @@ func (s *IncidentService) AssignIncident(ctx context.Context, incidentID, assign
 
 // CloseIncidentWorkflow: Kiểm tra điều kiện và đóng sự cố[cite: 58]
 func (s *IncidentService) CloseIncidentWorkflow(ctx context.Context, audit *models.IncidentAudit, orgID uint) error {
-	// Kiểm tra bằng chứng quét Baseline[cite: 58]
-	if audit.EvidenceData == "" || audit.EvidenceData == "{}" {
-		return errors.New("thiếu bằng chứng Baseline Scan để xác minh an toàn")
-	}
-
-	// Kiểm tra tính nghiêm túc của báo cáo điều tra[cite: 58]
-	if !s.isNoteComplexEnough(audit.Content) {
-		return errors.New("ghi chú không đủ chi tiết (tối thiểu 15 ký tự và 3 từ)")
-	}
 
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var incident models.Incident
 		if err := tx.Where("id = ? AND org_id = ?", audit.IncidentID, orgID).First(&incident).Error; err != nil {
 			return err
-		}
-
-		// P1 bắt buộc phải có ảnh bằng chứng[cite: 58]
-		if incident.Priority == "P1" && (audit.Images == nil || len(audit.Images) == 0) {
-			return errors.New("sự cố P1 bắt buộc phải có ảnh bằng chứng đính kèm")
 		}
 
 		audit.CreatedAt = time.Now()
@@ -157,7 +142,7 @@ func (s *IncidentService) EscalateToIncident(ctx context.Context, alertIDStr str
 	}
 
 	var alert models.SecurityAlert
-	err = database.SecurityAlertCollection.FindOne(ctx, bson.M{"_id": alertID, "org_id": int64(orgID)}).Decode(&alert)
+	err = database.SecurityAlertCollection.FindOne(ctx, bson.M{"_id": alertID, "org_id": orgID}).Decode(&alert)
 	if err != nil {
 		return nil, errors.New("không tìm thấy hành vi vi phạm")
 	}
@@ -187,10 +172,9 @@ func (s *IncidentService) EscalateToIncident(ctx context.Context, alertIDStr str
 			return err
 		}
 
-		adminID64 := int64(adminID)
 		audit := models.IncidentAudit{
-			IncidentID: int64(incident.ID),
-			UserID:     &adminID64,
+			IncidentID: uint(incident.ID),
+			UserID:     &adminID,
 			ActionType: "ESCALATE",
 			Content:    fmt.Sprintf("Hệ thống nâng cấp hành vi thành sự cố chính thức."),
 			NewStatus:  "Open",
@@ -235,7 +219,7 @@ func (s *IncidentService) createAndChainAudit(ctx context.Context, tx *gorm.DB, 
 }
 
 // getLastAuditHash: Tìm hash của bản ghi gần nhất[cite: 58]
-func (s *IncidentService) getLastAuditHash(ctx context.Context, incidentID int64) (string, error) {
+func (s *IncidentService) getLastAuditHash(ctx context.Context, incidentID uint) (string, error) {
 	var lastAudit models.IncidentAudit
 	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
 	filter := bson.M{"incident_id": incidentID}
@@ -257,7 +241,7 @@ func (s *IncidentService) VerifyIncidentAuditChain(ctx context.Context, incident
 		return false, "Sự cố không tồn tại", err
 	}
 
-	filter := bson.M{"incident_id": int64(incidentID)}
+	filter := bson.M{"incident_id": incidentID}
 	cursor, err := database.IncidentAuditCollection.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}))
 	if err != nil {
 		return false, "Lỗi truy vấn Mongo", err

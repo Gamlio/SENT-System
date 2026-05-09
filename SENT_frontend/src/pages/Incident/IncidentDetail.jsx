@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useIncidents } from './hooks/useIncidents';
 import AuditChat from './components/AuditChat';
 import { ChevronLeft, Monitor, Terminal, ShieldAlert, CheckCircle2, Lock, AlertCircle } from 'lucide-react';
-import axiosInstance from '../../../api/axios';
+import axiosInstance from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 
 const IncidentDetail = ({ incidentId, onBack }) => {
@@ -24,36 +24,30 @@ const IncidentDetail = ({ incidentId, onBack }) => {
 
     // Hàm xử lý đóng sự cố
     const handleCloseCase = async () => {
-        const note = prompt("Nhập báo cáo tổng kết điều tra (Tối thiểu 15 ký tự):");
+       const note = prompt("Nhập ghi chú kết thúc (có thể để trống):") || "Đã xử lý xong.";
+    
+    // Nếu bấm Cancel thì mới dừng
+    if (note === null) return;
+
+    setIsClosing(true);
+    try {
+        await axiosInstance.post('/incidents/close', {
+            incident_id: incident.id || incident.ID,
+            note: note, 
+            evidence_data: JSON.stringify({
+                verdict: "RESOLVED",
+                closed_at: new Date().toISOString()
+            })
+        });
         
-        if (note === null) return; // Người dùng bấm cancel
-        if (note.length < 15) {
-            alert("Báo cáo quá ngắn! Vui lòng nhập chi tiết hơn (tối thiểu 15 ký tự).");
-            return;
-        }
-
-        setIsClosing(true);
-        try {
-            await axiosInstance.post('/incidents/close', {
-                incident_id: incident.id || incident.ID,
-                note: note,
-                // Gửi snapshot trạng thái máy hiện tại làm bằng chứng Baseline
-                evidence_data: JSON.stringify({
-                    asset_state: incident.asset,
-                    closed_at: new Date().toISOString(),
-                    verdict: "RESOLVED_BY_HUMAN_OPERATOR"
-                })
-            });
-            
-            alert("Hồ sơ đã được đóng và niêm phong bảo mật!");
-            fetchDetail(incidentId); // Tải lại để cập nhật trạng thái
-        } catch (err) {
-            alert(err.response?.data?.error || "Không thể đóng hồ sơ. Kiểm tra lại quyền hạn hoặc bằng chứng P1.");
-        } finally {
-            setIsClosing(false);
-        }
-    };
-
+        alert("Hồ sơ đã được đóng!");
+        fetchDetail(incidentId); 
+    } catch (err) {
+        alert(err.response?.data?.error || "Lỗi đóng hồ sơ.");
+    } finally {
+        setIsClosing(false);
+    }
+};
     return (
         <div className="h-[calc(100vh-60px)] bg-[#050B14] flex flex-col overflow-hidden text-slate-300">
             {/* Top Bar - Tích hợp nút Đóng Case */}

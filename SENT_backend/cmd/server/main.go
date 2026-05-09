@@ -69,6 +69,8 @@ func main() {
 		{
 			authGroup.POST("/login", middleware.UserLoginRateLimitMiddleware(), auth.LoginHandler)
 			authGroup.POST("/register", middleware.ValidateUserCreationMiddleware(), auth.RegisterSMEHandler)
+			authGroup.POST("/forgot-password", auth.ForgotPasswordHandler)
+			authGroup.POST("/reset-password", auth.ResetPasswordHandler)
 		}
 
 		assetPublicGroup := v1Group.Group("/assets")

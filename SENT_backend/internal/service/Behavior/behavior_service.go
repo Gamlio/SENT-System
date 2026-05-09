@@ -30,7 +30,7 @@ func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, c
 
 	// 3. Tạo bản ghi Hành vi (SecurityAlert) trong MongoDB
 	alert := models.SecurityAlert{
-		OrgID:       int64(asset.OrgID),
+		OrgID:       uint(asset.OrgID),
 		AssetHWID:   asset.AssetHWID,
 		AlertType:   category + " Violation",
 		Title:       title,
@@ -65,7 +65,7 @@ func (s *BehaviorService) getSeverityByPriority(p string) string {
 }
 
 // GetBehaviors: Truy vấn danh sách hành vi từ MongoDB theo OrgID
-func (s *BehaviorService) GetBehaviors(ctx context.Context, orgID int64, page, limit int64) ([]models.SecurityAlert, int64, error) {
+func (s *BehaviorService) GetBehaviors(ctx context.Context, orgID uint, page, limit int64) ([]models.SecurityAlert, int64, error) {
 	alerts := []models.SecurityAlert{}
 	if database.SecurityAlertCollection == nil {
 		return alerts, 0, nil
@@ -110,7 +110,7 @@ func (s *BehaviorService) CreateIncident(ctx context.Context, alertID string, or
 	objID, _ := primitive.ObjectIDFromHex(alertID)
 	var alert models.SecurityAlert
 	// Kiểm tra quyền sở hữu bản ghi
-	err := database.SecurityAlertCollection.FindOne(ctx, bson.M{"_id": objID, "org_id": int64(orgID)}).Decode(&alert)
+	err := database.SecurityAlertCollection.FindOne(ctx, bson.M{"_id": objID, "org_id": orgID}).Decode(&alert)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (s *BehaviorService) CreateIncident(ctx context.Context, alertID string, or
 	}
 
 	// Gắn ID sự cố vào log NoSQL
-	incidentID := int64(incident.ID)
+	incidentID := incident.ID
 	_, err = database.SecurityAlertCollection.UpdateOne(
 		ctx,
 		bson.M{"_id": objID},

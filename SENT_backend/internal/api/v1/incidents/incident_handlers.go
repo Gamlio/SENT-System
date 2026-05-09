@@ -57,32 +57,48 @@ func GetIncidentDetail(c *gin.Context) {
 }
 
 func AddAuditLogHandler(c *gin.Context) {
-	// 1. Sử dụng c.PostForm để Gin tự động xử lý Multipart Form
-	rawID := c.PostForm("incident_id")
+	// Ép buộc parse toàn bộ form trước khi truy xuất giá trị để tránh miss data
+	form, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu gửi lên không hợp lệ hoặc form quá giới hạn"})
+		return
+	}
+
+	rawIDs := form.Value["incident_id"]
+	if len(rawIDs) == 0 || rawIDs[0] == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID sự cố không được để trống"})
+		return
+	}
+	rawID := rawIDs[0]
 
 	// Log chuỗi thô để kiểm tra nếu Frontend gửi sai
 	fmt.Printf("DEBUG: Received raw incident_id from FE: '%s'\n", rawID)
 
-	incidentID, err := strconv.ParseInt(rawID, 10, 64)
-	if err != nil || incidentID <= 0 {
+	parsedID, err := strconv.ParseUint(rawID, 10, 32)
+	if err != nil || parsedID == 0 {
 		fmt.Printf("❌ LỖI: Không parse được ID. Lỗi: %v, Giá trị thô: '%s'\n", err, rawID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID sự cố không hợp lệ hoặc bị thiếu"})
 		return
 	}
+	incidentID := uint(parsedID)
+
 	fmt.Printf("✅ DEBUG: Đang lưu Audit cho Incident ID: %d\n", incidentID)
-	note := c.PostForm("note")
+
+	note := ""
+	if notes := form.Value["note"]; len(notes) > 0 {
+		note = notes[0]
+	}
+
 	orgID := c.GetUint("org_id")
-	userID := int64(c.GetUint("user_id"))
+	userID := c.GetUint("user_id")
 
 	var user models.User
 	if err := database.DB.Select("full_name").First(&user, userID).Error; err != nil {
 		user.FullName = "Unknown User"
 	}
 
-	form, err := c.MultipartForm()
-
 	var files []*multipart.FileHeader
-	if err == nil && form != nil {
+	if form != nil && form.File != nil {
 		files = form.File["files"]
 	}
 
@@ -144,7 +160,7 @@ func CloseIncident(c *gin.Context) {
 		return
 	}
 
-	userID := int64(c.GetUint("user_id"))
+	userID := c.GetUint("user_id")
 	orgID := c.GetUint("org_id")
 
 	var user models.User
@@ -153,7 +169,7 @@ func CloseIncident(c *gin.Context) {
 	}
 
 	auditEntry := &models.IncidentAudit{
-		IncidentID:   int64(req.IncidentID),
+		IncidentID:   req.IncidentID,
 		UserID:       &userID,
 		UserName:     user.FullName,
 		Content:      req.Note,
