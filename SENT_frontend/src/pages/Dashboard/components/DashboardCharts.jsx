@@ -14,7 +14,7 @@ const DashboardCharts = ({ stats }) => {
         if (stats) {
             // Giả lập data 7 ngày như cũ
             const data = [];
-            const baseAlerts = Math.floor(stats.total_alerts / 7) || 10;
+            const baseAlerts = Math.floor(stats.summary.total_alerts / 7) || 10;
             for (let i = 6; i >= 0; i--) {
                 const d = new Date();
                 d.setDate(d.getDate() - i);
@@ -25,7 +25,7 @@ const DashboardCharts = ({ stats }) => {
                 });
             }
             setLiveTrendData(data);
-            setLiveTotalAlerts(stats.total_alerts);
+            setLiveTotalAlerts(stats.summary.total_alerts);
         }
     }, [stats]);
 
@@ -53,7 +53,7 @@ const DashboardCharts = ({ stats }) => {
 
     // 1. DỮ LIỆU CHO PIE CHART (Alerts By Severity)
     const severityData = useMemo(() => {
-        const raw = stats.alerts_by_severity || {};
+        const raw = stats.summary.alerts_by_severity || {};
         const mapColor = { 'Critical': '#ef4444', 'High': '#f97316', 'Medium': '#eab308', 'Low': '#3b82f6' };
         return Object.keys(raw).map(key => ({
             name: key,
@@ -65,7 +65,7 @@ const DashboardCharts = ({ stats }) => {
     // 2. DỮ LIỆU GIẢ LẬP TREND (Do API hiện chỉ trả Snapshot, ta tạo Data mẫu minh họa sự biến thiên)
     const trendData = useMemo(() => {
         const data = [];
-        const baseAlerts = Math.floor(stats.total_alerts / 7) || 10;
+        const baseAlerts = Math.floor(stats.summary.total_alerts / 7) || 10;
         for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
@@ -80,11 +80,11 @@ const DashboardCharts = ({ stats }) => {
 
     // 3. RADAR DATA: So sánh các Vector bảo mật
     const radarData = useMemo(() => [
-        { subject: 'Zero Trust', A: stats.zero_trust_coverage, fullMark: 100 },
-        { subject: 'Trust Score', A: stats.average_trust_score, fullMark: 100 },
-        { subject: 'Online Ratio', A: (stats.online_assets / (stats.total_assets || 1)) * 100, fullMark: 100 },
-        { subject: 'Risk Level', A: (stats.high_risk_assets / (stats.total_assets || 1)) * 100, fullMark: 100 },
-        { subject: 'Resolve Rate', A: (stats.resolved_incidents / ((stats.open_incidents + stats.resolved_incidents) || 1)) * 100, fullMark: 100 }
+        { subject: 'Zero Trust', A: stats.posture.zero_trust_health, fullMark: 100 },
+        { subject: 'Trust Score', A: stats.summary.average_trust_score, fullMark: 100 },
+        { subject: 'Online Ratio', A: (stats.summary.online_assets / (stats.summary.total_assets || 1)) * 100, fullMark: 100 },
+        { subject: 'Risk Level', A: (stats.summary.high_risk_assets / (stats.summary.total_assets || 1)) * 100, fullMark: 100 },
+        { subject: 'Resolve Rate', A: (stats.summary.resolved_incidents / ((stats.summary.open_incidents + stats.summary.resolved_incidents) || 1)) * 100, fullMark: 100 }
     ], [stats]);
 
     const CustomTooltip = ({ active, payload, label }) => {
@@ -154,7 +154,7 @@ const DashboardCharts = ({ stats }) => {
                         </PieChart>
                     </ResponsiveContainer>
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <span className="text-2xl font-black font-mono text-white">{stats.total_alerts}</span>
+                        <span className="text-2xl font-black font-mono text-white">{liveTotalAlerts}</span>
                         <span className="text-[8px] uppercase tracking-widest text-slate-500 font-bold">Total</span>
                     </div>
                 </div>

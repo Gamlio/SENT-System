@@ -49,11 +49,27 @@ type AlertView struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type SecurityPosture struct {
+	OverallScore       int     `json:"overall_score"` // 0-100 (Chỉ số sức khỏe hệ thống)
+	ThreatLevel        string  `json:"threat_level"`  // Stable, Elevated, Critical
+	ZeroTrustHealth    float64 `json:"zero_trust_health"`
+	VulnerabilityTrend []int   `json:"vulnerability_trend"`
+}
+
 // Struct Controller chính
 type DashboardController struct{}
 
+func (dc *DashboardController) calculateThreatLevel(score int) string {
+	if score >= 80 {
+		return "Stable"
+	} else if score >= 50 {
+		return "Elevated"
+	}
+	return "Critical"
+}
+
 // FetchDetailedSummary: Xử lý mọi logic nghiệp vụ, tính toán phân tán
-func (dc *DashboardController) FetchDetailedSummary(orgID uint) (*DashboardSummary, error) {
+func (dc *DashboardController) FetchDetailedSummary(orgID uint) (map[string]interface{}, error) {
 	var summary DashboardSummary
 	summary.AlertsBySeverity = make(map[string]int64)
 
@@ -63,6 +79,7 @@ func (dc *DashboardController) FetchDetailedSummary(orgID uint) (*DashboardSumma
 	// Ngưỡng thời gian định nghĩa Online (2 phút)
 	onlineThreshold := time.Now().Add(-2 * time.Minute)
 
+	var totalRisk float64
 	// Luồng 1: Đếm tổng máy & Điểm Trust trung bình
 	go func() {
 		var assets []models.Asset
@@ -75,6 +92,7 @@ func (dc *DashboardController) FetchDetailedSummary(orgID uint) (*DashboardSumma
 
 			for _, a := range assets {
 				totalTrust += a.TrustScore
+				totalRisk += float64(a.RiskScore)
 				if a.IsZeroTrust {
 					zeroTrustCount++
 				}
@@ -182,5 +200,26 @@ func (dc *DashboardController) FetchDetailedSummary(orgID uint) (*DashboardSumma
 	// Xử lý các phép toán phụ
 	summary.Offlineassets = summary.Totalassets - summary.Onlineassets
 
-	return &summary, nil
+	// Tính toán OverallScore dựa trên RiskScore trung bình và số Incident đang mở
+	avgRisk := 0.0
+	if summary.Totalassets > 0 {
+		avgRisk = totalRisk / float64(summary.Totalassets)
+	}
+
+	postureScore := 100.0 - (avgRisk * 0.5) - (float64(summary.OpenIncidents) * 2.0)
+	if postureScore < 0 {
+		postureScore = 0
+	}
+
+	posture := SecurityPosture{
+		OverallScore:       int(postureScore),
+		ThreatLevel:        dc.calculateThreatLevel(int(postureScore)),
+		ZeroTrustHealth:    summary.ZeroTrustCoverage,
+		VulnerabilityTrend: []int{0, 0, 0, 0, 0}, // Có thể fill mảng dữ liệu thật từ DB ở các bản cập nhật sau
+	}
+
+	return map[string]interface{}{
+		"summary": summary,
+		"posture": posture,
+	}, nil
 }

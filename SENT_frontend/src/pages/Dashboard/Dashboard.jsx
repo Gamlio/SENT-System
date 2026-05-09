@@ -66,19 +66,19 @@ const Dashboard = () => {
                     <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Real-time Telemetry & Threat Intelligence</p>
                 </div>
                 <div className="flex items-center gap-2 bg-[#0A101D] border border-slate-800 px-3 py-1.5 rounded-lg">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <span className="text-[10px] font-mono text-emerald-400 font-bold tracking-widest">SYSTEM SECURE</span>
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${stats.posture.threat_level === 'Critical' ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
+                    <span className={`text-[10px] font-mono font-bold tracking-widest ${stats.posture.threat_level === 'Critical' ? 'text-red-400' : 'text-emerald-400'}`}>SYSTEM {stats.posture.threat_level.toUpperCase()}</span>
                 </div>
             </div>
 
             {/* TIER 1: KPI CỐT LÕI (MẬT ĐỘ DÀY) */}
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
-                <KpiCard icon={<Monitor size={18}/>} title="Total Assets" value={stats.total_assets} subValue={`${stats.online_assets} Online`} color="blue" />
-                <KpiCard icon={<Flame size={18}/>} title="High Risk" value={stats.high_risk_assets} subValue={`${((stats.high_risk_assets/stats.total_assets)*100).toFixed(1)}% Fleet`} color="red" isAlert={stats.high_risk_assets > 0}/>
-                <KpiCard icon={<ShieldAlert size={18}/>} title="Raw Alerts" value={stats.total_alerts} subValue="Last 24h" color="orange" />
-                <KpiCard icon={<AlertTriangle size={18}/>} title="Open Cases" value={stats.open_incidents} subValue={`${stats.resolved_incidents} Resolved`} color="purple" />
-                <KpiCard icon={<Lock size={18}/>} title="Zero Trust" value={`${stats.zero_trust_coverage.toFixed(1)}%`} subValue="Enforcement" color="emerald" />
-                <KpiCard icon={<Shield size={18}/>} title="Avg Trust" value={stats.average_trust_score.toFixed(1)} subValue="System Health" color="indigo" />
+                <KpiCard icon={<Monitor size={18}/>} title="Total Assets" value={stats.summary.total_assets} subValue={`${stats.summary.online_assets} Online`} color="blue" />
+                <KpiCard icon={<Flame size={18}/>} title="High Risk" value={stats.summary.high_risk_assets} subValue={`${stats.summary.total_assets > 0 ? ((stats.summary.high_risk_assets/stats.summary.total_assets)*100).toFixed(1) : 0}% Fleet`} color="red" isAlert={stats.summary.high_risk_assets > 0}/>
+                <KpiCard icon={<ShieldAlert size={18}/>} title="Raw Alerts" value={stats.summary.total_alerts} subValue="Last 24h" color="orange" />
+                <KpiCard icon={<AlertTriangle size={18}/>} title="Open Cases" value={stats.summary.open_incidents} subValue={`${stats.summary.resolved_incidents} Resolved`} color="purple" />
+                <KpiCard icon={<Lock size={18}/>} title="Health Score" value={`${stats.posture.overall_score}%`} subValue={`Threat: ${stats.posture.threat_level}`} color="emerald" isAlert={stats.posture.threat_level === 'Critical'} />
+                <KpiCard icon={<Shield size={18}/>} title="Avg Trust" value={stats.summary.average_trust_score.toFixed(1)} subValue="System Health" color="indigo" />
             </div>
 
             {/* TIER 2: BIỂU ĐỒ TRỰC QUAN (CHART) */}
@@ -91,7 +91,7 @@ const Dashboard = () => {
                 <DashboardTable 
                     title="Top Risk assets" 
                     icon={Flame} 
-                    data={stats.top_risk_assets} 
+                    data={stats.summary.top_risk_assets} 
                     columns={topRiskColumns} 
                     colorClass="text-red-400"
                     onRowClick={(row) => navigate(`/assets/${row.hwid}`)}
@@ -99,7 +99,7 @@ const Dashboard = () => {
                 <DashboardTable 
                     title="Live Threat Feed" 
                     icon={Activity} 
-                    data={stats.recent_alerts} 
+                    data={stats.summary.recent_alerts} 
                     columns={recentAlertColumns} 
                     colorClass="text-orange-400"
                 />
