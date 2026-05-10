@@ -5,7 +5,7 @@ import { WebSocketProvider } from './context/WebSocketContext';
 import Sidebar from './components/Sidebar.jsx';
 import Navbar from './components/Navbar.jsx';
 import Profile from './components/Profile.jsx';
-import VersionsPage from './pages/Versions/VersionsPage.jsx';
+import VersionsPage from './pages/Software/SoftwarePage.jsx';
 import Login from './pages/Auth/Login.jsx';
 import ResetPassword from './pages/Auth/ResetPassword.jsx';
 import Register from './pages/Auth/Register.jsx';
@@ -82,7 +82,7 @@ function App() {
                     <Route path="/policy-center" element={<ProtectedRoute requiredPermission="policy_view"><PolicyCenter /></ProtectedRoute>} />
                     <Route path="/docs" element={<ProtectedRoute><Documents requiredPermission="doc_view" /></ProtectedRoute>} />
                     <Route path="/users" element={<ProtectedRoute requiredPermission="user_view"><UserManagement /></ProtectedRoute>} />
-                    <Route path="/versions" element={<ProtectedRoute><VersionsPage /></ProtectedRoute>} />
+                    <Route path="/softwares" element={<ProtectedRoute><VersionsPage /></ProtectedRoute>} />
                 </Routes>
             </WebSocketProvider>
         </Router>

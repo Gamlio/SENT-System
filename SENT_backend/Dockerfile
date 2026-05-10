@@ -4,7 +4,7 @@ WORKDIR /app
 COPY . .
 RUN go mod download
 # Build binary tĩnh hoàn toàn
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o main cmd/server/main.go
 
 # Stage 2: Runner
 FROM alpine:latest

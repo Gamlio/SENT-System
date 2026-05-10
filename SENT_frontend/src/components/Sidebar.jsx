@@ -25,7 +25,7 @@ const Sidebar = () => {
     { path: '/incidents', icon: <AlertTriangle size={18}/>, label: 'Sự cố', show: user.permissions?.incident_view },
     { path: '/behaviors', icon: <AlertTriangle size={18}/>, label: 'Hành vi', show: user.permissions?.incident_view },
     { path: '/approvals', icon: <ClipboardCheck size={18}/>, label: 'Phê duyệt', show: user.permissions?.approval_view },
-    { path: '/versions', icon: <Package size={18}/>, label: 'Phần mềm', show: true }
+    { path: '/softwares', icon: <Package size={18}/>, label: 'Phần mềm', show: true }
 ];
 
     return (

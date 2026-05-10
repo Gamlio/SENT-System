@@ -64,7 +64,7 @@ const assetSoftware = ({ hwid }) => {
                                     </div>
                                     <div>
                                         <p className="text-sm font-bold text-slate-200 leading-tight">{s.software_name || 'Unknown'}</p>
-                                        <p className="text-[10px] text-slate-500">{s.publisher || 'Unknown Publisher'} • v{s.version}</p>
+                                        <p className="text-[10px] text-slate-500">{s.publisher || 'Unknown Publisher'} • v{s.software}</p>
                                     </div>
                                 </div>
                                 {s.status === 'GHOST_REGISTRY' && (

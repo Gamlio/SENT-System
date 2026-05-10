@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/shirou/gopsutil/v3/host"
 
 	"SENT/internal/collector"
@@ -35,11 +34,6 @@ func main() {
 	}
 	defer collector.CloseLocalDB() // Đảm bảo nhả file agent_cache.db.lock khi thoát
 
-	err = godotenv.Load("config/.env")
-	if err != nil {
-		log.Println("⚠️  Cảnh báo: Không tìm thấy file .env trong config/, sử dụng cấu hình mặc định.")
-	}
-
 	if !utils.IsAdmin() {
 		log.Fatal("FATAL: asset yêu cầu quyền Administrator/Root để hoạt động. Vui lòng chạy lại bằng 'Run as Administrator' hoặc 'sudo'.")
 	}
@@ -62,6 +56,7 @@ func main() {
 
 	fmt.Printf("\n 🛡️ SENT asset V4.0 (Ninja Thin-Client) | HOST: %s\n", hostname)
 	ipAddress := utils.GetOutboundIP()
+	fmt.Printf(" [DEBUG] IP phát hiện được: '%s'\n", ipAddress)
 	config.LoadOrBootstrap(AssetHWID, hostname, ipAddress)
 
 	// Từ đoạn này trở xuống giữ nguyên...

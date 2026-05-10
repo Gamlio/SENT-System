@@ -1,14 +1,5 @@
-
 services:
-  # --- DATABASE: PostgreSQL ---
-  redis:
-    image: redis:7-alpine  
-    container_name: sent_redis
-    restart: always
-    volumes:
-      - redis_data:/data
-    networks:
-      - sent_net
+  # --- CƠ SỞ DỮ LIỆU & CACHE ---
   db:
     image: postgres:15-alpine
     container_name: sent_db
@@ -21,7 +12,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - sent_net
-  
+
   mongodb:
     image: mongo:6.0
     container_name: sent_mongo
@@ -30,38 +21,206 @@ services:
       - mongo_data:/data/db
     networks:
       - sent_net
-  backend:
-    build: ./SENT_backend
-    container_name: sent_backend
+
+  redis:
+    image: redis:7-alpine  
+    container_name: sent_redis
     restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - sent_net
+
+  nats:
+    image: nats:latest
+    container_name: sent_nats
+    restart: always
+    networks:
+      - sent_net
+
+  # --- MICROSERVICES (Đã tối ưu Build Context) ---
+  
+  auth-service:
+    build: 
+      context: ./SENT_backend
+      dockerfile: service/auth/Dockerfile
+    container_name: auth_service
+    env_file: .env
     ports:
-      - "8000:8000"
+      - "8001:8000"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - sent_net
+
+  asset-service:
+    build:
+      context: ./SENT_backend         
+      dockerfile: service/assets/Dockerfile
+    container_name: asset_service
+    env_file: .env
+    ports:
+      - "8002:8000"
     depends_on:
       - db
       - mongodb
-      - redis
-    env_file:
-      - ./SENT_backend/.env 
-    environment:
-      - DB_HOST=db
-      - MONGO_HOST=mongodb
-      - REDIS_HOST=redis
+    networks:
+      - sent_net
+
+  behavior-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/behavior/Dockerfile
+    container_name: behavior_service
+    env_file: .env
+    ports:
+      - "8003:8000"
+    depends_on:
+      - mongodb
+      - nats
+    networks:
+      - sent_net
+
+  dashboard-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/dashboard/Dockerfile
+    container_name: dashboard_service
+    env_file: .env
+    ports:
+      - "8004:8000"
+    depends_on:
+      - db
+      - mongodb
+    networks:
+      - sent_net
+
+  incident-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/incidents/Dockerfile
+    container_name: incident_service
+    env_file: .env
+    ports:
+      - "8005:8000"
+    depends_on:
+      - db
+      - mongodb
     volumes:
-      - ./SENT_backend/uploads/pdf_previews:/app/uploads/pdf_previews
-      - ./SENT_backend/uploads/documents:/app/uploads/documents
-      - ./SENT_backend/uploads/audits:/app/uploads/audits
-      - ./SENT_backend/uploads/incidents:/app/uploads/incidents
-      # - ./data/uploads/audits:/app/uploads/audits
-      # - ./data/uploads/documents:/app/uploads/documents 
-      # - ./data/uploads/incidents:/app/uploads/incidents
+      - ./uploads/audits:/app/uploads/audits
     networks:
       - sent_net
-  gotenberg:
-    image: gotenberg/gotenberg:8
-    container_name: sent_converter
-    restart: always
+
+  policy-service:
+    build: 
+      context: ./SENT_backend
+      dockerfile: service/policies/Dockerfile
+    container_name: policy_service
+    env_file: .env
+    ports:
+      - "8006:8000"
+    depends_on:
+      - db
     networks:
       - sent_net
+
+  document-service:
+    build: 
+      context: ./SENT_backend
+      dockerfile: service/documents/Dockerfile
+    container_name: document_service
+    env_file: .env
+    ports:
+      - "8007:8000"
+    depends_on:
+      - db
+      - gotenberg 
+    volumes:
+      - ./uploads/documents:/app/uploads/documents
+      - ./uploads/pdf_previews:/app/uploads/pdf_previews
+    networks:
+      - sent_net
+
+  ai-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/ai/Dockerfile
+    container_name: ai_service
+    env_file: .env
+    ports:
+      - "8008:8008"
+    environment:
+      - OLLAMA_URL=http://host.docker.internal:11434
+    networks:
+      - sent_net
+
+  groups-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/groups/Dockerfile
+    container_name: groups_service
+    env_file: .env
+    ports:
+      - "8009:8000"
+    networks:
+      - sent_net
+
+  scoring-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/scoring/Dockerfile
+    container_name: scoring_service
+    env_file: .env
+    ports:
+      - "8010:8000"
+    depends_on:
+      - db
+    networks:
+      - sent_net
+
+  user-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/users/Dockerfile
+    container_name: user_service
+    env_file: .env
+    ports:
+      - "8011:8000"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - sent_net
+
+  software-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/software/Dockerfile
+    container_name: software_service
+    env_file: .env
+    ports:
+      - "8012:8000"
+    depends_on:
+      - db
+      - mongodb
+    networks:
+      - sent_net
+  approval-service:
+    build:
+      context: ./SENT_backend
+      dockerfile: service/approvals/Dockerfile
+    container_name: approval_service
+    env_file: .env
+    ports:
+      - "8013:8000"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - sent_net
+  # --- GATEWAY & FRONTEND ---
+
   frontend:
     build:
       context: ./SENT_frontend
@@ -74,10 +233,18 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - backend
-    stdin_open: true
+      - auth-service
+      - asset-service
     networks:
       - sent_net
+  
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: sent_converter
+    restart: always
+    networks:
+      - sent_net
+
   sent-tunnel:
     image: cloudflare/cloudflared:latest
     container_name: sent_tunnel
@@ -85,7 +252,14 @@ services:
     restart: always
     networks:
       - sent_net
-
+  #just use when hace a strong PC
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: sent_ollama
+  #   volumes:
+  #     - ollama_data:/root/.ollama 
+  #   networks:
+  #     - sent_net
 networks:
   sent_net:
     driver: bridge
@@ -94,3 +268,4 @@ volumes:
   postgres_data:
   mongo_data:
   redis_data:
+  ollama_data:
