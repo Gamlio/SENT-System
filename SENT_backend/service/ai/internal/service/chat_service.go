@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -40,7 +41,6 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-// Hàm tách Suy nghĩ và Câu trả lời
 func parseAIResponse(raw string) (thought string, answer string) {
 	if strings.Contains(raw, "<think>") && strings.Contains(raw, "</think>") {
 		parts := strings.Split(raw, "</think>")
@@ -52,14 +52,25 @@ func parseAIResponse(raw string) (thought string, answer string) {
 }
 
 func ChatWithRAG(userQuestion string, orgID uint) (string, string, error) {
-	// BƯỚC 1: RETRIEVAL (TÌM KIẾM)
-	// Thay vì lấy sạch DB, ta chỉ lấy những thứ "dính" tới câu hỏi
-	policies := getRelatedPolicies(userQuestion)
-	incidents := getRelatedIncidents(userQuestion)
-	docs := getRelevantPDFContent(userQuestion, orgID)
 
-	// BƯỚC 2: AUGMENTATION (LÀM GIÀU PROMPT)
-	// Prompt được thiết kế cực gọn cho Qwen 2b
+	if len(strings.TrimSpace(userQuestion)) < 10 {
+		return callOllama(MODEL_SMALL, userQuestion)
+	}
+	// test 1:
+	// policies := getRelatedPolicies(userQuestion)
+	// incidents := getRelatedIncidents(userQuestion)
+	// docs := getRelevantPDFContent(userQuestion, orgID)
+
+	var policies, incidents, docs string
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() { defer wg.Done(); policies = getRelatedPolicies(userQuestion) }()
+	go func() { defer wg.Done(); incidents = getRelatedIncidents(userQuestion) }()
+	go func() { defer wg.Done(); docs = getRelevantPDFContent(userQuestion, orgID) }()
+
+	wg.Wait()
+
 	ragPrompt := fmt.Sprintf(`[CONTEXT]
 POLICIES:
 %s
@@ -69,18 +80,18 @@ DOCUMENTS:
 %s
 
 [INSTRUCTION]
+BẮT BUỘC: Trước khi trả lời, hãy thực hiện phân tích logic bên trong thẻ <think>...</think>.
+Sau đó mới đưa ra câu trả lời cuối cùng cho người dùng.
 Bạn là SENT Copilot. Dựa VÀO CONTEXT trên để trả lời câu hỏi: "%s".
 - Nếu không thấy thông tin trong CONTEXT, hãy nói "Tôi không tìm thấy quy định này trong hệ thống".
 - TUYỆT ĐỐI không bịa đặt. 
 - Chỉ tư vấn, không hành động.`, policies, incidents, docs, userQuestion)
 
-	// BƯỚC 3: GENERATION (TẠO CÂU TRẢ LỜI)
 	return callOllama(MODEL_LARGE, ragPrompt)
 }
 
 func getRelatedPolicies(query string) string {
 	var p []models.Policy
-	// Tìm kiếm mờ (Fuzzy search) trong Postgres
 	database.DB.Where("is_active = ? AND (title ILIKE ? OR value ILIKE ?)",
 		true, "%"+query+"%", "%"+query+"%").Limit(5).Find(&p)
 
@@ -107,10 +118,9 @@ func getRelevantPDFContent(query string, orgID uint) string {
 		return ""
 	}
 
-	// Tìm kiếm mờ nội dung tài liệu trong MongoDB
 	filter := bson.M{
 		"org_id": int64(orgID),
-		"$text":  bson.M{"$search": query}, // Yêu cầu đã tạo Text Index trong Mongo
+		"$text":  bson.M{"$search": query},
 	}
 
 	cursor, err := database.DocumentContentCollection.Find(context.TODO(), filter, options.Find().SetLimit(2))
@@ -125,10 +135,10 @@ func getRelevantPDFContent(query string, orgID uint) string {
 
 	contextText := "\nTHÔNG TIN TỪ TÀI LIỆU PDF (SOP):\n"
 	for _, res := range results {
-		// Cắt nhỏ văn bản (Chỉ lấy 1000 ký tự đầu liên quan để tránh tràn VRAM 4GB)
+		// Cắt nhỏ văn bản (Chỉ lấy 400 ký tự đầu liên quan để tránh tràn VRAM 4GB)
 		limit := len(res.Content)
-		if limit > 1000 {
-			limit = 1000
+		if limit > 400 {
+			limit = 400
 		}
 		contextText += fmt.Sprintf("- %s...\n", res.Content[:limit])
 	}

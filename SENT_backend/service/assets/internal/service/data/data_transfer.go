@@ -4,12 +4,10 @@ import (
 	"SENT_backend/pkg/cache"
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -70,26 +68,14 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) error {
 		}
 		reason := fmt.Sprintf("Lưu lượng mạng đột biến. Ứng dụng khả nghi: %s", topApp)
 
-		go func() {
-			eventPayload := map[string]interface{}{
-				"asset":       asset,
-				"alert_type":  "Data Exfiltration",
-				"title":       "[P1] Hoạt động mạng bất thường",
-				"description": fmt.Sprintf("%s. Lượng dữ liệu: %d MB/30s", reason, diffSent/1024/1024),
-				"priority":    "P1",
-			}
-
-			jsonData, _ := json.Marshal(eventPayload)
-			// Sử dụng URL nội bộ của Docker
-			url := "http://incident-service:8005/api/v1/incidents/trigger"
-
-			resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-			if err != nil {
-				log.Printf("⚠️ Lỗi gọi Incident API: %v", err)
-				return
-			}
-			defer resp.Body.Close()
-		}()
+		SendBehaviorLog(map[string]interface{}{
+			"asset":    asset,
+			"category": "Data Exfiltration",
+			"value":    fmt.Sprintf("%d MB", diffSent/1024/1024),
+			"title":    "[P1] Hoạt động mạng bất thường",
+			"desc":     fmt.Sprintf("%s. Lượng dữ liệu: %d MB/30s", reason, diffSent/1024/1024),
+			"priority": "P1",
+		})
 	}
 	return nil
 }

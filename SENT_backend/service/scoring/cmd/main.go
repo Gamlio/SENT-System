@@ -37,7 +37,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8010" // Cổng mặc định cho Scoring Service
+		port = "8000"
 	}
 	r.Run(":" + port)
 }

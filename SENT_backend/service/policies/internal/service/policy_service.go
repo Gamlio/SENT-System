@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PolicyService struct{}
@@ -215,4 +216,36 @@ func (s *PolicyService) CheckPolicyViolation(orgID uint, hwid string, category s
 	}
 
 	return false, "", nil
+}
+func (s *PolicyService) SaveBaselineItems(orgID uint, hwid string, category string, values []string) error {
+	if len(values) == 0 {
+		return nil
+	}
+
+	var items []models.WhitelistItem
+	for _, val := range values {
+		if strings.TrimSpace(val) == "" {
+			continue
+		}
+		items = append(items, models.WhitelistItem{
+			OrgID:       orgID,
+			AssetHWID:   hwid,
+			Type:        category, // "SOFTWARE_HASH" hoặc "PORT"
+			Value:       val,
+			Description: "Tự động tạo từ Baseline (1h đầu)",
+		})
+	}
+
+	// [TỐI ƯU] Sử dụng OnConflict để tránh trùng lặp nếu máy trạm gửi log nhiều lần trong 1h
+	return database.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "org_id"}, {Name: "asset_hwid"}, {Name: "type"}, {Name: "value"}},
+		DoNothing: true,
+	}).CreateInBatches(items, 100).Error
+}
+
+// GetAssetWhitelist: Lấy danh sách whitelist riêng biệt của một máy trạm
+func (s *PolicyService) GetAssetWhitelist(orgID uint, hwid string) ([]models.WhitelistItem, error) {
+	var list []models.WhitelistItem
+	err := database.DB.Where("org_id = ? AND asset_hwid = ?", orgID, hwid).Find(&list).Error
+	return list, err
 }

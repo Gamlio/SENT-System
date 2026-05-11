@@ -24,13 +24,14 @@ func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 	if err := json.Unmarshal([]byte(ticket.SnapshotData), &payload); err != nil {
 		return err
 	}
-
+	baselineEndTime := time.Now().Add(1 * time.Hour)
 	result := tx.Model(&models.Asset{}).
 		Where("asset_hwid = ? AND org_id = ?", payload.AssetHWID, ticket.OrgID).
 		Updates(map[string]interface{}{
-			"status":      "ACTIVE",
-			"approved_by": ticket.ReviewedBy,
-			"last_seen":   time.Now(),
+			"status":         "ACTIVE",
+			"approved_by":    ticket.ReviewedBy,
+			"last_seen":      time.Now(),
+			"baseline_until": baselineEndTime,
 		})
 
 	if result.Error != nil {
@@ -79,7 +80,7 @@ func (s *assetDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 			"org_id": orgID,
 		})
 		// Gọi đến cổng 8002 của Asset Service
-		url := "http://asset-service:8002/api/v1/assets/internal/cleanup"
+		url := "http://asset-service:8000/api/v1/assets/internal/cleanup"
 		http.Post(url, "application/json", bytes.NewBuffer(payload))
 	}(snap.AssetHWID, ticket.OrgID)
 
@@ -117,7 +118,7 @@ func (s *assetBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approval
 			"hwids":  ids,
 			"org_id": orgID,
 		})
-		url := "http://asset-service:8002/api/v1/assets/internal/cleanup"
+		url := "http://asset-service:8000/api/v1/assets/internal/cleanup"
 		http.Post(url, "application/json", bytes.NewBuffer(payload))
 	}(snap.AssetIDs, ticket.OrgID)
 

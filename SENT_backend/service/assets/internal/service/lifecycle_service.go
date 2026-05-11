@@ -143,7 +143,7 @@ func (s *AssetLifecycleService) UpdateDeviceType(hwid string, orgID uint, device
 	// 2. TỰ ĐỘNG: Tính lại điểm rủi ro ngay vì DeviceType làm thay đổi trọng số tài sản
 	// Chúng ta dùng Goroutine để không làm chậm phản hồi của API
 	go func(id string) {
-		url := fmt.Sprintf("http://scoring-service:8010/api/v1/scoring/recalculate/%s", id)
+		url := fmt.Sprintf("http://scoring-service:8000/api/v1/scoring/recalculate/%s", id)
 		_, err := http.Post(url, "application/json", nil)
 		if err != nil {
 			fmt.Printf("⚠️ Lỗi gọi Scoring API cho máy %s: %v\n", id, err)

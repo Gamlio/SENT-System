@@ -23,7 +23,6 @@ import (
 
 type DocumentService struct{}
 
-// CreateUploadRequest: Xử lý lưu file và tạo đơn phê duyệt mới
 func (s *DocumentService) CreateUploadRequest(orgID uint, title, category, fileName string, file io.Reader, fileSize int64, uploader string) error {
 	ext := strings.ToLower(filepath.Ext(fileName))
 	if ext != ".doc" && ext != ".docx" {
@@ -208,35 +207,32 @@ func (s *DocumentService) GetDocuments(orgID uint, status string) ([]models.Docu
 	return docs, err
 }
 func (s *DocumentService) convertToPDF(orgID uint, docID uint, wordPath, pdfPath string) error {
-	// 1. Chuẩn bị request gửi sang Gotenberg
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-
-	// Mở file Word gốc
 	file, _ := os.Open(wordPath)
 	defer file.Close()
-
 	part, _ := writer.CreateFormFile("files", filepath.Base(wordPath))
 	io.Copy(part, file)
 	writer.Close()
 
-	// 2. Gọi API Gotenberg (sử dụng tên service trong Docker là 'gotenberg')
 	req, _ := http.NewRequest("POST", "http://gotenberg:3000/forms/libreoffice/convert", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		fmt.Printf("🔥 Lỗi kết nối Gotenberg: %v\n", err)
 		return err
 	}
 	defer resp.Body.Close()
-
-	// 3. Lưu file PDF nhận được vào thư mục pdf_previews
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("🔥 Gotenberg trả về lỗi: %d\n", resp.StatusCode)
+		return fmt.Errorf("conversion failed")
+	}
 	out, _ := os.Create(pdfPath)
 	defer out.Close()
 	_, err = io.Copy(out, resp.Body)
 
-	// Kích hoạt trích xuất sau khi có file PDF
 	if err == nil {
 		go s.extractAndStoreText(orgID, docID, pdfPath)
 	}

@@ -7,12 +7,10 @@ export const useDocuments = () => {
     const [error, setError] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
 
-    // State cho tìm kiếm & phân trang
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
 
-    // 1. LẤY DANH SÁCH TÀI LIỆU
     const fetchDocuments = useCallback(async () => {
         setLoading(true);
         try {
@@ -31,7 +29,6 @@ export const useDocuments = () => {
         fetchDocuments();
     }, [fetchDocuments]);
 
-    // 2. UPLOAD TÀI LIỆU (MULTIPART/FORM-DATA)
     const uploadDoc = async (formData) => {
         setIsUploading(true);
         try {
@@ -48,7 +45,6 @@ export const useDocuments = () => {
         }
     };
 
-    // 3. XÓA TÀI LIỆU (Gửi yêu cầu kèm lý do)
     const deleteDoc = async (id, reason) => {
         try {
             // Sử dụng endpoint delete-request và gửi reason trong body JSON
@@ -61,13 +57,12 @@ export const useDocuments = () => {
         }
     };
 
-    // 4. CẬP NHẬT THÔNG TIN (Gửi kèm lý do sửa)
     const updateDoc = async (id, data, reason) => {
         try {
             const formData = new FormData();
             formData.append('title', data.title);
             formData.append('category', data.category);
-            formData.append('reason', reason); // Truyền lý do sửa vào Form
+            formData.append('reason', reason); 
             if (data.file) formData.append('file', data.file);
 
             await axios.put(`/docs/${id}`, formData);
@@ -79,7 +74,6 @@ export const useDocuments = () => {
         }
     };
 
-    // 5. TẢI TÀI LIỆU VỀ MÁY (File Word gốc)
     const downloadDoc = async (id, fileName) => {
         try {
             const response = await axios.get(`/docs/${id}/download`, {

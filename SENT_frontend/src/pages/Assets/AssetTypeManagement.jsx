@@ -6,13 +6,13 @@ import TypeFormModal from './components/TypeFormModal';
 
 const AssetTypeManagement = () => {
     const navigate = useNavigate();
-    const { types, isLoading, updateType } = useAssetTypes();
+    const { types, isLoading, updateType, createType } = useAssetTypes();
     const [selectedType, setSelectedType] = useState(null);
     const [showModal, setShowModal] = useState(false);
 
     return (
         <div className="p-6 bg-[#050B14] min-h-full text-slate-200 font-sans">
-            <div className="mb-8 flex justify-between items-start">
+            <div className="mb-8 flex justify-between items-end">
                 <div>
                     <button 
                         onClick={() => navigate('/assets')}
@@ -28,6 +28,12 @@ const AssetTypeManagement = () => {
                         Thiết lập hệ số rủi ro (Risk Weight) cho từng nhóm thiết bị
                     </p>
                 </div>
+                <button 
+                    onClick={() => { setSelectedType(null); setShowModal(true); }}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+                >
+                    + Thêm loại mới
+                </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -62,7 +68,9 @@ const AssetTypeManagement = () => {
                     type={selectedType} 
                     onClose={() => setShowModal(false)} 
                     onSubmit={async (data) => {
-                        const res = await updateType(selectedType.id, data);
+                        const res = selectedType 
+                            ? await updateType(selectedType.id, data) 
+                            : await createType(data);
                         if (res.success) setShowModal(false);
                     }}
                 />

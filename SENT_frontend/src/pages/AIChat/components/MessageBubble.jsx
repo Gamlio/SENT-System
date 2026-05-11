@@ -1,27 +1,33 @@
+import React from 'react';
 import ThinkingBlock from './ThinkingBlock';
+import { Bot, User } from 'lucide-react';
 
 const MessageBubble = ({ message }) => {
     const isAI = message.sender === 'ai';
 
     return (
-        <div className={`flex flex-col mb-6 w-full ${isAI ? 'items-start' : 'items-end'}`}>
-            {/* Tăng max-w lên 85% và thêm w-full để kiểm soát layout */}
-            <div className={`flex gap-4 w-full max-w-[85%] ${isAI ? 'flex-row' : 'flex-row-reverse'}`}>
-                
-                {/* Thêm min-w-0 để ngăn chặn Flexbox tự động bung rộng quá màn hình khi có text dài */}
-                <div className="flex flex-col min-w-0 w-full">
-                    {/* HIỂN THỊ SUY NGHĨ */}
+        <div className={`flex flex-col ${isAI ? 'items-start' : 'items-end'} group animate-in fade-in slide-in-from-bottom-2 duration-500`}>
+            <div className={`flex gap-4 max-w-[85%] ${isAI ? 'flex-row' : 'flex-row-reverse'}`}>
+                <div className={`shrink-0 w-10 h-10 rounded-2xl border flex items-center justify-center shadow-lg ${
+                    isAI ? 'bg-slate-900 border-slate-800 text-indigo-400' : 'bg-indigo-600 border-indigo-500 text-white'
+                }`}>
+                    {isAI ? <Bot size={20}/> : <User size={20}/>}
+                </div>
+
+                <div className="flex flex-col min-w-0">
+                    <div className={`flex items-center mb-1 gap-2 ${!isAI && 'justify-end'}`}>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                            {isAI ? 'AI Security Assistant' : 'Security Analyst'}
+                        </span>
+                    </div>
+
                     {isAI && message.thought && <ThinkingBlock thought={message.thought} />}
 
-                    {/* NỘI DUNG CHÍNH (Đã thêm break-words và whitespace-pre-wrap) */}
-                    <div 
-                        className={`px-5 py-3.5 rounded-2xl text-sm leading-relaxed shadow-md whitespace-pre-wrap break-words ${
-                            isAI 
-                            ? 'bg-[#1e293b] text-slate-200 border border-slate-700/50' 
-                            : 'bg-indigo-600 text-white'
-                        }`}
-                        style={{ wordBreak: 'break-word' }}
-                    >
+                    <div className={`px-6 py-4 rounded-[24px] text-sm leading-relaxed shadow-xl break-words whitespace-pre-wrap ${
+                        isAI 
+                        ? 'bg-[#0A101D] text-slate-200 border border-slate-800' 
+                        : 'bg-indigo-600 text-white font-medium'
+                    }`}>
                         {message.text}
                     </div>
                 </div>

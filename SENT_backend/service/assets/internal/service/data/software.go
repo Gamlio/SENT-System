@@ -3,12 +3,10 @@ package data // SỬA: Đổi từ asset_data sang data
 import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
@@ -43,6 +41,17 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 	if err := json.Unmarshal(bytesData, &records); err != nil {
 		return fmt.Errorf("lỗi giải mã JSON software: %w", err)
 	}
+
+	if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
+		var hashes []string
+		for _, r := range records {
+			if r.FileHash != "" {
+				hashes = append(hashes, r.FileHash)
+			}
+		}
+		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "SOFTWARE_HASH", hashes)
+	}
+
 	if database.SoftwareCollection == nil {
 		return fmt.Errorf("database SoftwareCollection chưa sẵn sàng")
 	}
@@ -115,36 +124,33 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 	}
 
 	if len(violations) > 0 {
-		go func(vList []softwareViolation) {
-			highestPriority := "P4"
-			highestAlertType := "Software Violation"
-			priorityMap := map[string]int{"P1": 4, "P2": 3, "P3": 2, "P4": 1}
+		highestPriority := "P4"
+		highestAlertType := "Software Violation"
+		priorityMap := map[string]int{"P1": 4, "P2": 3, "P3": 2, "P4": 1}
 
-			groupedViolations := make(map[string][]string)
-			for _, v := range vList {
-				groupedViolations[v.Type] = append(groupedViolations[v.Type], v.Name)
-				if priorityMap[v.Priority] > priorityMap[highestPriority] {
-					highestPriority = v.Priority
-					highestAlertType = v.Type
-				}
+		groupedViolations := make(map[string][]string)
+		for _, v := range violations {
+			groupedViolations[v.Type] = append(groupedViolations[v.Type], v.Name)
+			if priorityMap[v.Priority] > priorityMap[highestPriority] {
+				highestPriority = v.Priority
+				highestAlertType = v.Type
 			}
+		}
 
-			var descBuilder strings.Builder
-			descBuilder.WriteString(fmt.Sprintf("Phát hiện %d vi phạm phần mềm. ", len(vList)))
-			for vType, names := range groupedViolations {
-				descBuilder.WriteString(fmt.Sprintf("%s: %s. ", vType, strings.Join(names, ", ")))
-			}
+		var descBuilder strings.Builder
+		descBuilder.WriteString(fmt.Sprintf("Phát hiện %d vi phạm phần mềm. ", len(violations)))
+		for vType, names := range groupedViolations {
+			descBuilder.WriteString(fmt.Sprintf("%s: %s. ", vType, strings.Join(names, ", ")))
+		}
 
-			payload := map[string]interface{}{
-				"asset":       asset,
-				"alert_type":  highestAlertType,
-				"title":       fmt.Sprintf("[%s] Phát hiện vi phạm phần mềm tổng hợp", highestPriority),
-				"description": descBuilder.String(),
-				"priority":    highestPriority,
-			}
-			jsonData, _ := json.Marshal(payload)
-			http.Post("http://incident-service:8005/api/v1/incidents/trigger", "application/json", bytes.NewBuffer(jsonData))
-		}(violations)
+		SendBehaviorLog(map[string]interface{}{
+			"asset":    asset,
+			"category": highestAlertType,
+			"value":    fmt.Sprintf("%d violations", len(violations)),
+			"title":    fmt.Sprintf("[%s] Phát hiện vi phạm phần mềm tổng hợp", highestPriority),
+			"desc":     descBuilder.String(),
+			"priority": highestPriority,
+		})
 	}
 
 	if len(activeHashes) > 0 {

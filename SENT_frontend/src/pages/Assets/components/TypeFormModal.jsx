@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { X, Save, Zap } from 'lucide-react';
 
+const RISK_LEVELS = [
+    { label: 'THẤP', value: 1.0, color: 'bg-emerald-500' },
+    { label: 'TRUNG BÌNH', value: 1.5, color: 'bg-amber-500' },
+    { label: 'CAO', value: 2.0, color: 'bg-orange-500' },
+    { label: 'RẤT CAO', value: 3.0, color: 'bg-red-500' }
+];
+
 const TypeFormModal = ({ type, onClose, onSubmit }) => {
     const [formData, setFormData] = useState({
         name: type?.name || '',
@@ -18,29 +25,39 @@ const TypeFormModal = ({ type, onClose, onSubmit }) => {
 
                 <form className="p-6 space-y-5" onSubmit={(e) => { e.preventDefault(); onSubmit(formData); }}>
                     <div>
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Hệ số rủi ro (Risk Weight)</label>
-                        <div className="flex gap-3 items-center">
-                            <input 
-                                type="number" step="0.1" min="0.1" max="5.0"
-                                value={formData.risk_weight}
-                                onChange={(e) => setFormData({...formData, risk_weight: parseFloat(e.target.value)})}
-                                className="flex-1 bg-[#050B14] border border-slate-700 rounded-lg px-4 py-2 text-white font-mono outline-none focus:border-indigo-500"
-                            />
-                            {/* Mốc chọn nhanh */}
-                            <div className="flex gap-1">
-                                {[1.0, 1.5, 2.0].map(val => (
-                                    <button 
-                                        type="button" key={val}
-                                        onClick={() => setFormData({...formData, risk_weight: val})}
-                                        className={`px-2 py-1 text-[10px] font-bold rounded border ${formData.risk_weight === val ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-slate-700 text-slate-500'}`}
-                                    >
-                                        {val}x
-                                    </button>
-                                ))}
-                            </div>
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Tên loại tài sản (Asset Tier)</label>
+                        <input 
+                            type="text" required
+                            value={formData.name}
+                            onChange={(e) => setFormData({...formData, name: e.target.value})}
+                            placeholder="VD: SERVER, DEV_MACHINE..."
+                            className="w-full bg-[#050B14] border border-slate-700 rounded-lg px-4 py-2 text-white text-xs outline-none focus:border-indigo-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 block">Mức độ quan trọng / Rủi ro</label>
+                        <div className="grid grid-cols-4 gap-2">
+                            {RISK_LEVELS.map(level => (
+                                <button 
+                                    type="button" key={level.label}
+                                    onClick={() => setFormData({...formData, risk_weight: level.value})}
+                                    className={`flex flex-col items-center p-2 rounded-lg border transition-all ${
+                                        formData.risk_weight === level.value 
+                                        ? 'border-indigo-500 bg-indigo-500/10' 
+                                        : 'border-slate-800 bg-[#050B14] hover:border-slate-600'
+                                    }`}
+                                >
+                                    <div className={`w-2 h-2 rounded-full mb-2 ${level.color}`} />
+                                    <span className={`text-[9px] font-black ${formData.risk_weight === level.value ? 'text-indigo-400' : 'text-slate-500'}`}>
+                                        {level.label}
+                                    </span>
+                                    <span className="text-[10px] font-mono text-white mt-1">{level.value}x</span>
+                                </button>
+                            ))}
                         </div>
                         <p className="text-[10px] text-slate-600 mt-2 italic flex items-center gap-1">
-                            <Zap size={10}/> Điểm rủi ro thực tế = (Điểm gốc) x {formData.risk_weight}[cite: 20]
+                            <Zap size={10}/> Điểm rủi ro thực tế = (Điểm gốc) x {formData.risk_weight}
                         </p>
                     </div>
 

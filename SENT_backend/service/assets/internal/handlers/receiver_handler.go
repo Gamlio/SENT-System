@@ -83,7 +83,7 @@ func UpdateDepartment(c *gin.Context) {
 
 	// [TÙY CHỌN] Tính lại điểm rủi ro ngay lập tức vì đổi ngữ cảnh có thể làm thay đổi P1/P4
 	go func(id string) {
-		url := fmt.Sprintf("http://scoring-service:8010/api/v1/scoring/recalculate/%s", id)
+		url := fmt.Sprintf("http://scoring-service:8000/api/v1/scoring/recalculate/%s", id)
 		_, err := http.Post(url, "application/json", nil)
 		if err != nil {
 			log.Printf("⚠️ Lỗi gọi Scoring API cho máy %s: %v\n", id, err)

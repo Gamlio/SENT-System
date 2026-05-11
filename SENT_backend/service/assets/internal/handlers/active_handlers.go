@@ -104,26 +104,25 @@ func GenerateEnrollmentToken(c *gin.Context) {
 func EnrollAsset(c *gin.Context) {
 	var req models.EnrollRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// Thêm log để bạn dễ debug khi có lỗi binding
+		fmt.Printf("❌ Lỗi Bind JSON: %v\n", err)
 		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
-	var tokenRecord models.EnrollmentToken
-	// TỐI ƯU: Chỉ cần kiểm tra sự tồn tại (Exists), không cần lấy cả record nếu chỉ để check
-	err := database.DB.Select("org_id").
-		Where("token = ? AND expires_at > ?", req.Token, time.Now()).
-		First(&tokenRecord).Error
-
+	// SỬ DỤNG SERVICE ĐÃ TẠO
+	enrollSvc := &assetSvc.AssetEnrollmentService{}
+	orgID, err := enrollSvc.ValidateToken(req.Token)
 	if err != nil {
-		c.JSON(401, gin.H{"error": "Mã cài đặt không hợp lệ hoặc đã hết hạn"})
+		c.JSON(401, gin.H{"error": err.Error()})
 		return
 	}
 
+	// TIẾN HÀNH ENROLL
 	newSecretKey := generateSecureToken(16)
-	svc := &assetSvc.AssetLifecycleService{}
+	lifecycleSvc := &assetSvc.AssetLifecycleService{}
 
-	// Sử dụng AssetHWID đã chuẩn hóa trong request
-	if err := svc.EnrollWithKey(req, tokenRecord.OrgID, newSecretKey); err != nil {
+	if err := lifecycleSvc.EnrollWithKey(req, orgID, newSecretKey); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

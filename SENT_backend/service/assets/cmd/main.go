@@ -24,40 +24,45 @@ func main() {
 	)
 
 	r := gin.Default()
-	agentAPI := r.Group("/api/v1/assets")
-	agentAPI.Use(middleware.AssetFloodProtectionMiddleware())
-	{
-		agentAPI.POST("/enroll", handlers.EnrollAsset)
 
-		agentAPI.POST("/push", middleware.AssetHMACAuth(), handlers.PushDataHandler)
+	assetsAPI := r.Group("/api/v1/assets")
+	{
+		assetsAPI.POST("/enroll", middleware.AssetEnrollRateLimitMiddleware(), handlers.EnrollAsset)
+
+		agentProtected := assetsAPI.Group("")
+		agentProtected.Use(middleware.AssetFloodProtectionMiddleware())
+		{
+			agentProtected.POST("/push", middleware.AssetHMACAuth(), handlers.PushDataHandler)
+		}
+
+		admin := assetsAPI.Group("")
+		admin.Use(middleware.AuthRequired())
+		{
+			admin.GET("/stats", handlers.GetStats)
+			admin.GET("/types", handlers.GetAssetTypes)
+			admin.GET("/active-token", handlers.GetActiveEnrollmentToken)
+			admin.GET("", middleware.RequirePermission("asset_view"), handlers.GetAssets)
+			admin.POST("/bulk-delete", middleware.RequirePermission("asset_delete"), handlers.RequestBulkDeleteAssets)
+
+			admin.GET("/:hwid/software", handlers.GetAssetSoftware)
+			admin.GET("/:hwid/usb", handlers.GetAssetUSB)
+			admin.GET("/:hwid/ports", handlers.GetAssetPorts)
+			admin.GET("/:hwid/logs", handlers.GetAssetLogs)
+
+			admin.GET("/:hwid", middleware.RequirePermission("asset_view"), handlers.GetAssetDetail)
+			admin.PUT("/:hwid/assign", middleware.RequirePermission("asset_move"), handlers.AssignManager)
+			admin.PUT("/:hwid/type", middleware.RequirePermission("asset_move"), handlers.UpdateDeviceType)
+			admin.DELETE("/:hwid", middleware.RequirePermission("asset_delete"), handlers.RequestDeleteAsset)
+
+			admin.PUT("/types/:id", middleware.RequirePermission("system_config"), handlers.UpdateAssetType)
+			admin.GET("/types", handlers.GetAssetTypes)
+			admin.POST("/types", middleware.RequirePermission("system_config"), handlers.CreateAssetType)
+		}
 	}
 
-	adminAPI := r.Group("/api/v1/assets")
-	adminAPI.Use(middleware.AuthRequired())
-	{
-		adminAPI.GET("/stats", handlers.GetStats)
-		adminAPI.GET("", middleware.RequirePermission("asset_view"), handlers.GetAssets)
-		adminAPI.GET("/:hwid", middleware.RequirePermission("asset_view"), handlers.GetAssetDetail)
-
-		adminAPI.GET("/:hwid/software", handlers.GetAssetSoftware)
-		adminAPI.GET("/:hwid/usb", handlers.GetAssetUSB)
-		adminAPI.GET("/:hwid/ports", handlers.GetAssetPorts)
-
-		adminAPI.GET("/types", handlers.GetAssetTypes)
-		adminAPI.PUT("/types/:id", middleware.RequirePermission("system_config"), handlers.UpdateAssetType)
-		adminAPI.PUT("/:hwid/assign", middleware.RequirePermission("asset_move"), handlers.AssignManager)
-		adminAPI.PUT("/:hwid/type", middleware.RequirePermission("asset_move"), handlers.UpdateDeviceType)
-
-		adminAPI.DELETE("/:hwid", middleware.RequirePermission("asset_delete"), handlers.RequestDeleteAsset)
-		adminAPI.POST("/bulk-delete", middleware.RequirePermission("asset_delete"), handlers.RequestBulkDeleteAssets)
-
-		adminAPI.GET("/active-token", handlers.GetActiveEnrollmentToken)
-	}
-
-	// 4. Chạy Service
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8002"
+		port = "8000"
 	}
 	r.Run(":" + port)
 }

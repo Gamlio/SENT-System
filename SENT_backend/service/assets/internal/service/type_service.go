@@ -49,11 +49,15 @@ func (s *AssetTypeService) recalculateAllAssetsInType(typeID uint) {
 	for _, hwid := range assetHWIDs {
 		// Gọi API cho từng máy trạm thay vì gọi hàm scoring.RecalculateRiskScore
 		go func(id string) {
-			url := fmt.Sprintf("http://scoring-service:8010/api/v1/scoring/recalculate/%s", id)
+			url := fmt.Sprintf("http://scoring-service:8000/api/v1/scoring/recalculate/%s", id)
 			_, err := http.Post(url, "application/json", nil)
 			if err != nil {
 				fmt.Printf("⚠️ Lỗi gọi Scoring API cho máy %s: %v\n", id, err)
 			}
 		}(hwid)
 	}
+}
+func (s *AssetTypeService) CreateType(orgID uint, req models.AssetType) error {
+	req.OrgID = orgID // Đảm bảo gán đúng OrgID của người tạo
+	return database.DB.Create(&req).Error
 }

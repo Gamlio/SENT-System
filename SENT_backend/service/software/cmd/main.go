@@ -34,7 +34,7 @@ func main() {
 	// 3. Khởi chạy trên cổng 8012
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8012"
+		port = "8000"
 	}
 	r.Run(":" + port)
 }

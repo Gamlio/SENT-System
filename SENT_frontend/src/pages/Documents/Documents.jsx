@@ -25,8 +25,8 @@ const DocStatusTag = ({ status }) => {
 };
 
 const Documents = () => {
-    const { user } = useAuth(); //
-    const canManageDocs = user?.permissions?.doc_manage === true; //
+    const { user } = useAuth(); 
+    const canManageDocs = user?.permissions?.doc_manage === true; 
 
     const {
         currentDocuments, filteredDocs, 
@@ -36,7 +36,7 @@ const Documents = () => {
         uploadDoc, deleteDoc, updateDoc, downloadDoc,
         indexOfFirstItem, 
         indexOfLastItem
-    } = useDocuments(); //
+    } = useDocuments();
 
     const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
     const [file, setFile] = useState(null);
@@ -65,7 +65,6 @@ const Documents = () => {
         }
     };
 
-    // --- THỐNG KÊ NHANH (Style: StatCard) ---
     const stats = useMemo(() => [
         { label: 'Tổng tài liệu', value: filteredDocs.length, color: 'text-indigo-400', icon: <FileText/> },
         { label: 'Chờ phê duyệt', value: filteredDocs.filter(d => d.approval_status === 'PENDING').length, color: 'text-orange-400', icon: <Clock/> },
@@ -144,7 +143,6 @@ const Documents = () => {
                 </div>
             </div>
 
-            {/* DOCUMENT LIST (Style: Modern Cards) */}
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4">
                 {currentDocuments.map((doc) => (
                     <div key={doc.ID} className="group relative bg-[#0A101D] border border-slate-800 p-5 rounded-3xl hover:border-indigo-500/50 transition-all flex items-center justify-between overflow-hidden">
@@ -167,10 +165,11 @@ const Documents = () => {
                             </div>
                         </div>
 
-                        {/* ACTIONS (Style: Floating on Hover) */}
                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-4 group-hover:translate-x-0">
                             {doc.display_pdf_path && (
-                                <button onClick={() => window.open(doc.display_pdf_path)} className="p-3 bg-blue-500/10 text-blue-400 hover:bg-blue-500 rounded-xl hover:text-white transition-all shadow-sm" title="Xem nhanh">
+                                <button 
+                                    onClick={() => window.open(`/${doc.display_pdf_path}`)}
+                                     className="p-3 bg-blue-500/10 text-blue-400 hover:bg-blue-500 rounded-xl hover:text-white transition-all shadow-sm" title="Xem nhanh">
                                     <Eye size={18}/>
                                 </button>
                             )}

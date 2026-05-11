@@ -28,7 +28,14 @@ export const useAssetTypes = () => {
             return { success: false, error: err.response?.data?.error };
         }
     };
-
-    // Bạn có thể thêm Create và Delete tương tự ở đây
-    return { types, isLoading, fetchTypes, updateType };
+    const createType = async (data) => {
+    try {
+        await axios.post(`/assets/types`, data);
+        fetchTypes(); 
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.response?.data?.error };
+    }
+};
+    return { types, isLoading, fetchTypes, updateType, createType };
 };

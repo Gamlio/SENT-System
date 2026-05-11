@@ -149,9 +149,12 @@ services:
     container_name: ai_service
     env_file: .env
     ports:
-      - "8008:8008"
+      - "8008:8000"
     environment:
       - OLLAMA_URL=http://host.docker.internal:11434
+    depends_on: 
+      - db
+      - mongodb
     networks:
       - sent_net
 

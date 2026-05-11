@@ -38,3 +38,18 @@ func UpdateAssetType(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công và đang tính toán lại rủi ro"})
 }
+func CreateAssetType(c *gin.Context) {
+	orgID := c.GetUint("org_id")
+	var req models.AssetType
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	svc := &assetSvc.AssetTypeService{}
+	if err := svc.CreateType(orgID, req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo loại tài sản mới"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "Đã tạo loại tài sản mới thành công"})
+}

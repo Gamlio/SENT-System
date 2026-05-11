@@ -2,10 +2,8 @@ package data
 
 import (
 	"SENT_backend/pkg/models"
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/http"
 )
 
 func ProcessFirewall(asset models.Asset, data interface{}) error {
@@ -18,18 +16,14 @@ func ProcessFirewall(asset models.Asset, data interface{}) error {
 	}
 
 	if err := json.Unmarshal(bytesData, &record); err == nil && record.FirewallOff {
-
-		go func() {
-			payload := map[string]interface{}{
-				"asset":       asset,
-				"alert_type":  "Firewall Disabled",
-				"title":       "[P1] Tường lửa bị vô hiệu hóa",
-				"description": "Lớp phòng thủ OS Firewall đã bị tắt, nguy cơ bị tấn công mạng cao.",
-				"priority":    "P1",
-			}
-			jsonData, _ := json.Marshal(payload)
-			http.Post("http://incident-service:8005/api/v1/incidents/trigger", "application/json", bytes.NewBuffer(jsonData))
-		}()
+		SendBehaviorLog(map[string]interface{}{
+			"asset":    asset,
+			"category": "Firewall Disabled",
+			"value":    "Disabled",
+			"title":    "[P1] Tường lửa bị vô hiệu hóa",
+			"desc":     "Lớp phòng thủ OS Firewall đã bị tắt, nguy cơ bị tấn công mạng cao.",
+			"priority": "P1",
+		})
 	}
 	return nil
 }

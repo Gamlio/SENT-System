@@ -4,13 +4,14 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	incidents "SENT_backend/service/incidents/internal/service"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// GetIncidents: Lấy danh sách sự cố
 func GetIncidents(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -25,7 +26,6 @@ func GetIncidents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": list, "total": total})
 }
 
-// GetIncidentDetail: Lấy chi tiết
 func GetIncidentDetail(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	orgID := c.GetUint("org_id")
@@ -39,7 +39,6 @@ func GetIncidentDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"incident": incident, "audit_logs": audits})
 }
 
-// GetIncidentActivities: Lấy dòng thời gian hoạt động (Missing trong bản cũ)
 func GetIncidentActivities(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	orgID := c.GetUint("org_id")
@@ -53,10 +52,9 @@ func GetIncidentActivities(c *gin.Context) {
 	c.JSON(http.StatusOK, audits)
 }
 
-// CreateIncident: Tạo sự cố thủ công hoặc nâng cấp (Missing)
 func CreateIncident(c *gin.Context) {
 	var req struct {
-		AlertID string `json:"alert_id"` // Nếu tạo từ Alert
+		AlertID string `json:"alert_id"`
 	}
 	c.ShouldBindJSON(&req)
 
@@ -69,7 +67,6 @@ func CreateIncident(c *gin.Context) {
 	c.JSON(http.StatusOK, incident)
 }
 
-// UpdateIncidentStatus: Cập nhật trạng thái sự cố (Missing)
 func UpdateIncidentStatus(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
@@ -81,7 +78,6 @@ func UpdateIncidentStatus(c *gin.Context) {
 		return
 	}
 
-	// Thực hiện cập nhật thông qua DB trực tiếp hoặc gọi Service
 	err := database.DB.Model(&models.Incident{}).
 		Where("id = ? AND org_id = ?", id, c.GetUint("org_id")).
 		Update("status", req.Status).Error
@@ -93,14 +89,11 @@ func UpdateIncidentStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã cập nhật trạng thái"})
 }
 
-// AddIncidentComment: Thêm bình luận/vết điều tra (Tên mới để khớp main.go)
 func AddIncidentComment(c *gin.Context) {
-	// Bạn có thể sử dụng lại logic của AddAuditLogHandler tại đây
-	// Ở đây tôi viết gọn để bạn sửa lỗi undefined trước
+
 	c.JSON(http.StatusOK, gin.H{"message": "Tính năng bình luận đang được xử lý qua Audit Log"})
 }
 
-// AssignIncident: Phân công nhân sự
 func AssignIncident(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
@@ -116,3 +109,61 @@ func AssignIncident(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Đã phân công nhân sự"})
 }
+
+func CloseIncident(c *gin.Context) {
+	var req struct {
+		IncidentID uint   `json:"incident_id" binding:"required"`
+		Note       string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	svc := incidents.IncidentService{}
+	audit := models.IncidentAudit{
+		IncidentID: req.IncidentID,
+		UserID:     ptrUint(c.GetUint("user_id")),
+		Content:    req.Note,
+	}
+
+	err := svc.CloseIncidentWorkflow(c.Request.Context(), &audit, c.GetUint("org_id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Hồ sơ đã được đóng"})
+}
+
+func UploadAudit(c *gin.Context) {
+	incidentID, _ := strconv.Atoi(c.PostForm("incident_id"))
+	note := c.PostForm("note")
+	form, _ := c.MultipartForm()
+	files := form.File["files"]
+
+	var fileNames []string
+	for _, file := range files {
+		filename := fmt.Sprintf("%d_%s", time.Now().Unix(), file.Filename)
+		c.SaveUploadedFile(file, "./uploads/audits/"+filename)
+		fileNames = append(fileNames, filename)
+	}
+
+	svc := incidents.IncidentService{}
+	audit := models.IncidentAudit{
+		IncidentID: uint(incidentID),
+		UserID:     ptrUint(c.GetUint("user_id")),
+		ActionType: "EVIDENCE",
+		Content:    note,
+		Images:     fileNames,
+		CreatedAt:  time.Now(),
+	}
+
+	err := svc.CreateChainedAudit(c.Request.Context(), &audit, c.GetUint("org_id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lưu log"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Đã lưu bằng chứng"})
+}
+
+func ptrUint(u uint) *uint { return &u }

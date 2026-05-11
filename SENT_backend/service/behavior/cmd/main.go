@@ -25,15 +25,22 @@ func main() {
 	r := gin.Default()
 
 	behaviorAPI := r.Group("/api/v1/behaviors")
-	behaviorAPI.Use(middleware.AuthRequired())
 	{
-		behaviorAPI.GET("", middleware.RequirePermission("incident_view"), handlers.GetBehaviors)
-		behaviorAPI.GET("/:id", middleware.RequirePermission("incident_view"), handlers.GetBehaviorDetail)
-		behaviorAPI.POST("/create-incident", middleware.RequirePermission("incident_action"), handlers.CreateIncidentHandler)
+		// Route này cho phép gọi nội bộ từ asset-service, không cần AuthRequired
+		behaviorAPI.POST("/log", handlers.HandleLogBehavior)
+
+		// Các route dành cho giao diện người dùng mới cần bảo vệ
+		protected := behaviorAPI.Group("")
+		protected.Use(middleware.AuthRequired())
+		{
+			protected.GET("", middleware.RequirePermission("incident_view"), handlers.GetBehaviors)
+			protected.GET("/:id", middleware.RequirePermission("incident_view"), handlers.GetBehaviorDetail)
+			protected.POST("/create-incident", middleware.RequirePermission("incident_action"), handlers.CreateIncidentHandler)
+		}
 	}
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8003"
+		port = "8000"
 	}
 	r.Run(":" + port)
 }

@@ -4,6 +4,7 @@ import (
 	"SENT_backend/pkg/cache"
 	"SENT_backend/pkg/middleware"
 	"SENT_backend/pkg/models/database"
+	"SENT_backend/pkg/websocket"
 	"SENT_backend/service/incidents/internal/handlers"
 	"os"
 
@@ -24,8 +25,8 @@ func main() {
 	)
 
 	r := gin.Default()
-
-	// 2. Định nghĩa API cho Incident Service
+	r.Static("/uploads/audits", "./uploads/audits")
+	r.GET("/ws", middleware.AuthRequired(), websocket.WsHandler)
 	incidentAPI := r.Group("/api/v1/incidents")
 	incidentAPI.Use(middleware.AuthRequired()) // Yêu cầu đăng nhập
 	{
@@ -35,18 +36,18 @@ func main() {
 		incidentAPI.GET("/:id", viewPerm, handlers.GetIncidentDetail)
 		incidentAPI.GET("/:id/activities", viewPerm, handlers.GetIncidentActivities)
 
-		// Quyền xử lý sự cố
 		actionPerm := middleware.RequirePermission("incident_action")
 		incidentAPI.POST("", actionPerm, handlers.CreateIncident)
 		incidentAPI.PUT("/:id/status", actionPerm, handlers.UpdateIncidentStatus)
 		incidentAPI.POST("/:id/comments", actionPerm, handlers.AddIncidentComment)
 		incidentAPI.PUT("/:id/assign", actionPerm, handlers.AssignIncident)
+		incidentAPI.POST("/close", actionPerm, handlers.CloseIncident) // Khớp với IncidentDetail.jsx
+		incidentAPI.POST("/audit/upload", actionPerm, handlers.UploadAudit)
 	}
 
-	// 3. Khởi chạy trên cổng 8005
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8005"
+		port = "8000"
 	}
 	r.Run(":" + port)
 }

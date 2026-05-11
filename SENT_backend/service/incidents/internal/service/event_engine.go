@@ -73,8 +73,8 @@ func (s *IncidentService) TriggerSecurityEvent(ctx context.Context, asset models
 	}
 
 	go func(hwid string) {
-		// Cổng 8010 là cổng của Scoring Service trong docker-compose
-		url := fmt.Sprintf("http://scoring-service:8010/api/v1/scoring/recalculate/%s", hwid)
+		// Cổng 8000 là cổng của Scoring Service trong docker-compose
+		url := fmt.Sprintf("http://scoring-service:8000/api/v1/scoring/recalculate/%s", hwid)
 
 		resp, err := http.Post(url, "application/json", nil)
 		if err != nil {

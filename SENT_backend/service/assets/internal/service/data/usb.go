@@ -3,12 +3,10 @@ package data
 import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -39,6 +37,16 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 		return fmt.Errorf("lỗi giải mã JSON USB: %w", err)
 	}
 
+	if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
+		var hashes []string
+		for _, r := range records {
+			if r.DeviceHash != "" {
+				hashes = append(hashes, r.DeviceHash)
+			}
+		}
+		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "USB_DEVICE", hashes)
+	}
+
 	if database.USBCollection == nil {
 		return fmt.Errorf("database USBCollection chưa sẵn sàng")
 	}
@@ -66,26 +74,15 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 			return fmt.Errorf("lỗi lưu CSDL MongoDB USB: %w", err)
 		}
 
-		go func(r assetUSBRecord) {
-			payload := map[string]interface{}{
-				"asset":       asset,
-				"alert_type":  "USB Violation",
-				"title":       "[P3] Thiết bị ngoại vi mới",
-				"description": fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, Serial: %s)", r.DeviceName, r.VID, r.SerialNumber),
-				"priority":    "P3",
-			}
-
-			jsonData, _ := json.Marshal(payload)
-			// Gọi đến Incident Service qua cổng 8005
-			url := "http://incident-service:8005/api/v1/incidents/trigger"
-
-			resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-			if err != nil {
-				log.Printf("⚠️ Lỗi gửi sự kiện USB sang Incident Service: %v", err)
-				return
-			}
-			defer resp.Body.Close()
-		}(rec)
+		// Gọi đến Behavior Service thông qua hàm dùng chung
+		SendBehaviorLog(map[string]interface{}{
+			"asset":    asset,
+			"category": "USB Violation",
+			"value":    "New Device",
+			"title":    "[P3] Thiết bị ngoại vi mới",
+			"desc":     fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, Serial: %s)", rec.DeviceName, rec.VID, rec.SerialNumber),
+			"priority": "P3",
+		})
 	}
 	if len(activeHashes) > 0 {
 		if _, err := database.USBCollection.UpdateMany(context.TODO(), bson.M{

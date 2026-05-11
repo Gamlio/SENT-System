@@ -33,7 +33,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8013"
+		port = "8000"
 	}
 	r.Run(":" + port)
 }

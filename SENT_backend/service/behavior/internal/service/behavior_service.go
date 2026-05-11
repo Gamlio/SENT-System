@@ -18,7 +18,7 @@ import (
 type BehaviorService struct{}
 
 func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, category, value, title, desc string) (*models.SecurityAlert, error) {
-	checkURL := "http://policy-service:8006/api/v1/policies/check-violation"
+	checkURL := "http://policy-service:8000/api/v1/policies/check-violation"
 	payload, _ := json.Marshal(map[string]interface{}{
 		"org_id":     asset.OrgID,
 		"asset_hwid": asset.AssetHWID,
@@ -38,9 +38,9 @@ func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, c
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	if !result.IsViolation {
-		return nil, nil
-	}
+	// if !result.IsViolation {
+	// 	return nil, nil
+	// }
 
 	priority := s.applyContextualMatrix(category, "P3", asset.DepartmentTag)
 
@@ -138,7 +138,6 @@ func (s *BehaviorService) CreateIncident(ctx context.Context, alertID string, or
 		return nil, err
 	}
 
-	// Gắn ID sự cố vào log NoSQL
 	incidentID := incident.ID
 	_, err = database.SecurityAlertCollection.UpdateOne(
 		ctx,

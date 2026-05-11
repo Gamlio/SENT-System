@@ -115,3 +115,52 @@ func ApprovePolicy(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Chính sách đã được kích hoạt"})
 }
+func GetAssetWhitelist(c *gin.Context) {
+	hwid := c.Param("hwid")
+	orgID := c.GetUint("org_id")
+
+	svc := &policyService.PolicyService{}
+	list, err := svc.GetAssetWhitelist(orgID, hwid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi truy vấn Whitelist"})
+		return
+	}
+	c.JSON(http.StatusOK, list)
+}
+
+// RemoveWhitelistItem (GATE): Admin có thể xóa một mục trong Whitelist nếu thấy nó khả nghi
+func RemoveWhitelistItem(c *gin.Context) {
+	idStr := c.Param("item_id")
+	id, _ := strconv.ParseUint(idStr, 10, 32)
+	orgID := c.GetUint("org_id")
+
+	if err := database.DB.Where("id = ? AND org_id = ?", uint(id), orgID).Delete(&models.WhitelistItem{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xóa mục whitelist"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa mục khỏi Whitelist"})
+}
+
+type InternalBaselineReq struct {
+	AssetHWID string   `json:"asset_hwid"`
+	OrgID     uint     `json:"org_id"`
+	Category  string   `json:"category"`
+	Values    []string `json:"values"`
+}
+
+func InternalSaveBaseline(c *gin.Context) {
+	var req InternalBaselineReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	svc := &policyService.PolicyService{}
+	// Sử dụng hàm SaveBaselineItems đã viết ở bước trước
+	err := svc.SaveBaselineItems(req.OrgID, req.AssetHWID, req.Category, req.Values)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"status": "success"})
+}

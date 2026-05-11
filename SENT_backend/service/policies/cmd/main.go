@@ -25,29 +25,32 @@ func main() {
 
 	r := gin.Default()
 
-	// 2. Định nghĩa API cho Policy Management
 	policyAPI := r.Group("/api/v1/policies")
-	policyAPI.Use(middleware.AuthRequired()) // Bắt buộc xác thực JWT
 	{
-		// Quyền xem chính sách
-		viewPerm := middleware.RequirePermission("policy_view")
-		policyAPI.GET("", viewPerm, handlers.GetPolicies)
-		policyAPI.GET("/:id", viewPerm, handlers.GetPolicyDetail)
+		policyAPI.POST("/internal/baseline", handlers.InternalSaveBaseline)
+		policyAPI.Use(middleware.AuthRequired())
+		{
+			viewPerm := middleware.RequirePermission("policy_view")
+			policyAPI.GET("", viewPerm, handlers.GetPolicies)
+			policyAPI.GET("/:id", viewPerm, handlers.GetPolicyDetail)
 
-		// Quyền quản lý và phê duyệt
-		managePerm := middleware.RequirePermission("policy_manage")
-		policyAPI.POST("", managePerm, handlers.CreatePolicy)
-		policyAPI.PUT("/:id", managePerm, handlers.UpdatePolicy)
-		policyAPI.DELETE("/:id", managePerm, handlers.DeletePolicy)
+			managePerm := middleware.RequirePermission("policy_manage")
+			policyAPI.POST("", managePerm, handlers.CreatePolicy)
+			policyAPI.PUT("/:id", managePerm, handlers.UpdatePolicy)
+			policyAPI.DELETE("/:id", managePerm, handlers.DeletePolicy)
 
-		// Luồng phê duyệt (Approval Workflow)
-		policyAPI.PUT("/:id/approve", middleware.RequirePermission("approval_final"), handlers.ApprovePolicy)
+			policyAPI.PUT("/:id/approve", middleware.RequirePermission("approval_final"), handlers.ApprovePolicy)
+			whitelist := policyAPI.Group("/whitelist")
+			{
+				whitelist.GET("/:hwid", viewPerm, handlers.GetAssetWhitelist)
+				whitelist.DELETE("/item/:item_id", managePerm, handlers.RemoveWhitelistItem)
+			}
+		}
 	}
 
-	// 3. Khởi chạy trên cổng 8006
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8006"
+		port = "8000"
 	}
 	r.Run(":" + port)
 }
