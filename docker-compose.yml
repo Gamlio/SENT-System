@@ -1,5 +1,4 @@
 services:
-  # --- CƠ SỞ DỮ LIỆU & CACHE ---
   db:
     image: postgres:15-alpine
     container_name: sent_db

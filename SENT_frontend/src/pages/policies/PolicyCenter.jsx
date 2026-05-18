@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, List, Usb, Wifi } from 'lucide-react';
+import { LayoutDashboard, List, Usb, Wifi, ShieldCheck } from 'lucide-react';
 import { usePolicies } from './hooks/usePolicies';
 import { useSocketSubscription } from '../../context/useSocketSubscription';
 
-// Import Components
 import PolicyOverview from './components/PolicyOverview';
 import PolicyForm from './components/PolicyForm';
 import PolicyList from './components/PolicyList';
@@ -28,10 +27,10 @@ const PolicyCenter = () => {
 
     // Cấu hình Tabs
     const tabConfig = {
-        overview: { label: 'Tổng quát', icon: <LayoutDashboard size={18}/>, category: '' },
-        software: { label: 'Phần mềm', icon: <List size={18}/>, category: 'SOFTWARE', placeholder: 'VD: game.exe', hint: 'Tên tiến trình' },
-        usb: { label: 'Thiết bị USB', icon: <Usb size={18}/>, category: 'USB', placeholder: 'VD: VID_1234', hint: 'Mã hoặc tên USB' },
-        network: { label: 'Mạng & Port', icon: <Wifi size={18}/>, category: 'NETWORK', placeholder: 'VD: 80, 443', hint: 'Cổng mạng' },
+        overview: { label: 'Tổng quát', icon: <LayoutDashboard size={16}/>, category: '' },
+        software: { label: 'Phần mềm', icon: <List size={16}/>, category: 'SOFTWARE', placeholder: 'VD: process.exe', hint: 'Tên tiến trình' },
+        usb: { label: 'USB Device', icon: <Usb size={16}/>, category: 'USB', placeholder: 'VD: VID_045E', hint: 'Mã hoặc tên USB' },
+        network: { label: 'Network', icon: <Wifi size={16}/>, category: 'NETWORK', placeholder: 'VD: 443', hint: 'Cổng mạng' },
     };
 
     const currentConfig = tabConfig[activeTab] || tabConfig.overview;
@@ -104,23 +103,24 @@ const PolicyCenter = () => {
     };
 
     return (
-        <div className="p-6 text-slate-200 h-[calc(100vh-60px)] flex flex-col bg-[#050B14] font-sans overflow-hidden">
-            <div className="mb-4 flex justify-between items-end shrink-0">
+        <div className="p-6 h-[calc(100vh-60px)] flex flex-col text-slate-200 bg-[#050B14] font-sans overflow-hidden">
+            <div className="flex justify-between items-end mb-4 shrink-0">
                 <div>
                     <h1 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tight">
-                        <LayoutDashboard className="text-indigo-500" size={24}/> CHÍNH SÁCH BẢN QUYỀN
+                        <ShieldCheck className="text-indigo-500" size={24}/> Policy Management
                     </h1>
-                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-bold">Quản lý luật, chính sách và kiểm soát truy cập thiết bị.</p>
+                    <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-black opacity-70">
+                        Total System Rules: {policies.length}
+                    </p>
                 </div>
-            </div>
-
-            <div className="mb-4">
-                <div className="bg-[#1e293b] p-1.5 rounded-2xl border border-slate-800 flex shadow-lg">
+                
+                {/* Tabs styled like Asset controls */}
+                <div className="flex bg-[#111827] p-1 rounded-xl border border-slate-800 shadow-lg">
                     {Object.keys(tabConfig).map(key => (
                         <button
                             key={key}
                             onClick={() => handleTabChange(key)}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === key ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-transparent text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === key ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`}
                         >
                             {tabConfig[key].icon} {tabConfig[key].label}
                         </button>
@@ -128,7 +128,7 @@ const PolicyCenter = () => {
                 </div>
             </div>
 
-            <div className="flex-1 bg-[#0A101D] rounded-lg border border-slate-800 shadow-2xl overflow-hidden">
+            <div className="flex-1 overflow-hidden">
                 {activeTab === 'overview' ? (
                     <PolicyOverview policies={policies} handleTabChange={handleTabChange} />
                 ) : (
@@ -141,9 +141,9 @@ const PolicyCenter = () => {
                                 isLoading={loading} 
                             />
                         </div>
-                        <div className="xl:col-span-8 h-full min-h-0 flex flex-col">
+                        <div className="xl:col-span-8 h-full flex flex-col min-h-0">
                             <PolicyList 
-                                policies={filteredPolicies} // <--- Danh sách đã được lọc kỹ
+                                policies={filteredPolicies} // Giữ nguyên luồng lọc dữ liệu gốc để không mất USB
                                 onDelete={handleDelete} 
                                 onBulkDelete={handleBulkDelete} 
                                 groups={groups || []} 

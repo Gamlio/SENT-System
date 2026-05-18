@@ -16,6 +16,7 @@ func main() {
 	_ = godotenv.Load()
 	database.InitPostgres()
 	database.InitRedis()
+	database.InitMongoDB()
 	cache.InitRedis(
 		os.Getenv("REDIS_HOST")+":"+os.Getenv("REDIS_PORT"),
 		os.Getenv("REDIS_PASSWORD"),
@@ -30,6 +31,7 @@ func main() {
 		docAPI.GET("/:id/download", middleware.RequirePermission("doc_view"), handlers.DownloadDocument)
 
 		docAPI.POST("/upload", middleware.RequirePermission("doc_manage"), handlers.UploadDocument)
+		docAPI.PUT("/:id", middleware.RequirePermission("doc_manage"), handlers.UpdateDocument)
 		docAPI.DELETE("/:id", middleware.RequirePermission("doc_manage"), handlers.DeleteDocument)
 		docAPI.PUT("/:id/approve", middleware.RequirePermission("approval_final"), handlers.ApproveDocument)
 	}

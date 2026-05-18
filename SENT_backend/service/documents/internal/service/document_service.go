@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -163,7 +164,6 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 	})
 }
 
-// CreateDeleteRequest: Tạo đơn yêu cầu xóa tài liệu kèm lý do (Zero Trust)
 func (s *DocumentService) CreateDeleteRequest(docID uint, orgID uint, requester string, reason string) error {
 	var doc models.Document
 	if err := database.DB.Where("id = ? AND org_id = ?", docID, orgID).First(&doc).Error; err != nil {
@@ -234,13 +234,13 @@ func (s *DocumentService) convertToPDF(orgID uint, docID uint, wordPath, pdfPath
 	_, err = io.Copy(out, resp.Body)
 
 	if err == nil {
-		go s.extractAndStoreText(orgID, docID, pdfPath)
+		// go s.extractAndStoreText(orgID, docID, pdfPath)
+
+		go s.extractAndStoreMarkdown(orgID, docID, wordPath)
 	}
 
 	return err
 }
-
-// extractAndStoreText: Trích xuất chữ từ PDF và lưu vào MongoDB
 func (s *DocumentService) extractAndStoreText(orgID uint, docID uint, pdfPath string) error {
 	f, r, err := pdf.Open(pdfPath)
 	if err != nil {
@@ -271,5 +271,44 @@ func (s *DocumentService) extractAndStoreText(orgID uint, docID uint, pdfPath st
 			context.TODO(), filter, update, options.Update().SetUpsert(true),
 		)
 	}
+	return err
+}
+func (s *DocumentService) extractAndStoreMarkdown(orgID uint, docID uint, wordPath string) error {
+	// Khai báo err trước để dùng chung xuyên suốt hàm
+	var err error
+
+	mdPath := strings.TrimSuffix(wordPath, filepath.Ext(wordPath)) + ".md"
+
+	// 1. Chạy lệnh hệ thống gọi Pandoc
+	cmd := exec.Command("pandoc", wordPath, "-f", "docx", "-t", "markdown", "-o", mdPath)
+	err = cmd.Run() // Dùng phép gán '=' vì err đã được khai báo ở trên
+	if err != nil {
+		fmt.Printf("🔥 Lỗi chạy Pandoc: %v\n", err)
+		return err
+	}
+	defer os.Remove(mdPath) // Dọn dẹp file .md nháp sau khi xử lý xong
+
+	// 2. Đọc nội dung file Markdown vừa tạo
+	var mdContent []byte
+	mdContent, err = os.ReadFile(mdPath) // Dùng phép gán '=' cho cả hai
+	if err != nil {
+		return err
+	}
+
+	// 3. Lưu/Ghi đè cấu trúc Markdown vào MongoDB phục vụ RAG
+	if database.DocumentContentCollection != nil {
+		filter := bson.M{"doc_id": docID, "org_id": int64(orgID)}
+		update := bson.M{"$set": bson.M{
+			"doc_id":     docID,
+			"org_id":     int64(orgID),
+			"content":    string(mdContent),
+			"updated_at": time.Now(),
+		}}
+
+		_, err = database.DocumentContentCollection.UpdateOne(
+			context.TODO(), filter, update, options.Update().SetUpsert(true),
+		)
+	}
+
 	return err
 }

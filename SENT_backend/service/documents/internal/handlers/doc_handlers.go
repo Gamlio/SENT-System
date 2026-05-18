@@ -56,7 +56,7 @@ func UpdateDocument(c *gin.Context) {
 	username, _ := c.Get("username")
 
 	svc := &docService.DocumentService{}
-	err = svc.CreateUpdateRequest(uint(id), orgID, title, category, fileName, fileReader, username.(string), reason)
+	err = svc.CreateUpdateRequest(uint(id), orgID, title, category, fileName, fileReader, reason, username.(string))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return

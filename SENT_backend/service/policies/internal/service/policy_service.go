@@ -47,6 +47,38 @@ func (s *PolicyService) CreatePolicyRequest(req models.Policy, orgID uint, creat
 	})
 }
 
+// BulkCreatePoliciesArray: Tạo hàng loạt luật từ mảng với Transaction (Hỗ trợ Rollback)
+func (s *PolicyService) BulkCreatePoliciesArray(policies []models.Policy, orgID uint, creator string) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		for _, req := range policies {
+			req.OrgID = orgID
+			req.ApprovalStatus = "PENDING"
+			req.CreatedBy = creator
+			req.IsActive = false // Chưa được duyệt thì chưa kích hoạt
+
+			if err := tx.Create(&req).Error; err != nil {
+				return err // Gặp lỗi ở 1 dòng sẽ tự động Rollback toàn bộ
+			}
+
+			// Tạo vé phê duyệt
+			ticket := models.ApprovalTicket{
+				OrgID:        orgID,
+				ModuleType:   "POLICY_CREATE",
+				ActionType:   "CREATE",
+				TargetID:     req.ID,
+				TargetName:   fmt.Sprintf("[%s] %s", req.Category, req.Value),
+				Status:       "PENDING",
+				RequestedBy:  creator,
+				SnapshotData: fmt.Sprintf(`{"title": "%s", "value": "%s"}`, req.Title, req.Value),
+			}
+			if err := tx.Create(&ticket).Error; err != nil {
+				return err // Lỗi tạo vé -> cũng Rollback toàn bộ
+			}
+		}
+		return nil
+	})
+}
+
 // BulkCreatePolicyRequest: Xử lý nạp luật hàng loạt từ Excel
 func (s *PolicyService) BulkCreatePolicyRequest(rows []ExcelRow, orgID uint) (int, error) {
 	count := 0

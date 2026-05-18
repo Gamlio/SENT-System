@@ -3,15 +3,13 @@ import axios from '../../../api/axios';
 
 export const usePolicies = () => {
     const [policies, setPolicies] = useState([]);
-    const [groups, setGroups] = useState([]); // Quản lý danh sách nhóm máy trạm
+    const [groups, setGroups] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // 1. LẤY DANH SÁCH LUẬT (Hỗ trợ lọc theo category)
     const fetchPolicies = useCallback(async (category = '') => {
         setLoading(true);
         try {
-            // Nếu có category thì thêm query param, không thì lấy hết
             const endpoint = category ? `/policies?category=${category}` : '/policies';
             const res = await axios.get(endpoint);
             setPolicies(res.data || []);
@@ -24,12 +22,9 @@ export const usePolicies = () => {
         }
     }, []);
 
-    // 2. LẤY DANH SÁCH NHÓM (Dùng cho dropdown trong PolicyForm)
     const fetchGroups = useCallback(async () => {
         try {
-            // Endpoint đã được chuẩn hóa về /groups để khớp với backend
             const res = await axios.get('/groups');
-            // Backend trả về cấu trúc { data: [...] }, cần lấy res.data.data
             setGroups(res.data.data || []);
         } catch (err) {
             console.error("Lỗi tải danh sách nhóm:", err);
@@ -37,12 +32,9 @@ export const usePolicies = () => {
         }
     }, []);
 
-    // 3. THÊM LUẬT MỚI (JSON)
     const addPolicy = async (policyData) => {
         try {
-            // policyData giờ đây sẽ chứa group_id thay vì target_asset_hwids
             await axios.post('/policies', policyData);
-            // Re-fetch sẽ được thực hiện thông qua Socket hoặc gọi thủ công ở component
             return { success: true };
         } catch (err) {
             console.error("Lỗi thêm chính sách:", err);
@@ -57,7 +49,6 @@ export const usePolicies = () => {
     const deletePolicy = async (id) => {
         try {
             await axios.delete(`/policies/${id}`);
-            // Cập nhật state cục bộ để UI mượt mà hơn
             setPolicies(prev => prev.filter(p => p.ID !== id && p.id !== id));
             return { success: true };
         } catch (err) {
@@ -66,10 +57,8 @@ export const usePolicies = () => {
         }
     };
 
-    // 5. XÓA NHIỀU LUẬT (Gửi đơn phê duyệt)
     const deleteBulkPolicies = async (payload) => {
         try {
-            // payload: { ids: [1, 2, 3], reason: "..." }
             await axios.post('/policies/bulk-delete', payload);
             return { success: true };
         } catch (err) {
@@ -83,11 +72,11 @@ export const usePolicies = () => {
 
     return {
         policies,
-        groups,      // Danh sách Group để hiển thị trong Form/List
+        groups,      
         loading,
         error,
         fetchPolicies,
-        fetchGroups, // Hàm nạp dữ liệu Group
+        fetchGroups, 
         addPolicy,
         deletePolicy,
         deleteBulkPolicies

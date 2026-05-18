@@ -37,6 +37,7 @@ func main() {
 			managePerm := middleware.RequirePermission("policy_manage")
 			policyAPI.POST("", managePerm, handlers.CreatePolicy)
 			policyAPI.PUT("/:id", managePerm, handlers.UpdatePolicy)
+			policyAPI.POST("/bulk-delete", managePerm, handlers.BulkDeletePolicy)
 			policyAPI.DELETE("/:id", managePerm, handlers.DeletePolicy)
 
 			policyAPI.PUT("/:id/approve", middleware.RequirePermission("approval_final"), handlers.ApprovePolicy)

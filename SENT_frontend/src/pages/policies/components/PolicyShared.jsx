@@ -6,10 +6,34 @@ export const StatCard = ({ icon, label, value, color, bg }) => (
         <div className={color}>{icon}</div>
         <div>
             <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{label}</p>
-            <h3 className="text-2xl font-black text-white mt-1">{value}</h3>
+            <h3 className="text-2xl font-black text-white mt-1 font-mono">{value}</h3>
         </div>
     </div>
 );
+
+export const PolicyStatusTag = React.memo(({ status }) => {
+    const isApproved = status === 'APPROVED';
+    return (
+        <div className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 w-max ${
+            isApproved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]' : 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+        }`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${isApproved ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'}`}></div>
+            {isApproved ? 'Hoạt động' : 'Chờ duyệt'}
+        </div>
+    );
+});
+
+export const PolicyTypeTag = ({ type }) => {
+    const isBlacklist = type === 'BLACKLIST';
+    return (
+        <div className={`flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
+            isBlacklist ? 'text-red-400 border-red-500/30 bg-red-500/10' : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+        }`}>
+            {isBlacklist ? <AlertTriangle size={10}/> : <CheckCircle2 size={10}/>} {type}
+        </div>
+    );
+};
+
 export const PolicyItem = ({ policy, onDelete, groups, isSelected, onSelect }) => {
     const getTargetDisplay = () => {
         if (!policy.group_id && policy.target_type !== 'GROUP') {
@@ -19,7 +43,6 @@ export const PolicyItem = ({ policy, onDelete, groups, isSelected, onSelect }) =
         return { label: `Nhóm: ${groupName}`, icon: <Users size={12}/>, color: "text-purple-400" };
     };
 
-    // Xác định màu sắc dựa trên trạng thái phê duyệt[cite: 45, 60]
     const statusConfig = {
         PENDING: "border-amber-500/30 bg-amber-500/5 text-amber-500",
         APPROVED: "border-emerald-500/30 bg-emerald-500/5 text-emerald-400",
@@ -39,7 +62,6 @@ export const PolicyItem = ({ policy, onDelete, groups, isSelected, onSelect }) =
                         />
                     </div>
                 )}
-                {/* Icon loại hành động */}
                 <div className={`p-3 rounded-2xl shrink-0 shadow-lg ${policy.policy_type === 'BLACKLIST' ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
                     {policy.policy_type === 'BLACKLIST' ? <AlertTriangle size={22}/> : <CheckCircle2 size={22}/>}
                 </div>
@@ -47,7 +69,6 @@ export const PolicyItem = ({ policy, onDelete, groups, isSelected, onSelect }) =
                 <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-3">
                         <h4 className="font-black text-white text-sm tracking-tight truncate">{policy.title}</h4>
-                        {/* Tag trạng thái phê duyệt[cite: 45, 58] */}
                         <span className={`text-[8px] font-black px-2 py-0.5 rounded-full border ${statusConfig[policy.approval_status] || "text-slate-400 border-slate-700"}`}>
                             {policy.approval_status}
                         </span>
@@ -72,7 +93,6 @@ export const PolicyItem = ({ policy, onDelete, groups, isSelected, onSelect }) =
                 </div>
             </div>
 
-            {/* Nút hành động nổi bật khi hover[cite: 60] */}
             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
                 <button onClick={() => onDelete(policy.ID)} className="p-2.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors shadow-sm">
                     <Trash2 size={18}/>
