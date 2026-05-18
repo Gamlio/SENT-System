@@ -1,21 +1,5 @@
 ```mermaid
-%%{init: {
-  'theme': 'base',
-  'themeVariables': {
-    'background': '#FFFFFF',
-    'actorBkg': '#F8FAFC',
-    'actorBorder': '#475569',
-    'actorTextColor': '#1E293B',
-    'actorLineColor': '#94A3B8',
-    'signalColor': '#334155',
-    'signalLineColor': '#64748B',
-    'labelBoxBkgColor': '#F1F5F9',
-    'labelBoxBorderColor': '#CBD5E1',
-    'labelTextColor': '#1E293B',
-    'activationBkgColor': '#4F46E5',
-    'activationBorderColor': '#4F46E5'
-  }
-}}%%
+
 sequenceDiagram
     actor User as 👤 Thành viên SOC / QTV
     participant FE as 🖥️ Frontend (ReactJS)
