@@ -17,6 +17,7 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o $OUTPUT_DIR/${APP_NAME}_w
 # Build cho Linux
 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o $OUTPUT_DIR/${APP_NAME}_linux cmd/main.go
 
+GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o $OUTPUT_DIR/${APP_NAME}_mac cmd/main.go
 # Copy file .env mẫu nếu có
 cp .env.example $OUTPUT_DIR/config/.env 2>/dev/null
 

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"SENT_backend/pkg/models"
+	"SENT_backend/pkg/models/database"
 	assetSvc "SENT_backend/service/assets/internal/service"
 	"net/http"
 	"strconv"
@@ -85,8 +87,20 @@ func RequestDeleteAsset(c *gin.Context) {
 	username, _ := c.Get("username")
 	orgID := c.GetUint("org_id")
 
+	// FIX: Cho phép cung cấp lý do trong body của request
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	// Binding JSON nhưng không bắt buộc, nếu không có body hoặc reason thì dùng lý do mặc định
+	_ = c.ShouldBindJSON(&req)
+
+	reason := "Admin yêu cầu gỡ bỏ"
+	if req.Reason != "" {
+		reason = req.Reason
+	}
+
 	svc := &assetSvc.AssetLifecycleService{}
-	if err := svc.CreateDeleteRequest(hwid, orgID, "Admin yêu cầu gỡ bỏ", username.(string)); err != nil {
+	if err := svc.CreateDeleteRequest(hwid, orgID, reason, username.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -112,25 +126,77 @@ func RequestBulkDeleteAssets(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Đã gửi yêu cầu gỡ bỏ hàng loạt"})
 }
 
+// BEST PRACTICE: Tái cấu trúc hoàn toàn để có API contract rõ ràng và đảm bảo toàn vẹn dữ liệu
 func UpdateDeviceType(c *gin.Context) {
 	hwid := c.Param("hwid")
-	var req struct {
-		DeviceType string `json:"device_type" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
-		return
-	}
-
-	// [SECURITY] Lấy orgID từ context để đảm bảo đúng phạm vi truy cập
 	orgID := c.GetUint("org_id")
 
-	svc := &assetSvc.AssetLifecycleService{}
-	if err := svc.UpdateDeviceType(hwid, orgID, req.DeviceType); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	var req struct {
+		// Sử dụng con trỏ để cho phép gán giá trị null (gỡ bỏ phân loại)
+		AssetTypeID *uint `json:"asset_type_id"`
+	}
+
+	// Chỉ chấp nhận payload có chứa `asset_type_id`
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ. Payload phải là JSON chứa 'asset_type_id'."})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật loại thiết bị thành công"})
+	// KỊCH BẢN 1: Gán một loại tài sản mới (asset_type_id is not null)
+	if req.AssetTypeID != nil {
+		var assetType models.AssetType
+		// Kiểm tra xem ID loại tài sản này có tồn tại và thuộc về tổ chức không
+		if err := database.DB.Where("id = ? AND org_id = ?", *req.AssetTypeID, orgID).First(&assetType).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Loại tài sản không tồn tại hoặc không thuộc về tổ chức của bạn."})
+			return
+		}
+
+		// Cập nhật đồng bộ cả ID liên kết lẫn tên đã được chuẩn hóa
+		errUpdate := database.DB.Model(&models.Asset{}).
+			Where("asset_hwid = ? AND org_id = ?", hwid, orgID).
+			Updates(map[string]interface{}{
+				"asset_type_id": *req.AssetTypeID,
+				"device_type":   assetType.Name,
+			}).Error
+
+		if errUpdate != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi cập nhật phân loại tài sản."})
+			return
+		}
+
+		// Kích hoạt tính toán lại điểm rủi ro
+		triggerRiskRecalculation(hwid)
+
+		c.JSON(http.StatusOK, gin.H{"message": "Cập nhật phân loại tài sản thành công.", "device_type": assetType.Name})
+		return
+	}
+
+	// KỊCH BẢN 2: Gỡ bỏ phân loại (asset_type_id is null)
+	errUpdate := database.DB.Model(&models.Asset{}).
+		Where("asset_hwid = ? AND org_id = ?", hwid, orgID).
+		Updates(map[string]interface{}{
+			"asset_type_id": nil,
+			"device_type":   nil, // Hoặc gán một giá trị mặc định nếu cần
+		}).Error
+
+	if errUpdate != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi gỡ bỏ phân loại tài sản."})
+		return
+	}
+
+	// Kích hoạt tính toán lại điểm rủi ro
+	triggerRiskRecalculation(hwid)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Đã gỡ bỏ phân loại tài sản."})
+}
+
+// Hàm bổ trợ kích hoạt tính toán lại điểm rủi ro qua API Scoring
+func triggerRiskRecalculation(hwid string) {
+	go func(id string) {
+		url := "http://scoring-service:8000/api/v1/scoring/recalculate/" + id
+		resp, err := http.Post(url, "application/json", nil)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}(hwid)
 }

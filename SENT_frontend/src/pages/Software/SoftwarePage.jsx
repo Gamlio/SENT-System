@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cpu, RefreshCcw, Plus, BookOpen, Terminal, Box } from 'lucide-react';
+import { Cpu, RefreshCcw, Plus, Box } from 'lucide-react';
 import { useVersions } from './hooks/useSoftware';
 import VersionCard from './components/SoftwareCard';
 
@@ -36,42 +36,8 @@ const VersionsPage = () => {
                 </div>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-10 flex-1 overflow-hidden relative z-10">
-                {/* CỘT TRÁI: DOCUMENTATION */}
-                <div className="lg:w-[380px] flex flex-col gap-6 overflow-y-auto pr-4 custom-scrollbar shrink-0">
-                    <section className="bg-slate-900/40 backdrop-blur-md border border-slate-800/60 rounded-2xl p-6">
-                        <h2 className="text-xs font-black text-indigo-400 flex items-center gap-2 mb-5 uppercase tracking-widest">
-                            <BookOpen size={14}/> System Overview
-                        </h2>
-                        <p className="text-[13px] text-slate-400 leading-relaxed font-medium">
-                            SENT-Agent đóng vai trò là "mắt xích" đầu cuối giúp thu thập telemetry và phản ứng với các mối đe dọa.
-                        </p>
-                    </section>
-
-                    <section className="bg-slate-900/40 backdrop-blur-md border border-slate-800/60 rounded-2xl p-6 relative overflow-hidden group">
-                        <h2 className="text-xs font-black text-emerald-400 flex items-center gap-2 mb-6 uppercase tracking-widest">
-                            <Terminal size={14}/> Quick Installation
-                        </h2>
-                        <div className="space-y-6">
-                            {[
-                                { step: "01", title: "Select Build", desc: "Tải gói cài đặt tương ứng với OS." },
-                                { step: "02", title: "Grant Permissions", desc: "Sử dụng chmod +x trên Unix-like." },
-                                { step: "03", title: "Connect", desc: "Sử dụng API Key để xác thực Agent." }
-                            ].map((item, idx) => (
-                                <div key={idx} className="flex gap-4">
-                                    <span className="text-[10px] font-black text-slate-600 mt-1 italic">{item.step}</span>
-                                    <div>
-                                        <h3 className="text-[11px] font-bold text-slate-200 uppercase tracking-wide">{item.title}</h3>
-                                        <p className="text-[11px] text-slate-500 mt-1">{item.desc}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-                </div>
-
-                {/* CỘT PHẢI: VERSIONS LIST */}
-                <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar pr-2">
+            {/* VERSIONS LIST */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 relative z-10">
                     {loading ? (
                         <div className="h-full flex items-center justify-center">
                             <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
@@ -83,13 +49,12 @@ const VersionsPage = () => {
                             <p className="text-[10px] text-slate-500 mt-2 uppercase">Chưa có phiên bản nào được deploy từ hệ thống.</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-10">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 pb-10">
                             {softwares.map((v) => (
                                 <VersionCard key={v.tag} software={v} />
                             ))}
                         </div>
                     )}
-                </div>
             </div>
         </div>
     );

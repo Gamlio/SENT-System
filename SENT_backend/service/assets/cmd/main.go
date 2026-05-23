@@ -52,6 +52,7 @@ func main() {
 			admin.GET("/:hwid", middleware.RequirePermission("asset_view"), handlers.GetAssetDetail)
 			admin.PUT("/:hwid/assign", middleware.RequirePermission("asset_move"), handlers.AssignManager)
 			admin.PUT("/:hwid/type", middleware.RequirePermission("asset_move"), handlers.UpdateDeviceType)
+			admin.POST("/:hwid/request-delete", middleware.RequirePermission("asset_delete"), handlers.RequestDeleteAsset)
 			admin.DELETE("/:hwid", middleware.RequirePermission("asset_delete"), handlers.RequestDeleteAsset)
 
 			admin.PUT("/types/:id", middleware.RequirePermission("system_config"), handlers.UpdateAssetType)
