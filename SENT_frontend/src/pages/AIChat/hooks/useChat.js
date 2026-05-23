@@ -6,13 +6,11 @@ export const useChat = () => {
     const [currentSession, setCurrentSession] = useState(null);
     const [messages, setMessages] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
-    
-    // useRef để chặn spam API
+
     const isFetched = useRef(false);
     const messagesEndRef = useRef(null);
 
-    // --- 1. HÀM TẢI TIN NHẮN TỪ SERVER ---
-    // (Đưa lên đầu để useEffect có thể gọi được)
+
     const fetchMessages = useCallback(async (sessionId) => {
         if (!sessionId) return;
         
@@ -23,8 +21,7 @@ export const useChat = () => {
             // Map dữ liệu từ DB (snake_case) sang Frontend (camelCase)
             const history = (res.data || []).map(log => ({
                 sender: log.role,      // "user" hoặc "ai"
-                text: log.content,
-                thought: log.thought   // Suy luận (nếu có)
+                text: log.content
             }));
             
             setMessages(history);
@@ -107,21 +104,75 @@ export const useChat = () => {
         setMessages(prev => [...prev, userMsg]);
         setIsLoading(true);
 
-        try {
-            const res = await axios.post(`/ai/chat/${activeSession.id}`, { message: text });
-            
-            const aiMsg = { 
-                sender: 'ai', 
-                text: res.data.response,
-                thought: res.data.thought
-            };
-            setMessages(prev => [...prev, aiMsg]);
-        } catch (error) {
-            console.error("Chat Error:", error);
-            setMessages(prev => [...prev, { sender: 'ai', text: "⚠️ Lỗi kết nối AI." }]);
-        } finally {
-            setIsLoading(false);
-        }
+        setMessages(prev => [...prev, { sender: 'ai', text: "" }]);
+
+         try {
+             const token = localStorage.getItem('sent_token');
+             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api/v1'}/ai/chat/${activeSession.id}`, {
+                 method: 'POST',
+                 headers: {
+                     'Content-Type': 'application/json',
+                     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                 },
+                 body: JSON.stringify({ message: text })
+             });
+ 
+             if (!response.ok) throw new Error(`Lỗi kết nối: ${response.status} ${response.statusText}`);
+ 
+             const reader = response.body.getReader();
+             const decoder = new TextDecoder("utf-8");
+             let accumulatedRawText = "";
+ 
+             while (true) {
+                 const { value, done } = await reader.read();
+                 if (done) break;
+ 
+                 const chunk = decoder.decode(value, { stream: true });
+                 const lines = chunk.split("\n");
+ 
+                 for (const line of lines) {
+                    if (line.trim().startsWith("data:")) {
+                        try {
+                            const cleanedLine = line.replace("data:", "").trim();
+                            if (!cleanedLine) continue;
+                            const parsedData = JSON.parse(cleanedLine);
+
+                            if (parsedData.text) {
+                                accumulatedRawText += parsedData.text;                                
+                                
+                                // Thinking logic removed. The entire response is the answer.
+                                setMessages(prev => {
+                                    const updated = [...prev];
+                                    const targetIndex = updated.length - 1;
+                                    if (updated[targetIndex]) {
+                                        updated[targetIndex].text = accumulatedRawText;
+                                    }
+                                    return updated;
+                                });
+                            }
+                        } catch (jsonErr) {
+                            // Bỏ qua lỗi parse JSON
+                        }
+                    }
+                 }
+             }
+ 
+         } catch (error) {
+             console.error("Chat Error:", error);
+             setMessages(prev => {
+                 const updated = [...prev];
+                 const lastMsgIndex = updated.length - 1;
+                 if (lastMsgIndex >= 0 && updated[lastMsgIndex].sender === 'ai') {
+                     updated[lastMsgIndex] = {
+                         sender: 'ai',
+                         text: `⚠️ Lỗi: ${error.message || 'Không thể kết nối luồng dữ liệu AI.'}`
+                     };
+                 }
+                 return updated;
+             });
+         } finally {
+             setIsLoading(false);
+         }
     };
 
     const renameSession = async (sessionId, newTitle) => {

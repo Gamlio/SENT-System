@@ -37,7 +37,6 @@ services:
     networks:
       - sent_net
 
-  # --- MICROSERVICES (Đã tối ưu Build Context) ---
   
   auth-service:
     build: 
@@ -221,7 +220,6 @@ services:
       - redis
     networks:
       - sent_net
-  # --- GATEWAY & FRONTEND ---
 
   frontend:
     build:

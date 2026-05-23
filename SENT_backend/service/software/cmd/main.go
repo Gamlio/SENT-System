@@ -13,13 +13,13 @@ import (
 func main() {
 	// 1. Khởi tạo môi trường và hạ tầng
 	_ = godotenv.Load()
-	database.InitPostgres() // Quản lý SentSoftware (Postgres)
-	database.InitMongoDB()  // Quản lý SoftwareItem telemetry (MongoDB)
+	database.InitPostgres()
+	database.InitMongoDB()
 
 	r := gin.Default()
 
 	// 2. Định nghĩa API cho Software & Software Management
-	softwareAPI := r.Group("/api/v1/software")
+	softwareAPI := r.Group("/api/v1/softwares")
 	softwareAPI.Use(middleware.AuthRequired())
 	{
 		// Quản lý phiên bản Agent (Trang Softwares cũ)

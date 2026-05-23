@@ -6,7 +6,6 @@ import {
     Zap, Cpu, AlertTriangle, Bot, CheckCircle,
 } from 'lucide-react';
 
-// IMPORT HHOOK CHUẨN CỦA BẠN ĐỂ LẮNG NGHE SOCKET
 import { useSocketSubscription } from '../context/useSocketSubscription';
 
 const notificationsData = [
@@ -20,13 +19,11 @@ const Navbar = ({ onOpenCopilot }) => {
     const navigate = useNavigate();
     const location = useLocation();
     
-    // STATES CHO NOTIFICATION PANEL
     const [showNotifPanel, setShowNotifPanel] = useState(false);
     const [notifications, setNotifications] = useState(notificationsData);
     const [unreadCount, setUnreadCount] = useState(0);
     const notifRef = useRef(null);
 
-    // STATES CHO USER DROPDOWN
     const [showUserDropdown, setShowUserDropdown] = useState(false);
     const userDropdownRef = useRef(null);
 
@@ -90,18 +87,18 @@ const Navbar = ({ onOpenCopilot }) => {
     return (
         <nav className="h-[60px] bg-[#0A101D] border-b border-slate-800 flex items-center justify-between px-6 shrink-0 relative z-50 shadow-md font-sans">
             
-            {/* LOGO SECTION */}
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-                <div className="p-2 bg-indigo-500 rounded-lg shadow-[0_0_15px_rgba(99,102,241,0.3)]">
-                    <Activity size={18} className="text-white"/>
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/') }>
+                <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#111827] border border-slate-700 shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+                    <img src="/sent.png" alt="SENT SOC" className="w-full h-full object-cover" />
                 </div>
-                <h1 className="text-xl font-extrabold text-white tracking-tighter">SENT SOC</h1>
+                <div>
+                    <h1 className="text-xl font-extrabold text-white tracking-tighter">SENT</h1>
+                </div>
             </div>
 
-            {/* ACTION SECTION */}
+           
             <div className="flex items-center gap-3">
                 
-                {/* COPILOT BUTTON */}
                 <button
                     onClick={onOpenCopilot}
                     className="p-2.5 rounded-lg border border-slate-700 hover:border-indigo-500 hover:bg-slate-800 transition group"

@@ -203,6 +203,35 @@ func RemoveWhitelistItem(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa mục khỏi Whitelist"})
 }
 
+type CheckViolationRequest struct {
+	OrgID    uint   `json:"org_id" binding:"required"`
+	HWID     string `json:"hwid" binding:"required"`
+	Category string `json:"category" binding:"required"`
+	Value    string `json:"value" binding:"required"`
+}
+
+// CheckPolicyViolation is an internal endpoint for other services to check for policy violations.
+func CheckPolicyViolation(c *gin.Context) {
+	var req CheckViolationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ: " + err.Error()})
+		return
+	}
+
+	svc := &policyService.PolicyService{}
+
+	isViolation, message, err := svc.CheckPolicyViolation(req.OrgID, req.HWID, req.Category, req.Value)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi kiểm tra chính sách: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"is_violation": isViolation,
+		"message":      message,
+	})
+}
+
 type InternalBaselineReq struct {
 	AssetHWID string   `json:"asset_hwid"`
 	OrgID     uint     `json:"org_id"`

@@ -274,28 +274,23 @@ func (s *DocumentService) extractAndStoreText(orgID uint, docID uint, pdfPath st
 	return err
 }
 func (s *DocumentService) extractAndStoreMarkdown(orgID uint, docID uint, wordPath string) error {
-	// Khai báo err trước để dùng chung xuyên suốt hàm
 	var err error
 
 	mdPath := strings.TrimSuffix(wordPath, filepath.Ext(wordPath)) + ".md"
 
-	// 1. Chạy lệnh hệ thống gọi Pandoc
 	cmd := exec.Command("pandoc", wordPath, "-f", "docx", "-t", "markdown", "-o", mdPath)
-	err = cmd.Run() // Dùng phép gán '=' vì err đã được khai báo ở trên
+	err = cmd.Run()
 	if err != nil {
 		fmt.Printf("🔥 Lỗi chạy Pandoc: %v\n", err)
 		return err
 	}
-	defer os.Remove(mdPath) // Dọn dẹp file .md nháp sau khi xử lý xong
 
-	// 2. Đọc nội dung file Markdown vừa tạo
 	var mdContent []byte
-	mdContent, err = os.ReadFile(mdPath) // Dùng phép gán '=' cho cả hai
+	mdContent, err = os.ReadFile(mdPath)
 	if err != nil {
 		return err
 	}
 
-	// 3. Lưu/Ghi đè cấu trúc Markdown vào MongoDB phục vụ RAG
 	if database.DocumentContentCollection != nil {
 		filter := bson.M{"doc_id": docID, "org_id": int64(orgID)}
 		update := bson.M{"$set": bson.M{

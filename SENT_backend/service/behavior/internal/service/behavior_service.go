@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -17,7 +18,8 @@ import (
 
 type BehaviorService struct{}
 
-func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, category, value, title, desc string) (*models.SecurityAlert, error) {
+// LogBehavior now accepts a basePriority from the calling service (e.g., asset-service)
+func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, category, value, title, desc, basePriority string) (*models.SecurityAlert, error) {
 	checkURL := "http://policy-service:8000/api/v1/policies/check-violation"
 	payload, _ := json.Marshal(map[string]interface{}{
 		"org_id":     asset.OrgID,
@@ -42,16 +44,23 @@ func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, c
 	// 	return nil, nil
 	// }
 
-	priority := s.applyContextualMatrix(category, "P3", asset.DepartmentTag)
+	// Use the priority from the upstream service as the base, instead of hardcoding "P3"
+	finalPriority := s.applyContextualMatrix(category, basePriority, asset.DepartmentTag)
+
+	// Only append the reason if it's not empty
+	finalDesc := desc
+	if result.Reason != "" {
+		finalDesc = fmt.Sprintf("%s | Lý do: %s", desc, result.Reason)
+	}
 
 	alert := models.SecurityAlert{
 		OrgID:       uint(asset.OrgID),
 		AssetHWID:   asset.AssetHWID,
 		AlertType:   category + " Violation",
 		Title:       title,
-		Description: desc + " | Lý do: " + result.Reason,
-		Priority:    priority,
-		Severity:    s.getSeverityByPriority(priority),
+		Description: finalDesc,
+		Priority:    finalPriority,
+		Severity:    s.getSeverityByPriority(finalPriority),
 		IsResolved:  false,
 		CreatedAt:   time.Now(),
 	}
@@ -69,13 +78,46 @@ func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, c
 }
 
 func (s *BehaviorService) applyContextualMatrix(category, basePriority, tag string) string {
+	// This logic is synchronized with incident_service to ensure consistency
+	upperTag := strings.ToUpper(tag)
 
-	return basePriority
+	switch category {
+	case "USB Violation":
+		if upperTag == "DEV" {
+			return "P3"
+		}
+		if upperTag == "FINANCE" {
+			return "P1"
+		}
+		if upperTag == "PROD" {
+			return "P2"
+		}
+	// software.go can send "Software Violation", "Zero Trust Violation", "Defense Evasion"
+	// antivirus.go can send "Malware"
+	case "Software Violation", "Zero Trust Violation", "Defense Evasion", "Malware":
+		if upperTag == "DEV" {
+			return "P3"
+		}
+		if upperTag == "FINANCE" || upperTag == "PROD" {
+			return "P1"
+		}
+	case "Unauthorized Port", "Firewall Disabled":
+		if upperTag == "DEV" {
+			return "P2"
+		}
+		if upperTag == "FINANCE" || upperTag == "PROD" {
+			return "P1"
+		}
+	}
+	return basePriority // Return the original priority if no specific rule matches
 }
 
 func (s *BehaviorService) getSeverityByPriority(p string) string {
-	mapping := map[string]string{"P1": "Critical", "P2": "High", "P3": "Medium", "P4": "Low"}
-	return mapping[p]
+	mapping := map[string]string{"P1": "Critical", "P2": "High", "P3": "Medium"}
+	if val, ok := mapping[p]; ok {
+		return val
+	}
+	return "Medium"
 }
 
 func (s *BehaviorService) GetBehaviors(ctx context.Context, orgID uint, page, limit int64) ([]models.SecurityAlert, int64, error) {

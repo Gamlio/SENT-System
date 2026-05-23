@@ -1,10 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"sync"
 	"time"
 
@@ -20,14 +23,13 @@ var priorityScores = map[string]float64{
 	"P1": 50.0,
 	"P2": 25.0,
 	"P3": 10.0,
-	"P4": 5.0,
 }
 
 // Department Matrix mapping SensorType and DepartmentTag to Priority
 // This can be loaded from a config or database for more flexibility
 var departmentMatrix = map[string]map[string]string{
 	"USB_PLUG": {
-		"DEV":     "P4",
+		"DEV":     "P3",
 		"FINANCE": "P1",
 		"PROD":    "P2",
 	},
@@ -61,18 +63,18 @@ type ScoreService struct {
 	db *gorm.DB
 }
 
-// Áp dụng cơ chế Debounce đồng thời cho nhiều Assets, tránh Spam truy vấn.
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
 var scoreTimers sync.Map
 
 func RecalculateRiskScore(assetAssetID string) {
 	if timer, ok := scoreTimers.Load(assetAssetID); ok {
-		// Nếu đang trong hàng đợi tính điểm thì chỉ cần reset lại Timer
 		timer.(*time.Timer).Reset(2 * time.Second)
 		return
 	}
 
-	// Debounce: Chờ thêm 2 giây để đón tất cả log đồng thời (ví dụ cắm nhiều USB).
-	// Gom lại xử lý 1 lần.
 	timer := time.AfterFunc(2*time.Second, func() {
 		scoreTimers.Delete(assetAssetID)
 		processRiskScore(assetAssetID)
@@ -82,12 +84,9 @@ func RecalculateRiskScore(assetAssetID string) {
 
 func processRiskScore(assetAssetID string) {
 	var asset models.Asset
-	// Tối ưu DB: Select chỉ lấy trường cần thiết, Preload AssetType để tránh lỗi
 	if err := database.DB.Select("id", "asset_hwid", "hostname", "risk_score", "trust_score", "asset_type_id").Preload("AssetType").Where("asset_hwid = ?", assetAssetID).First(&asset).Error; err != nil {
 		return
 	}
-
-	// 1. IMPACT TỨC THỜI (R_active) - Giảm trọng số
 	var activeAlerts []models.SecurityAlert
 	if database.SecurityAlertCollection != nil {
 		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{
@@ -95,22 +94,6 @@ func processRiskScore(assetAssetID string) {
 		})
 		if err == nil {
 			cursor.All(context.TODO(), &activeAlerts)
-		}
-	}
-
-	ti := 0.0
-	hasP1 := false
-	for _, alert := range activeAlerts {
-		switch alert.Priority {
-		case "P1":
-			ti += 5.0
-			hasP1 = true
-		case "P2":
-			ti += 2.5
-		case "P4":
-			ti += 0.5
-		default:
-			ti += 1.0
 		}
 	}
 
@@ -138,9 +121,7 @@ func processRiskScore(assetAssetID string) {
 		}
 	}
 
-	n := float64(len(activeAlerts))
-
-	if n == 0 && len(openPorts) == 0 && len(usbLogs) == 0 && len(ioActivities) == 0 {
+	if len(activeAlerts) == 0 && len(openPorts) == 0 && len(usbLogs) == 0 && len(ioActivities) == 0 {
 		database.DB.Model(&asset).Updates(map[string]interface{}{
 			"risk_score":     0.0,
 			"security_grade": "A",
@@ -148,24 +129,36 @@ func processRiskScore(assetAssetID string) {
 		return
 	}
 
-	// Bổ sung telemetry khác vào ti để hệ thống vẫn phản ứng với hành vi bất thường
+	priorityCounts := make(map[string]int)
+	hasP1 := false
+	for _, alert := range activeAlerts {
+		priorityCounts[alert.Priority]++
+		if alert.Priority == "P1" {
+			hasP1 = true
+		}
+	}
+
+	rActive := 0.0
+	alertWeights := map[string]float64{
+		"P1": 5.0,
+		"P2": 2.5,
+		"P3": 1.0,
+	}
+	for priority, count := range priorityCounts {
+		if weight, ok := alertWeights[priority]; ok {
+			rActive += weight * math.Log2(float64(count)+1.0)
+		}
+	}
+
 	if len(usbLogs) > 0 {
-		ti += float64(len(usbLogs)) * 0.5
+		rActive += float64(len(usbLogs)) * 0.5
 	}
 	if len(ioActivities) > 0 {
-		ti += float64(len(ioActivities)) * 0.2
+		rActive += float64(len(ioActivities)) * 0.2
 	}
 
-	// Sử dụng Log để n lỗi không bằng 1 lỗi nặng
-	multiplier := n + 1
-	if n == 0 && ti > 0 {
-		multiplier = 2 // Đảm bảo math.Log2(2) = 1 để giữ nguyên điểm ti từ telemetry
-	}
-	rActive := ti * math.Log2(multiplier)
-
-	// 2. IMPACT LỊCH SỬ (R_history) - Giữ vết lâu (Lookback 180 ngày)
 	var pastIncidents []models.Incident
-	halfYearAgo := time.Now().AddDate(0, 0, -180) // Quét lịch sử 180 ngày
+	halfYearAgo := time.Now().AddDate(0, 0, -180)
 	rHistory := 0.0
 
 	if err := database.DB.Where("asset_hwid = ? AND created_at >= ?", assetAssetID, halfYearAgo).Find(&pastIncidents).Error; err == nil {
@@ -177,32 +170,21 @@ func processRiskScore(assetAssetID string) {
 				hImpact = 10.0
 			case "P2":
 				hImpact = 5.0
-			case "P4":
-				hImpact = 0.5
+			case "P3":
+				hImpact = 1.0
 			}
 
-			// Decay cực chậm: Sau 3 tháng (90 ngày) lỗi P1 vẫn còn giữ khoảng 5 điểm rủi ro
 			rHistory += hImpact / (1.0 + 0.01*daysOld)
 		}
 	}
 
-	// 3. TRỌNG SỐ NGỮ CẢNH (C) VÀ HỆ SỐ PHƠI NHIỄM (V)
 	cFactor := 1.0
-	// Xử lý nil pointer để tránh Panic khi chạy
-	if asset.AssetType != nil {
-		switch asset.AssetType.Name {
-		case "SERVER":
-			cFactor = 2.0 // Rất cao
-		case "IT_ADMIN":
-			cFactor = 1.5 // Cao
-		default:
-			cFactor = 1.0 // Trung bình
-		}
+	if asset.AssetType != nil && asset.AssetType.RiskWeight > 0 {
+		cFactor = asset.AssetType.RiskWeight
 	}
 
-	vFactor := 1.0 + (float64(len(openPorts)) * 0.05) // Mỗi port mở tăng 5%
+	vFactor := 1.0 + (float64(len(openPorts)) * 0.05)
 
-	// 4. TỔNG HỢP & PHÂN HẠNG (0-100 scale cho UI)
 	displayScore := (rActive + rHistory) * cFactor * vFactor
 	if displayScore > 100.0 {
 		displayScore = 100.0
@@ -222,13 +204,19 @@ func processRiskScore(assetAssetID string) {
 		grade = "A"
 	}
 
-	// 5. CƠ CHẾ FORENSIC INTEGRITY (Niêm phong bằng chứng)
 	if displayScore > 80.0 {
 		log.Printf("🚨 [FORENSIC SEAL] %s: Điểm rủi ro=%.1f > 80. Hệ thống kích hoạt Snapshot Immutable!", asset.Hostname, displayScore)
-		// TODO: Tích hợp gọi EventEngine đẩy lệnh thu thập Process/Port list xuống Go-SENT tại đây.
+		sendCommandToBehaviorService(map[string]interface{}{
+			"asset":    asset,
+			"category": "Forensic Snapshot",
+			"value":    "High Risk Score",
+			"title":    "[P1] Kích hoạt thu thập dữ liệu pháp y",
+			"desc":     fmt.Sprintf("Điểm rủi ro của máy trạm '%s' đã vượt ngưỡng nguy hiểm (%.1f/100). Hệ thống tự động yêu cầu thu thập danh sách tiến trình và cổng mạng đang mở để phân tích sâu.", asset.Hostname, displayScore),
+			"priority": "P1",
+			"action":   "COLLECT_FORENSICS",
+		})
 	}
 
-	// 6. CẬP NHẬT TRẠNG THÁI
 	now := time.Now()
 	updates := map[string]interface{}{
 		"risk_score":       displayScore,
@@ -262,10 +250,10 @@ func (s *ScoreService) GetPriorityFromMatrix(sensorType, departmentTag string) (
 			return priority, nil
 		}
 		// If department tag not found for a known sensor type, return a default or error
-		return "P4", fmt.Errorf("department tag '%s' not found for sensor type '%s' in matrix, defaulting to P4", departmentTag, sensorType)
+		return "P3", fmt.Errorf("department tag '%s' not found for sensor type '%s' in matrix, defaulting to P3", departmentTag, sensorType)
 	}
 	// If sensor type not found, return a default or error
-	return "P4", fmt.Errorf("sensor type '%s' not found in department matrix, defaulting to P4", sensorType)
+	return "P3", fmt.Errorf("sensor type '%s' not found in department matrix, defaulting to P3", sensorType)
 }
 
 // CalculateCurrentRiskScore calculates the instantaneous risk score (R_current) for an asset.
@@ -299,8 +287,8 @@ func (s *ScoreService) CalculateCurrentRiskScore(assetID uint) (float64, error) 
 			sumSi += score
 		} else {
 			// Log or handle unknown priority, perhaps default to a low score
-			fmt.Printf("Warning: Unknown priority '%s' for incident %d, defaulting to P4 score\n", inc.Priority, inc.ID)
-			sumSi += priorityScores["P4"] // Default to P4 score for unknown priorities
+			fmt.Printf("Warning: Unknown priority '%s' for incident %d, defaulting to P3 score\n", inc.Priority, inc.ID)
+			sumSi += priorityScores["P3"] // Default to P3 score for unknown priorities
 		}
 	}
 
@@ -422,4 +410,27 @@ func (s *ScoreService) UpdateassetLastIncidentTime(assetID uint, incidentTime ti
 		}
 	}
 	return nil
+}
+
+func sendCommandToBehaviorService(payload map[string]interface{}) {
+	go func() {
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			log.Printf("🚨 [SCORING] Lỗi tạo JSON để gửi lệnh: %v", err)
+			return
+		}
+
+		url := "http://behavior-service:8000/api/v1/behaviors/log"
+
+		resp, err := httpClient.Post(url, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Printf("🚨 [SCORING] Lỗi gửi lệnh sang Behavior Service: %v\n", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 300 {
+			log.Printf("🚨 [SCORING] Behavior Service phản hồi lỗi: %s", resp.Status)
+		}
+	}()
 }

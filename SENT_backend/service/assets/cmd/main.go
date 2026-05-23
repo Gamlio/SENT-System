@@ -55,7 +55,6 @@ func main() {
 			admin.DELETE("/:hwid", middleware.RequirePermission("asset_delete"), handlers.RequestDeleteAsset)
 
 			admin.PUT("/types/:id", middleware.RequirePermission("system_config"), handlers.UpdateAssetType)
-			admin.GET("/types", handlers.GetAssetTypes)
 			admin.POST("/types", middleware.RequirePermission("system_config"), handlers.CreateAssetType)
 		}
 	}

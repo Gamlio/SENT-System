@@ -5,6 +5,7 @@ import (
 	"SENT_backend/pkg/middleware"
 	"SENT_backend/pkg/models/database"
 	"SENT_backend/service/ai/internal/handlers"
+	"SENT_backend/service/ai/internal/service"
 	"fmt"
 	"os"
 
@@ -18,6 +19,8 @@ func main() {
 	database.InitPostgres()
 	database.InitMongoDB()
 	database.InitRedis()
+	// Gọi hàm tự động kiểm tra và nạp playbook từ thư mục nội bộ
+	service.AutoCheckAndLoadPlaybooks()
 
 	redisAddr := os.Getenv("REDIS_HOST") + ":" + os.Getenv("REDIS_PORT")
 	if os.Getenv("REDIS_HOST") == "" {
@@ -42,6 +45,7 @@ func main() {
 		aiAPI.GET("/chat/:session_id", handlers.GetChatHistory)
 		aiAPI.GET("/sessions", handlers.GetSessions)
 		aiAPI.POST("/sessions", handlers.CreateSession)
+		aiAPI.POST("/playbooks/upload", handlers.UploadPlaybook)
 	}
 
 	port := os.Getenv("PORT")

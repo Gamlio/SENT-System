@@ -270,7 +270,7 @@ func (s *PolicyService) SaveBaselineItems(orgID uint, hwid string, category stri
 
 	// [TỐI ƯU] Sử dụng OnConflict để tránh trùng lặp nếu máy trạm gửi log nhiều lần trong 1h
 	return database.DB.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "org_id"}, {Name: "asset_hwid"}, {Name: "type"}, {Name: "value"}},
+		Columns:   []clause.Column{{Name: "org_id"}, {Name: "asset_hw_id"}, {Name: "type"}, {Name: "value"}},
 		DoNothing: true,
 	}).CreateInBatches(items, 100).Error
 }

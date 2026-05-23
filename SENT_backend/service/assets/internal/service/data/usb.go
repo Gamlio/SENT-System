@@ -51,6 +51,22 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 		return fmt.Errorf("database USBCollection chưa sẵn sàng")
 	}
 
+	var allHashes []string
+	for _, rec := range records {
+		if rec.DeviceHash != "" {
+			allHashes = append(allHashes, rec.DeviceHash)
+		}
+	}
+
+	whitelistedHashes := make(map[string]bool)
+	if len(allHashes) > 0 {
+		var wlItems []models.WhitelistItem
+		database.DB.Where("org_id = ? AND type = 'USB_DEVICE' AND value IN ?", asset.OrgID, allHashes).Find(&wlItems)
+		for _, item := range wlItems {
+			whitelistedHashes[item.Value] = true
+		}
+	}
+
 	var activeHashes []string
 
 	for _, rec := range records {
@@ -79,9 +95,9 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 			"asset":    asset,
 			"category": "USB Violation",
 			"value":    "New Device",
-			"title":    "[P3] Thiết bị ngoại vi mới",
+			"title":    "[P1] Thiết bị ngoại vi mới",
 			"desc":     fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, Serial: %s)", rec.DeviceName, rec.VID, rec.SerialNumber),
-			"priority": "P3",
+			"priority": "P1",
 		})
 	}
 	if len(activeHashes) > 0 {

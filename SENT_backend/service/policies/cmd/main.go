@@ -28,6 +28,7 @@ func main() {
 	policyAPI := r.Group("/api/v1/policies")
 	{
 		policyAPI.POST("/internal/baseline", handlers.InternalSaveBaseline)
+		policyAPI.POST("/internal/check-violation", handlers.CheckPolicyViolation)
 		policyAPI.Use(middleware.AuthRequired())
 		{
 			viewPerm := middleware.RequirePermission("policy_view")

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	DefaultCorrelationWindow = 24 * time.Hour // Cửa sổ thời gian gom nhóm sự cố
+	DefaultCorrelationWindow = 24 * time.Hour
 )
 
 func (s *IncidentService) applyContextualMatrix(alertType, basePriority, departmentTag string) string {
@@ -22,7 +22,7 @@ func (s *IncidentService) applyContextualMatrix(alertType, basePriority, departm
 	switch alertType {
 	case "USB Violation":
 		if tag == "DEV" {
-			return "P4"
+			return "P3"
 		}
 		if tag == "FINANCE" {
 			return "P1"
@@ -72,6 +72,7 @@ func (s *IncidentService) TriggerSecurityEvent(ctx context.Context, asset models
 		}
 	}
 
+	// Kích hoạt tính lại điểm rủi ro bất đồng bộ
 	go func(hwid string) {
 		// Cổng 8000 là cổng của Scoring Service trong docker-compose
 		url := fmt.Sprintf("http://scoring-service:8000/api/v1/scoring/recalculate/%s", hwid)
@@ -115,14 +116,14 @@ func (s *IncidentService) AutoResolveIncident(hwid string, alertType string) {
 }
 
 func (s *IncidentService) getSeverityByPriority(p string) string {
-	mapping := map[string]string{"P1": "Critical", "P2": "High", "P3": "Medium", "P4": "Low"}
+	mapping := map[string]string{"P1": "Critical", "P2": "High", "P3": "Medium"}
 	if val, ok := mapping[p]; ok {
 		return val
 	}
-	return "Low"
+	return "Medium"
 }
 
 func (s *IncidentService) shouldUpgradePriority(current, new string) bool {
-	levels := map[string]int{"P1": 4, "P2": 3, "P3": 2, "P4": 1}
+	levels := map[string]int{"P1": 3, "P2": 2, "P3": 1}
 	return levels[new] > levels[current]
 }

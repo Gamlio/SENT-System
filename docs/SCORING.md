@@ -15,8 +15,8 @@ Mức độ khẩn cấp (Priority) được xác định bằng phép giao gi�
 
 | Loại Sự kiện (Sensor) | Nhóm DEV (Lập trình) | Nhóm FINANCE (Tài chính) | Nhóm PROD (Sản xuất) |
 | :--- | :--- | :--- | :--- |
-| **USB_PLUG** (Cắm USB lạ) | P4 (Chỉ ghi log) | P1 (Cấm tuyệt đối) | P2 (Nguy hiểm) |
 | **PROC_START** (Chạy app lạ) | P3 (Bình thường) | P1 (Vi phạm chính sách) | P1 (Nguy cơ dừng máy) |
+| **USB_PLUG** (Cắm USB lạ) | P3 (Bình thường) | P1 (Cấm tuyệt đối) | P2 (Nguy hiểm) |
 | **PORT_OPEN** (Mở cổng RDP/SSH)| P2 (Cần kiểm tra) | P1 (Nghiêm trọng) | P1 (Cấm tuyệt đối) |
 | **NET_EXFILTRATION** (Gửi Data lớn)| P3 (Push Code/Docker)| P1 (Nghi đánh cắp Data) | P1 (Nghi đánh cắp Data) |
 | **DISK_HOARDING** (Ghi đĩa > 500MB)| P3 (Build dự án) | P1 (Nghi Ransomware) | P2 (Bất thường) |
@@ -30,7 +30,7 @@ Tính dựa trên các sự cố đang MỞ (Open Incidents), áp dụng hệ s�
 
 $$R_{current} = 100 \times \left( 1 - e^{-\frac{\sum (S_{i} \times E^{n})}{k}} \right)$$
 
-- **$S_{i}$**: Điểm gốc của sự cố (P1=50, P2=25, P3=10, P4=5).
+- **$S_{i}$**: Điểm gốc của sự cố (P1=50, P2=25, P3=10).
 - **$E^{n}$**: Hệ số lũy thừa (Số lượng lỗi càng nhiều, độ dốc càng cao).
 - **$k$**: Hệ số điều chỉnh độ nhạy (Enterprise chuẩn thường chọn $k=40$ đến $60$).
 

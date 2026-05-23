@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -136,12 +140,55 @@ func ChatHandler(c *gin.Context) {
 		_, _ = database.AIChatLogCollection.InsertOne(context.TODO(), userLog)
 	}
 
-	thought, answer, err := service_ai.ChatWithRAG(req.Message, orgID)
+	stream, err := service_ai.StreamChatWithRAG(c.Request.Context(), req.Message, orgID)
 	if err != nil {
 		fmt.Println("❌ Lỗi AI:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi xử lý AI"})
 		return
 	}
+	defer stream.Close()
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Transfer-Encoding", "chunked")
+
+	var fullAIResponse string
+	reader := bufio.NewReader(stream)
+
+	c.Stream(func(w io.Writer) bool {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			return false
+		}
+		cleanedLine := bytes.TrimSpace(line)
+		if len(cleanedLine) == 0 {
+			return true
+		}
+		var rawChunk map[string]interface{}
+		if err := json.Unmarshal(cleanedLine, &rawChunk); err != nil {
+			fmt.Printf("⚠️ Lỗi giải mã dòng JSON từ Ollama: %v | Data: %s\n", err, string(cleanedLine))
+			return true
+		}
+
+		responseText, _ := rawChunk["response"].(string)
+		isDone, _ := rawChunk["done"].(bool)
+
+		fullAIResponse += responseText
+
+		c.SSEvent("message", gin.H{
+			"text": responseText,
+			"done": isDone,
+		})
+
+		if isDone {
+			return false
+		}
+
+		return true
+	})
+	thought, answer := service_ai.ParseAIResponse(fullAIResponse)
+
 	aiLog := models.AIChatLog{
 		SessionID: sessionObjectID,
 		UserID:    userID,
@@ -161,11 +208,6 @@ func ChatHandler(c *gin.Context) {
 			bson.M{"$set": bson.M{"updated_at": time.Now()}},
 		)
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"response": answer,
-		"thought":  thought,
-	})
 }
 
 func RenameSession(c *gin.Context) {
@@ -270,4 +312,33 @@ func GetChatHistory(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, logs)
+}
+
+func UploadPlaybook(c *gin.Context) {
+	file, err := c.FormFile("playbook")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Không tìm thấy file 'playbook' trong request"})
+		return
+	}
+
+	f, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể mở file đã upload"})
+		return
+	}
+	defer f.Close()
+
+	mdContent, err := io.ReadAll(f)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể đọc nội dung file"})
+		return
+	}
+
+	err = service_ai.IngestPlaybookMarkdownToVectorDB(string(mdContent))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Lỗi nạp playbook: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Nạp playbook vào vector DB thành công."})
 }

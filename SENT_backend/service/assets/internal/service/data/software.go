@@ -124,9 +124,9 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 	}
 
 	if len(violations) > 0 {
-		highestPriority := "P4"
+		highestPriority := "P3"
 		highestAlertType := "Software Violation"
-		priorityMap := map[string]int{"P1": 4, "P2": 3, "P3": 2, "P4": 1}
+		priorityMap := map[string]int{"P1": 3, "P2": 2, "P3": 1}
 
 		groupedViolations := make(map[string][]string)
 		for _, v := range violations {

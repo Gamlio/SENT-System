@@ -41,8 +41,8 @@ const Sidebar = () => {
 
             {/* LOGO SECTION - Typography giống assets */}
             <div className={`p-6 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
-                <div className="p-2 bg-indigo-500/10 rounded border border-indigo-500/30 text-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.2)]">
-                    <Cpu size={24} />
+                <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#111827] border border-slate-700 shadow-[0_0_15px_rgba(99,102,241,0.2)]">
+                    <img src="/sent.png" alt="SENT SYSTEM" className="w-full h-full object-cover" />
                 </div>
                 {!isCollapsed && (
                     <div className="animate-in fade-in duration-500">

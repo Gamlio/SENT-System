@@ -47,8 +47,9 @@ export const useDocuments = () => {
 
     const deleteDoc = async (id, reason) => {
         try {
-            // Sử dụng endpoint delete-request và gửi reason trong body JSON
-            await axios.post(`/docs/${id}/delete-request`, { reason });
+            await axios.delete(`/docs/${id}`, {
+                data: { reason }
+            });
             await fetchDocuments();
             return { success: true };
         } catch (err) {

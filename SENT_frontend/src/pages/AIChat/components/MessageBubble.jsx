@@ -1,5 +1,4 @@
 import React from 'react';
-import ThinkingBlock from './ThinkingBlock';
 import { Bot, User } from 'lucide-react';
 
 const MessageBubble = ({ message }) => {
@@ -20,8 +19,6 @@ const MessageBubble = ({ message }) => {
                             {isAI ? 'AI Security Assistant' : 'Security Analyst'}
                         </span>
                     </div>
-
-                    {isAI && message.thought && <ThinkingBlock thought={message.thought} />}
 
                     <div className={`px-6 py-4 rounded-[24px] text-sm leading-relaxed shadow-xl break-words whitespace-pre-wrap ${
                         isAI 

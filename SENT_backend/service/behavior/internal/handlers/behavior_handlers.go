@@ -83,14 +83,12 @@ func CreateIncidentHandler(c *gin.Context) {
 
 func HandleLogBehavior(c *gin.Context) {
 	var req struct {
-		Asset struct {
-			AssetHWID string `json:"asset_hwid"`
-			OrgID     uint   `json:"org_id"`
-		} `json:"asset"`
-		Category string `json:"category"`
-		Value    string `json:"value"`
-		Title    string `json:"title"`
-		Desc     string `json:"desc"`
+		Asset    models.Asset `json:"asset"`
+		Category string       `json:"category"`
+		Value    string       `json:"value"`
+		Title    string       `json:"title"`
+		Desc     string       `json:"desc"`
+		Priority string       `json:"priority"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -99,14 +97,15 @@ func HandleLogBehavior(c *gin.Context) {
 		return
 	}
 
-	// 2. Tạo đối tượng Asset giả để truyền vào Service xử lý
-	dummyAsset := models.Asset{
-		AssetHWID: req.Asset.AssetHWID,
-		OrgID:     req.Asset.OrgID,
+	// If priority is not provided in the payload, default to P3
+	basePriority := req.Priority
+	if basePriority == "" {
+		basePriority = "P3"
 	}
 
 	svc := behaviorSvc.BehaviorService{}
-	alert, err := svc.LogBehavior(c.Request.Context(), dummyAsset, req.Category, req.Value, req.Title, req.Desc)
+	// The full asset object (req.Asset) and the base priority are passed to the service
+	alert, err := svc.LogBehavior(c.Request.Context(), req.Asset, req.Category, req.Value, req.Title, req.Desc, basePriority)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
