@@ -17,6 +17,8 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
+          cache: true
+          cache-dependency-path: SENT/go.sum # 💡 Đã fix: Chỉ đường dẫn chính xác cho GitHub Cache
 
       - name: Build Multi-OS Binaries
         run: |
@@ -31,12 +33,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/* 
-        env:
+          files: dist/* env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ 
       - name: Notify SENT Website (Auto-Import)
         run: |
           curl -X POST https://sent.com.vn/api/v1/softwares/update-version \
           -H "Content-Type: application/json" \
           -H "X-Internal-Token: ${{ secrets.INTERNAL_UPDATE_TOKEN }}" \
-          -d "{\"tag\":\"${{ github.ref_name }}\",\"url_prefix\":\"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}\",\"release_note\":\"Automated build from GitHub Actions\"}"
+          -d "{\"tag\":\"${{ github.ref_name }}\",\"url_prefix\":\"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}\",\"release_note\":\"Automated release for version ${{ github.ref_name }}\"}"
