@@ -43,4 +43,4 @@ jobs:
           curl -X POST https://sent.com.vn/api/v1/softwares/update-version \
           -H "Content-Type: application/json" \
           -H "X-Internal-Token: ${{ secrets.INTERNAL_UPDATE_TOKEN }}" \
-          -d "{\"tag\":\"${{ github.ref_name }}\",\"url_prefix\":\"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}\",\"release_note\":\"Automated release for version ${{ github.ref_name }}\"}"
+          -d '{"tag":"${{ github.ref_name }}","url_prefix":"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}","release_note":"Automated release version ${{ github.ref_name }}"}'

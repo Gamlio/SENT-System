@@ -76,6 +76,7 @@ func GetSoftwares(c *gin.Context) {
 func CreateSoftware(c *gin.Context) {
 	var input models.SentSoftware
 	if err := c.ShouldBindJSON(&input); err != nil {
+		println("--- LỖI PARSE JSON WEBHOOK: ", err.Error())
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
