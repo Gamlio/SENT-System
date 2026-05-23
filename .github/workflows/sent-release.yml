@@ -19,7 +19,6 @@ jobs:
           go-version: '1.21'
 
       - name: Build Multi-OS Binaries
-        # ĐÂY LÀ BÍ QUYẾT: Bạn dùng lệnh 'cd SENT' để chuyển vào đúng thư mục phần mềm
         run: |
           cd SENT
           go mod tidy # Đảm bảo tải đủ thư viện
@@ -37,12 +36,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify SENT Website (Auto-Import)
-      
         run: |
           curl -X POST https://sent.com.vn/api/v1/softwares/update-version \
           -H "Content-Type: application/json" \
           -H "X-Internal-Token: ${{ secrets.INTERNAL_UPDATE_TOKEN }}" \
-          -d '{
-            "tag": "${{ github.ref_name }}",
-            "url_prefix": "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
-          }'
+          -d "{\"tag\":\"${{ github.ref_name }}\",\"url_prefix\":\"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}\",\"release_note\":\"Automated build from GitHub Actions\"}"
