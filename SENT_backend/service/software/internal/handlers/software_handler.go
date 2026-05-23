@@ -13,8 +13,18 @@ import (
 )
 
 func GetSoftwares(c *gin.Context) {
+	// Kiểm tra an toàn đề phòng Postgres chưa kết nối xong
+	if database.DB == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection is nil"})
+		return
+	}
+
 	var rawSoftwares []models.SentSoftware
-	database.DB.Order("created_at desc").Find(&rawSoftwares)
+	// Thêm Debug kiểm tra lỗi từ GORM nếu có
+	if err := database.DB.Order("created_at desc").Find(&rawSoftwares).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi truy vấn cơ sở dữ liệu: " + err.Error()})
+		return
+	}
 
 	type SoftwareDisplay struct {
 		Tag           string            `json:"tag"`
@@ -30,9 +40,21 @@ func GetSoftwares(c *gin.Context) {
 
 	for _, v := range rawSoftwares {
 		if _, ok := grouped[v.Tag]; !ok {
-			checksumShort := v.Checksum
-			if len(checksumShort) > 8 {
-				checksumShort = checksumShort[:8]
+			// Xử lý cắt chuỗi Checksum an toàn bằng mảng rune (tránh lỗi UTF-8 hoặc rỗng)
+			checksumShort := ""
+			if v.Checksum != "" {
+				runes := []rune(v.Checksum)
+				if len(runes) > 8 {
+					checksumShort = string(runes[:8])
+				} else {
+					checksumShort = v.Checksum
+				}
+			}
+
+			// Kiểm tra định dạng ngày tháng an toàn
+			releaseDate := ""
+			if !v.CreatedAt.IsZero() {
+				releaseDate = v.CreatedAt.Format("2006-01-02")
 			}
 
 			vd := &SoftwareDisplay{
@@ -40,7 +62,7 @@ func GetSoftwares(c *gin.Context) {
 				Links:         make(map[string]string),
 				IsLatest:      v.IsLatest,
 				ReleaseNote:   v.ReleaseNote,
-				ReleaseDate:   v.CreatedAt.Format("2006-01-02"),
+				ReleaseDate:   releaseDate,
 				ChecksumShort: checksumShort,
 			}
 			grouped[v.Tag] = vd

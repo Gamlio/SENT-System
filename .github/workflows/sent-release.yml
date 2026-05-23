@@ -39,7 +39,7 @@ jobs:
       - name: Notify SENT Website (Auto-Import)
       
         run: |
-          curl -X POST https://sent.com.vn/api/v1/internal/update-version \
+          curl -X POST https://sent.com.vn/api/v1/softwares/update-version \
           -H "Content-Type: application/json" \
           -H "X-Internal-Token: ${{ secrets.INTERNAL_UPDATE_TOKEN }}" \
           -d '{
