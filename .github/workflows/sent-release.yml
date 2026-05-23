@@ -34,7 +34,6 @@ jobs:
           files: dist/* 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Notify SENT Website (Auto-Import)
         run: |
           curl -X POST https://sent.com.vn/api/v1/softwares/update-version \
