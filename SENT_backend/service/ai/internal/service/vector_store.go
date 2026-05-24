@@ -161,29 +161,27 @@ func IngestPlaybookMarkdownToVectorDB(mdContent string) error {
 
 	vectorCollection := database.DocumentContentCollection.Database().Collection("playbook_vectors")
 
-	playbooks := strings.Split(mdContent, "## [PLAYBOOK-")
+	// 1. DỌN SẠCH KHO CŨ: Xóa bỏ triệt để dữ liệu rác trước đó
+	_, _ = vectorCollection.DeleteMany(context.TODO(), bson.M{})
+
+	// Tách kịch bản bằng thẻ tiêu đề "## "
+	playbooks := strings.Split(mdContent, "## ")
 
 	for _, pbBlock := range playbooks {
 		if strings.TrimSpace(pbBlock) == "" || strings.HasPrefix(pbBlock, "# DANH SÁCH") {
 			continue
 		}
 
-		fullBlockText := "## [PLAYBOOK-" + pbBlock
+		fullBlockText := "## " + pbBlock
 		lines := strings.Split(pbBlock, "\n")
 
-		playbookID := "UNKNOWN"
-		for _, line := range lines {
-			if strings.Contains(line, "**Mã kịch bản**") {
-				parts := strings.Split(line, ":")
-				if len(parts) > 1 {
-					playbookID = strings.TrimSpace(parts[1])
-					playbookID = strings.ReplaceAll(playbookID, "`", "")
-					break
-				}
-			}
+		// 2. TỰ ĐỘNG TRÍCH XUẤT TIÊU ĐỀ LÀM ID ĐỊNH DANH
+		playbookID := strings.TrimSpace(lines[0])
+		if playbookID == "" {
+			playbookID = "UNKNOWN_" + primitive.NewObjectID().Hex()
 		}
 
-		fmt.Printf("⏳ Đang tiến hành nhúng dữ liệu toán học cho: %s...\n", playbookID)
+		fmt.Printf("⏳ Đang nhúng dữ liệu toán học cho kịch bản: [%s]...\n", playbookID)
 
 		vector, err := GetTextEmbedding(fullBlockText)
 		if err != nil {
@@ -193,13 +191,11 @@ func IngestPlaybookMarkdownToVectorDB(mdContent string) error {
 
 		chunkDoc := models.PlaybookVectorChunk{
 			ID:         primitive.NewObjectID(),
-			PlaybookID: playbookID,
-			Title:      "Kịch bản ứng phó sự cố cứu hộ " + playbookID,
+			PlaybookID: playbookID, // Lưu trực tiếp tiêu đề sạch làm ID định danh
+			Title:      "Kịch bản ứng phó sự cố: " + playbookID,
 			Content:    fullBlockText,
 			Embedding:  vector,
 		}
-
-		_, _ = vectorCollection.DeleteMany(context.TODO(), bson.M{"playbook_id": playbookID})
 
 		_, err = vectorCollection.InsertOne(context.TODO(), chunkDoc)
 		if err != nil {
@@ -207,7 +203,7 @@ func IngestPlaybookMarkdownToVectorDB(mdContent string) error {
 		}
 	}
 
-	fmt.Println("✅ Toàn bộ hệ thống Playbooks đã được chuyển đổi sang Vector DB thành công!")
+	fmt.Println("✅ Toàn bộ hệ thống Playbooks tối giản đã được nạp thành công!")
 	return nil
 }
 

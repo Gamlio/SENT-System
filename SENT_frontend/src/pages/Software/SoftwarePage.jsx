@@ -1,10 +1,24 @@
 import React from 'react';
-import { Cpu, RefreshCcw, Plus, Box } from 'lucide-react';
-import { useVersions } from './hooks/useSoftware';
+import { Cpu, RefreshCcw, Box } from 'lucide-react';
 import VersionCard from './components/SoftwareCard';
 
 const VersionsPage = () => {
-    const { softwares, loading, refresh } = useVersions();
+    const loading = false;
+    const refresh = () => { window.location.reload(); };
+
+    const softwares = [
+        {
+            tag: "v4.2.5",
+            is_latest: true,
+            release_note: "Bản build ổn định hệ thống phân phối nội bộ SENT Agent.",
+            release_date: "2026-05-23",
+            links: {
+                windows: "/sof_builds/SENT_v4.2.5_windows.exe",
+                linux: "/sof_builds/SENT_v4.2.5_linux",
+                mac: "/sof_builds/SENT_v4.2.5_mac"
+            }
+        }
+    ];
 
     return (
         <div className="p-8 h-[calc(100vh-64px)] flex flex-col text-slate-200 bg-[#020617] font-sans relative overflow-hidden">
@@ -20,41 +34,33 @@ const VersionsPage = () => {
                         </div>
                         Agent Deployment Central
                     </h1>
-                    <p className="text-[11px] text-slate-500 mt-2 uppercase tracking-[0.2em] font-bold flex items-center gap-2 text-decoration-none">
+                    <p className="text-[11px] text-slate-500 mt-2 uppercase tracking-[0.2em] font-bold flex items-center gap-2">
                         <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                        Hệ thống phân phối Agent bảo mật trực tuyến
+                        Hệ thống phân phối Agent bảo mật trực tuyến (Static Mode)
                     </p>
                 </div>
                 
                 <div className="flex gap-3">
                     <button onClick={refresh} className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-all shadow-xl">
-                        <RefreshCcw size={18} className={loading ? 'animate-spin' : ''} />
-                    </button>
-                    <button className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20">
-                        <Plus size={16}/> New Release
+                        <RefreshCcw size={18} />
                     </button>
                 </div>
             </div>
 
             {/* VERSIONS LIST */}
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 relative z-10">
-                    {loading ? (
-                        <div className="h-full flex items-center justify-center">
-                            <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                        </div>
-                    ) : softwares.length === 0 ? (
-                        <div className="flex-1 flex flex-col items-center justify-center bg-slate-900/20 border-2 border-dashed border-slate-800/60 rounded-2xl min-h-[400px]">
-                            <Box size={32} className="text-slate-600 mb-4" />
-                            <p className="text-slate-400 text-sm font-black uppercase tracking-widest">No builds found</p>
-                            <p className="text-[10px] text-slate-500 mt-2 uppercase">Chưa có phiên bản nào được deploy từ hệ thống.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 pb-10">
-                            {softwares.map((v) => (
-                                <VersionCard key={v.tag} software={v} />
-                            ))}
-                        </div>
-                    )}
+                {softwares.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center bg-slate-900/20 border-2 border-dashed border-slate-800/60 rounded-2xl min-h-[400px]">
+                        <Box size={32} className="text-slate-600 mb-4" />
+                        <p className="text-slate-400 text-sm font-black uppercase tracking-widest">No builds found</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 pb-10">
+                        {softwares.map((v) => (
+                            <VersionCard key={v.tag} software={v} />
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -53,7 +53,7 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
         if (isLoadingType) return; // Ngăn chặn người dùng bấm nhiều lần (Race condition)
         setIsLoadingType(true);
         try {
-            await axios.put(`/assets/${asset.asset_hwid}/type`, { device_type: typeId });
+            await axios.put(`/assets/${asset.asset_hwid}/type`, { asset_type_id: typeId });
             setShowTypeModal(false);
             if (onRefresh) onRefresh();
             setDialogConfig({

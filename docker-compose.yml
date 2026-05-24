@@ -194,19 +194,6 @@ services:
     networks:
       - sent_net
 
-  software-service:
-    build:
-      context: ./SENT_backend
-      dockerfile: service/software/Dockerfile
-    container_name: software_service
-    env_file: .env
-    ports:
-      - "8012:8000"
-    depends_on:
-      - db
-      - mongodb
-    networks:
-      - sent_net
   approval-service:
     build:
       context: ./SENT_backend

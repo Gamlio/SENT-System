@@ -1,60 +1,109 @@
-# SENTINEX SOC - MÔ HÌNH ĐÁNH GIÁ UY TÍN & RỦI RO NGỮ CẢNH (Contextual Trust & Risk Scoring v6.0)
+Dưới đây là toàn bộ phần cơ sở lý thuyết, công thức toán học và giải trình logic của mô hình tính điểm rủi ro tổng hợp ($Risk\_Score$) được chuyển đổi sang định dạng Markdown chuẩn hóa theo đúng nội dung đồ án tốt nghiệp của bạn:
 
-Tài liệu này mô tả thuật toán Sentinex v6.0. Hệ thống không chỉ nhìn vào những gì đang xảy ra, mà còn đánh giá dựa trên bối cảnh bộ phận (Ngữ cảnh), lịch sử hành vi (Uy tín), và khả năng xâu chuỗi sự kiện (Event Correlation).
+---
 
-## PHẦN 1: TRIẾT LÝ "LÝ LỊCH AN NINH" (THE REPUTATION PHILOSOPHY)
+## 1.5 Cơ sở toán học cho mô hình đánh giá rủi ro
 
-- **Contextual Risk (Rủi ro theo bối cảnh):** Một hành vi không có "điểm chết" cố định. Mức độ nghiêm trọng (P1-P4) thay đổi dựa trên Department Tag (Bộ phận) của máy đó.
-- **Event Correlation (Tương quan sự kiện):** Một cảnh báo đơn lẻ có thể là P3, nhưng nếu xảy ra liên tiếp trong 5 phút (VD: Cắm USB -> Ghi đĩa tốc độ cao), hệ thống sẽ tự động gộp thành Incident P1.
-- **Exponential Escalation (Thang rủi ro lũy thừa):** Khi một máy trạm dính nhiều lỗi cùng lúc, khả năng bị chiếm quyền hoàn toàn tăng theo cấp số nhân ($E^n$), khiến điểm rủi ro "dựng đứng".
-- **Long-term Trust (Uy tín tích lũy):** Máy trạm có một "điểm uy tín" gốc. Những vi phạm trong quá khứ để lại "vết sẹo". Một máy có tiền sử xấu sẽ bị hệ thống "lì lợm" hơn khi tính điểm an toàn.
+Trong các giải pháp EDR truyền thống, việc đánh giá độ nguy hại của một máy trạm thường phụ thuộc vào các tập luật tĩnh hoặc đếm số lượng cảnh báo một cách tuyến tính, dẫn đến hiện tượng quá tải cảnh báo (Alert Fatigue) cho quản trị viên.
 
-## PHẦN 2: MA TRẬN RỦI RO THEO BỘ PHẬN (DEPARTMENT MATRIX)
+Để giải quyết triệt để bài toán này, trong khuôn khổ xây dựng hệ thống mã nguồn mở SENT, tác giả đã tự nghiên cứu, thiết kế và thực hiện cấu trúc một mô hình toán học định lượng rủi ro tổng hợp. Mô hình này không sao chép từ bất kỳ giải pháp thương mại nào, được xây dựng dựa trên sự kết hợp động giữa ba thành phần: Trạng thái sự cố tức thời, lịch sử biến động tài nguyên và bề mặt phơi nhiễm mạng của tài sản máy trạm.
 
-Mức độ khẩn cấp (Priority) được xác định bằng phép giao giữa Loại Sensor và Tag Bộ phận.
+$$Risk\_Score = \min\left(100.0, (R_{active} + R_{history}) \times C \times V\right)$$
 
-| Loại Sự kiện (Sensor) | Nhóm DEV (Lập trình) | Nhóm FINANCE (Tài chính) | Nhóm PROD (Sản xuất) |
-| :--- | :--- | :--- | :--- |
-| **PROC_START** (Chạy app lạ) | P3 (Bình thường) | P1 (Vi phạm chính sách) | P1 (Nguy cơ dừng máy) |
-| **USB_PLUG** (Cắm USB lạ) | P3 (Bình thường) | P1 (Cấm tuyệt đối) | P2 (Nguy hiểm) |
-| **PORT_OPEN** (Mở cổng RDP/SSH)| P2 (Cần kiểm tra) | P1 (Nghiêm trọng) | P1 (Cấm tuyệt đối) |
-| **NET_EXFILTRATION** (Gửi Data lớn)| P3 (Push Code/Docker)| P1 (Nghi đánh cắp Data) | P1 (Nghi đánh cắp Data) |
-| **DISK_HOARDING** (Ghi đĩa > 500MB)| P3 (Build dự án) | P1 (Nghi Ransomware) | P2 (Bất thường) |
+---
 
-## PHẦN 3: CÔNG THỨC TOÁN HỌC TIỆM CẬN (ASYMPTOTIC MODEL)
+### 1.5.1 Định lượng mức độ ưu tiên và trọng số sự cố
 
-Sentinex v6 sử dụng hàm Tiệm cận Logarit để tránh điểm số chạm trần 100đ quá sớm.
+Thành phần rủi ro tức thời $R_{active}$ phản ánh các mối đe dọa đang diễn ra trực tiếp tại thiết bị đầu cuối. Để chuyển đổi các sự kiện an ninh từ dạng định tính sang định lượng phục vụ tính toán, tác giả thực hiện phân cấp sự cố và gán các trọng số cấu hình thực nghiệm ($T_i$) dựa trên mức độ tác động an ninh thực tế:
 
-### 1. Điểm rủi ro tức thời ($R_{current}$)
-Tính dựa trên các sự cố đang MỞ (Open Incidents), áp dụng hệ số lũy thừa cho số lượng lỗi ($n$):
+* 
+**Sự cố mức Chí mạng (Priority P1 - Trọng số $T_{P1} = 5.0$):** Áp dụng cho các hành vi xâm nhập nghiêm trọng, mã độc fileless thực thi mã từ xa, hoặc thiết bị ngoại vi độc hại được cắm trực tiếp vào máy trạm thuộc phòng ban nhạy cảm.
 
-$$R_{current} = 100 \times \left( 1 - e^{-\frac{\sum (S_{i} \times E^{n})}{k}} \right)$$
 
-- **$S_{i}$**: Điểm gốc của sự cố (P1=50, P2=25, P3=10).
-- **$E^{n}$**: Hệ số lũy thừa (Số lượng lỗi càng nhiều, độ dốc càng cao).
-- **$k$**: Hệ số điều chỉnh độ nhạy (Enterprise chuẩn thường chọn $k=40$ đến $60$).
+* 
+**Sự cố mức Cao (Priority P2 - Trọng số $T_{P2} = 2.5$):** Áp dụng cho các hành vi vi phạm chính sách an toàn thông tin nghiêm trọng, tiến trình lạ cố gắng chiếm quyền điều khiển người dùng, hoặc mở cổng mạng trái phép.
 
-### 2. Nợ rủi ro dài hạn ($D_{debt}$)
-Dựa trên chỉ số Trust Score (Lịch sử 1 năm) lưu trong DB.
-- **Trust Score:** Mặc định 100 điểm.
-- **Trừ điểm:** Mỗi lỗi P1 trong 30 ngày qua trừ 15đ, lỗi P2 trừ 5đ.
-- **Hồi phục:** Sau mỗi 7 ngày "sạch", cộng lại 2đ uy tín.
 
-## PHẦN 4: VÍ DỤ THỰC TẾ (KỊCH BẢN CHUỖI TẤN CÔNG RANSOMWARE)
+* 
+**Sự cố mức Thấp / Thông tin (Priority P3 - Trọng số $T_{P3} = 1.0$):** Áp dụng cho các hành vi mang tính chất thăm dò, cài đặt ứng dụng không nằm trong danh mục cho phép, hoặc bất thường nhẹ trong tiến trình hệ thống.
 
-- **Kịch bản:** Máy trạm `PC-ACCOUNTING` (Tag: FINANCE). Đang có TrustScore = 100.
-- **Phút 01:** Nhân viên cắm USB lạ.
-  - Theo ma trận FINANCE: USB = P1. Điểm vọt lên 65đ. SOC nhận cảnh báo đỏ.
-- **Phút 03:** Cảm biến Viễn trắc (Telemetry) ghi nhận Disk Write tăng vọt > 1GB/phút (`DISK_HOARDING`).
-  - Correlation Engine (Động cơ tương quan) kích hoạt: Gộp sự kiện `USB_PLUG` + `DISK_HOARDING` thành Siêu sự cố: **"Nghi ngờ Ransomware lây lan qua USB"**.
-  - Hệ số lũy thừa $E^n$ kích hoạt. Điểm rủi ro vọt lên 98đ.
-- **Phản ứng tự động:** Kênh WebSocket tự động bắn lệnh `ISOLATE` xuống asset để ngắt mạng LAN, khóa đứng máy trạm trước khi mã độc lây sang máy tính Giám đốc.
-- **Kết quả:** Sau khi Admin diệt virus và mở khóa, điểm $R_{current}$ về 0. Nhưng TrustScore giảm còn 70đ. Lần sau máy này chỉ cần cắm USB là điểm tự động nhảy thẳng lên mức báo động.
 
-## PHẦN 5: KHẢ NĂNG MỞ RỘNG (EXPANDABILITY)
 
-Thuật toán được thiết kế dưới dạng Framework mở. Khi thêm các Cảm biến (Sensors) mới ở phía asset như:
-- **Telemetry Monitoring:** Đo đếm Network Bytes Sent và Disk Bytes Written.
-- **Registry Monitoring:** Định nghĩa `REG_CHANGE` vào Ma trận rủi ro.
+> **Giải trình logic cấu hình của tác giả:**
+> Các thông số trọng số này ($5.0 : 2.5 : 1.0$) là các hằng số cấu hình hệ thống (Configuration Values) được tác giả đề xuất theo mô hình lũy tiến hình học (tỷ lệ mã hóa 2:1). Khoảng cách trọng số được thiết lập đủ rộng để đảm bảo thuật toán phân tách rõ ràng mức độ ưu tiên xử lý giữa một máy trạm đang bị tấn công APT với một máy trạm chỉ phát sinh các cảnh báo thông tin thông thường. Các giá trị này được lưu trữ trong file cấu hình môi trường của hệ thống SENT, cho phép người quản trị tùy biến thay đổi tùy theo khẩu vị rủi ro của từng doanh nghiệp.
+> 
+> 
 
-Hệ thống chấm điểm sẽ tự động nạp các Alert mới này, chạy qua Correlation Engine và đưa vào công thức tính mà không cần sửa đổi lõi toán học của Backend.
+---
+
+### 1.5.2 Thuật toán Rủi ro Tức thời và Quy luật Cận biên
+
+Một thách thức lớn trong giám sát an ninh là hiện tượng "bùng nổ cảnh báo" (Alert Fatigue) khi một hành vi vi phạm lặp lại liên tục. Nếu tính toán theo cấp số cộng tuyến tính sẽ làm điểm số rủi ro bị phình to quá mức, gây nhiễu hệ thống.
+
+Do đó, tác giả đề xuất công thức nén cảnh báo sử dụng hàm Logarit cơ số 2 dựa trên nguyên lý **"Lợi ích cận biên giảm dần"** (lỗi thứ $n$ cùng loại thường không làm tăng mức độ nguy hiểm lên gấp $n$ lần so với lỗi đầu tiên) nhằm bảo vệ tài nguyên tính toán của trung tâm điều hành SOC:
+
+$$R_{active} = \sum_{i \in \{P1, P2, P3\}} T_i \times \log_2(n_i + 1)$$
+
+Trong đó:
+
+* 
+$n_i$: Số lượng cảnh báo chủ động chưa xử lý thuộc nhóm ưu tiên $i$ thu thập được từ máy trạm trong chu kỳ giám sát.
+
+
+* 
+$T_i$: Trọng số tĩnh, cố định của từng phân cấp sự cố ($T_{P1} = 5.0, T_{P2} = 2.5, T_{P3} = 1.0$) , không nhồi các biến động thô vào $T_i$.
+
+
+
+Việc áp dụng hàm $\log_2(n_i + 1)$ giúp đồ thị rủi ro tiệm cận dần về một ngưỡng bão hòa khi một hành vi độc hại lặp lại liên tục.
+
+---
+
+### 1.5.3 Mô hình rủi ro lịch sử và hàm suy giảm theo thời gian (Time Decay)
+
+Khả năng "ghi nhớ" lịch sử bảo mật là yếu tố then chốt để phân loại các máy trạm có nguy cơ cao. Tuy nhiên, trọng số của các sự cố cũ cần giảm dần theo thời gian để phản ánh đúng trạng thái hiện tại của thiết bị. Mô hình áp dụng hàm phân thức suy giảm (Time Decay) trong chu kỳ quét 180 ngày để tính toán cấu phần rủi ro lịch sử $R_{history}$:
+
+$$R_{history} = \sum_{j=1}^{m} \frac{H_j}{1.0 + 0.01 \times \Delta t_j}$$
+
+Trong đó:
+
+* 
+$H_j$: Trọng số tác động lịch sử của sự cố cũ thứ $j$ (quy đổi mặc định: P1 = 5.0, P2 = 2.5, P3 = 1.0). Đối với sự cố Trung bình (P3), hệ thống ngầm định gán giá trị khởi tạo cơ sở $H_j = 1.0$.
+
+
+* 
+$\Delta t_j$: Khoảng thời gian tính bằng ngày kể từ khi sự cố lịch sử $j$ phát sinh cho đến thời điểm tính toán hiện tại.
+
+
+* 
+**Hệ số $0.01$:** Đảm bảo điểm số suy giảm một cách an toàn và giữ vết lâu (ví dụ: sau 90 ngày, một lỗi P1 cũ vẫn để lại 'vết sẹo' xấp xỉ 5 điểm rủi ro lịch sử trên hệ thống).
+
+
+
+---
+
+### 1.5.4 Hệ số ngữ cảnh tài sản (C) và bề mặt phơi nhiễm (V)
+
+Điểm rủi ro cuối cùng phải được điều chỉnh bởi ngữ cảnh vận hành của tài sản (Contextual Awareness):
+
+* 
+**Hệ số quan trọng tài sản ($C$):** Tài sản được phân tầng theo mức độ quan trọng của phòng ban và chức năng vận hành:
+
+
+* Thiết bị đóng vai trò là máy chủ dữ liệu (SERVER): $C = 2.0$ 
+
+
+* Máy trạm của quản trị viên hệ thống (ADMIN): $C = 1.5$ 
+
+
+* Máy trạm thông thường (USER): $C = 1.0$ 
+
+
+
+
+* 
+**Hệ số phơi nhiễm bề mặt mạng ($V$):** Quyết định khả năng máy trạm bị khai thác hoặc trở thành bàn đạp tấn công leo thang đặc quyền trong mạng nội bộ. Hệ số này do tác giả thiết kế dựa trên số lượng các cổng mạng mở kết nối thực tế, thiết bị ngoại vi không rõ nguồn gốc và biến động dữ liệu đọc ghi trên máy trạm:
+
+
+
+$$V = 1.0 + (\text{Số cổng mạng mở} \times 0.05) + \log_{10}(n_{usb\_unknown} + 1) + \log_{10}\left(\frac{\Delta \text{Disk I/O}}{10^6} + 1\right)$$

@@ -18,13 +18,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Priority scores mapping
-var priorityScores = map[string]float64{
-	"P1": 50.0,
-	"P2": 25.0,
-	"P3": 10.0,
-}
-
 // Department Matrix mapping SensorType and DepartmentTag to Priority
 // This can be loaded from a config or database for more flexibility
 var departmentMatrix = map[string]map[string]string{
@@ -138,6 +131,7 @@ func processRiskScore(assetAssetID string) {
 		}
 	}
 
+	// --- Tính toán R_active theo công thức logarit từ SCORING.md ---
 	rActive := 0.0
 	alertWeights := map[string]float64{
 		"P1": 5.0,
@@ -150,13 +144,7 @@ func processRiskScore(assetAssetID string) {
 		}
 	}
 
-	if len(usbLogs) > 0 {
-		rActive += float64(len(usbLogs)) * 0.5
-	}
-	if len(ioActivities) > 0 {
-		rActive += float64(len(ioActivities)) * 0.2
-	}
-
+	// --- Tính toán R_history với hàm suy giảm theo thời gian ---
 	var pastIncidents []models.Incident
 	halfYearAgo := time.Now().AddDate(0, 0, -180)
 	rHistory := 0.0
@@ -167,9 +155,9 @@ func processRiskScore(assetAssetID string) {
 			hImpact := 1.0
 			switch inc.Priority {
 			case "P1":
-				hImpact = 10.0
-			case "P2":
 				hImpact = 5.0
+			case "P2":
+				hImpact = 2.5
 			case "P3":
 				hImpact = 1.0
 			}
@@ -178,13 +166,25 @@ func processRiskScore(assetAssetID string) {
 		}
 	}
 
+	// --- Tính toán các hệ số ngữ cảnh C và V theo SCORING.md ---
 	cFactor := 1.0
 	if asset.AssetType != nil && asset.AssetType.RiskWeight > 0 {
 		cFactor = asset.AssetType.RiskWeight
 	}
 
-	vFactor := 1.0 + (float64(len(openPorts)) * 0.05)
+	// V = 1.0 + (Số cổng mạng mở * 0.05) + log10(n_usb_unknown + 1) + log10((Delta Disk I/O / 10^6) + 1)
+	var totalDiskIO uint64
+	for _, activity := range ioActivities {
 
+		totalDiskIO += activity.DiskBytesRead + activity.DiskBytesWritten
+	}
+
+	vFactor := 1.0 +
+		(float64(len(openPorts)) * 0.05) +
+		math.Log10(float64(len(usbLogs))+1.0) +
+		math.Log10((float64(totalDiskIO)/1_000_000)+1.0)
+
+	// --- Tính điểm tổng hợp ---
 	displayScore := (rActive + rHistory) * cFactor * vFactor
 	if displayScore > 100.0 {
 		displayScore = 100.0
@@ -259,53 +259,62 @@ func (s *ScoreService) GetPriorityFromMatrix(sensorType, departmentTag string) (
 // CalculateCurrentRiskScore calculates the instantaneous risk score (R_current) for an asset.
 // This score reflects the current active threats.
 func (s *ScoreService) CalculateCurrentRiskScore(assetID uint) (float64, error) {
-	var incidents []models.Incident
-	// Fetch all OPEN incidents for the asset
-	if err := s.db.Where("asset_hwid = ? AND status = ?", assetID, "Open").Find(&incidents).Error; err != nil {
-		return 0, fmt.Errorf("failed to fetch open incidents for asset %d: %w", assetID, err)
+	// 1. Lấy thông tin thiết bị và cấu hình loại máy trạm (AssetType) để lấy RiskWeight (cFactor)
+	var asset models.Asset
+	if err := s.db.Preload("AssetType").First(&asset, assetID).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch asset info: %w", err)
 	}
 
+	var incidents []models.Incident
+	// Lấy các sự cố đang mở (Open) thuộc về máy trạm này
+	if err := s.db.Where("asset_hwid = ? AND status = ?", asset.AssetHWID, "Open").Find(&incidents).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch open incidents for asset %s: %w", asset.AssetHWID, err)
+	}
+
+	// Nếu không có sự cố nào, reset điểm rủi ro tức thời về 0
 	if len(incidents) == 0 {
-		// No open incidents, current risk score is 0
-		// Ensure asset's risk_score is updated to 0 if it was previously higher
-		if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", assetID).Update("risk_score", 0.0).Error; err != nil {
-			return 0, fmt.Errorf("failed to reset risk score for asset %d: %w", assetID, err)
+		if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", asset.AssetHWID).Update("risk_score", 0.0).Error; err != nil {
+			return 0, fmt.Errorf("failed to reset risk score for asset %s: %w", asset.AssetHWID, err)
 		}
 		return 0, nil
 	}
 
-	sumSi := 0.0
-	numOpenIncidents := float64(len(incidents))
-
-	// Calculate the exponential escalation factor E^n, where n is the total number of open incidents.
-	// The formula is R_current = 100 * (1 - e^(-(sum(Si * E^n) / k)))
-	// This is interpreted as (sum(Si)) * E^n
-	escalationFactor := math.Pow(exponentialBase, numOpenIncidents)
-
+	// 2. Đếm số lượng sự cố theo từng mức độ ưu tiên
+	priorityCounts := make(map[string]int)
 	for _, inc := range incidents {
-		if score, ok := priorityScores[inc.Priority]; ok {
-			sumSi += score
-		} else {
-			// Log or handle unknown priority, perhaps default to a low score
-			fmt.Printf("Warning: Unknown priority '%s' for incident %d, defaulting to P3 score\n", inc.Priority, inc.ID)
-			sumSi += priorityScores["P3"] // Default to P3 score for unknown priorities
+		priorityCounts[inc.Priority]++
+	}
+
+	// 3. Áp dụng công thức R_active từ SCORING.md: sum(T_i * log2(n_i + 1))
+	rActive := 0.0
+	incidentWeights := map[string]float64{
+		"P1": 5.0,
+		"P2": 2.5,
+		"P3": 1.0,
+	}
+	for priority, count := range priorityCounts {
+		if weight, ok := incidentWeights[priority]; ok {
+			rActive += weight * math.Log2(float64(count)+1.0)
 		}
 	}
 
-	// Apply the escalation factor to the sum of Si
-	sumSiEscalated := sumSi * escalationFactor
+	// 4. Lấy hệ số loại thiết bị cFactor (C) từ cấu hình AssetType đã gán
+	cFactor := 1.0
+	if asset.AssetType != nil && asset.AssetType.RiskWeight > 0 {
+		cFactor = asset.AssetType.RiskWeight
+	}
 
-	// Calculate R_current using the asymptotic model
-	rCurrent := 100.0 * (1 - math.Exp(-(sumSiEscalated / kFactor)))
+	// 5. Tính điểm rủi ro tức thời (chỉ gồm R_active * C, không có R_history và V)
+	rCurrent := rActive * cFactor
 
-	// Ensure R_current does not exceed 100
+	// Giới hạn trần rủi ro tuyệt đối không vượt quá 100
 	if rCurrent > 100.0 {
 		rCurrent = 100.0
 	}
 
-	// Update the asset's RiskScore in the database
-	if err := s.db.Model(&models.Asset{}).Where("id = ?", assetID).Update("risk_score", rCurrent).Error; err != nil {
-		return rCurrent, fmt.Errorf("failed to update risk score for asset %d: %w", assetID, err)
+	// 6. Cập nhật điểm số chuẩn hóa vào cơ sở dữ liệu Postgres
+	if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", asset.AssetHWID).Update("risk_score", rCurrent).Error; err != nil {
+		return rCurrent, fmt.Errorf("failed to update risk score for asset %s: %w", asset.AssetHWID, err)
 	}
 
 	return rCurrent, nil

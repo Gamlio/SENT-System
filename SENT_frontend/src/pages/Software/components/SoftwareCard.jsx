@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Monitor, Terminal, Apple, Calendar, Info, Hash } from 'lucide-react';
+import { Download, Monitor, Terminal, Apple, Calendar, Info } from 'lucide-react';
 
 const VersionCard = ({ software }) => {
     const platforms = [
@@ -10,7 +10,6 @@ const VersionCard = ({ software }) => {
 
     return (
         <div className={`group relative bg-slate-900/50 backdrop-blur-sm border ${software.is_latest ? 'border-indigo-500/40' : 'border-slate-800'} rounded-2xl p-6 hover:border-indigo-500/60 transition-all duration-300`}>
-            {/* Hiệu ứng tia sáng khi bản mới nhất */}
             {software.is_latest && (
                 <div className="absolute -top-px left-10 right-10 h-px bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
             )}
@@ -31,7 +30,6 @@ const VersionCard = ({ software }) => {
                 </div>
             </div>
 
-            {/* Release Note Section */}
             {software.release_note && (
                 <div className="mb-6 p-4 bg-black/20 border border-slate-800/50 rounded-xl">
                     <div className="flex items-center gap-2 text-indigo-400 mb-2">
@@ -39,7 +37,7 @@ const VersionCard = ({ software }) => {
                         <span className="text-[10px] font-black uppercase tracking-widest">Release Intelligence</span>
                     </div>
                     <p className="text-[12px] text-slate-400 leading-relaxed italic line-clamp-2 group-hover:line-clamp-none transition-all">
-                        "{software.release_note}"[cite: 8]
+                        "{software.release_note}"
                     </p>
                 </div>
             )}
