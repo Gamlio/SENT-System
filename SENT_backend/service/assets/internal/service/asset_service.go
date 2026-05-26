@@ -92,6 +92,10 @@ func ProcessassetData(payload AssetPayload) error {
 				if err := dataassets.ProcessDataTransfer(asset, modData); err != nil {
 					return err
 				}
+			case "patch":
+				if err := dataassets.ProcessPatch(asset, modData); err != nil {
+					return err
+				}
 			}
 		}
 		return nil // Xử lý xong batch thì thoát hàm
@@ -125,6 +129,10 @@ func ProcessassetData(payload AssetPayload) error {
 		}
 	case "data_transfer":
 		if err := dataassets.ProcessDataTransfer(asset, payload.Data); err != nil {
+			return err
+		}
+	case "patch":
+		if err := dataassets.ProcessPatch(asset, payload.Data); err != nil {
 			return err
 		}
 	}

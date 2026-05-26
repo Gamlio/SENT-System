@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/host"
@@ -11,68 +12,102 @@ import (
 	"SENT/internal/collector"
 	"SENT/internal/config"
 	"SENT/internal/transport"
-
 	"SENT/internal/utils"
 )
 
 func main() {
-	// Bắt lỗi crash (panic) và dừng màn hình để người dùng kịp đọc lỗi
+	// Bắt lỗi crash (panic) và log lại hệ thống
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("\n🚨 [LỖI NGHIÊM TRỌNG]: %v\n", r)
+			log.Printf("\n🚨 [LỖI NGHIÊM TRỌNG]: %v\n", r)
 		}
-		log.Println("SENT đang tự động khởi động lại hoặc thoát do lỗi...")
 	}()
+
+	// 1. KÍCH HOẠT CƠ CHẾ DAEMON FORK CHO LINUX TRƯỚC (NẾU CÓ)
+	// Hàm này sẽ kiểm tra, nếu là Linux và chưa fork, nó sẽ sinh con rồi thoát cha ngay lập tức.
+	// Lưu ý: Trên Windows hàm này sẽ tự động bỏ qua (Nằm trong file stub)
+	forkLinuxDaemon()
 
 	// Tạo các thư mục cần thiết nếu chưa có
 	os.MkdirAll("data", 0755)
 	os.MkdirAll("config", 0755)
-
-	err := collector.InitLocalDB("data")
-	if err != nil {
-		log.Fatalf("Không thể khởi tạo DB: %v", err)
-	}
-	defer collector.CloseLocalDB() // Đảm bảo nhả file agent_cache.db.lock khi thoát
 
 	if !utils.IsAdmin() {
 		log.Fatal("FATAL: asset yêu cầu quyền Administrator/Root để hoạt động. Vui lòng chạy lại bằng 'Run as Administrator' hoặc 'sudo'.")
 	}
 
 	hInfo, _ := host.Info()
-
 	AssetHWID := hInfo.HostID
-
 	hostname, _ := os.Hostname()
 
-	// 2. Kiểm tra tính toàn vẹn của chính file chạy
-	exePath, err := os.Executable()
-	if err == nil {
-		hash, err := utils.CalculateSHA256(exePath) // Cần expose hàm calculateSHA256 ra utils
+	// 2. Kiểm tra tính toàn vẹn của file thực thi (Chỉ in ra giao diện tương tác ban đầu)
+	if os.Getenv("SENT_DAEMON") != "1" {
+		exePath, err := os.Executable()
 		if err == nil {
-			fmt.Printf(" [SEC] Mã toàn vẹn của SENT Agent: %s\n", hash)
-			// TODO: Ở bản cập nhật Backend tới, có thể gửi mã hash này lên để SOC xác minh
+			hash, err := utils.CalculateSHA256(exePath)
+			if err == nil {
+				fmt.Printf(" [SEC] Mã toàn vẹn của SENT Agent: %s\n", hash)
+			}
 		}
 	}
 
-	fmt.Printf("\n 🛡️ SENT asset V4.0 (Ninja Thin-Client) | HOST: %s\n", hostname)
-	ipAddress := utils.GetOutboundIP()
-	fmt.Printf(" [DEBUG] IP phát hiện được: '%s'\n", ipAddress)
-	config.LoadOrBootstrap(AssetHWID, hostname, ipAddress)
+	// 3. Giao diện đăng ký nhập Token (Chỉ hiển thị ở màn hình tương tác ban đầu)
+	if os.Getenv("SENT_DAEMON") != "1" || runtime.GOOS == "windows" {
+		fmt.Printf("\n 🛡️ SENT asset V4.0 (Ninja Thin-Client) | HOST: %s\n", hostname)
+		ipAddress := utils.GetOutboundIP()
+		fmt.Printf(" [DEBUG] IP phát hiện được: '%s'\n", ipAddress)
 
-	// Từ đoạn này trở xuống giữ nguyên...
+		// Đăng ký hoặc nạp cấu hình
+		config.LoadOrBootstrap(AssetHWID, hostname, ipAddress)
+
+		fmt.Println("🚀 Khởi tạo Agent thành công. Ứng dụng đang chuyển sang chế độ chạy ngầm...")
+		time.Sleep(1 * time.Second)
+	}
+
+	// 4. KÍCH HOẠT CHẠY ẨN CỬA SỔ TRÊN WINDOWS
+	if runtime.GOOS == "windows" {
+		hideConsoleWindow()
+	}
+
+	// =================================================================
+	// KHU VỰC KHỞI CHẠY CORE LOGIC (CHỈ TIẾN TRÌNH NGẦM THỰC SỰ MỚI CHẠY ĐẾN ĐÂY)
+	// =================================================================
+
+	// Khởi tạo DB tại đây để tránh lỗi Lock File giữa tiến trình cha và con trên Linux
+	err := collector.InitLocalDB("data")
+	if err != nil {
+		log.Fatalf("Không thể khởi tạo DB: %v", err)
+	}
+	defer collector.CloseLocalDB()
+
 	client := transport.GetAssetClient()
 
-	// 2. Khởi tạo danh sách các module thu thập (Plugins)
+	err = collector.InitBufferBucket()
+	if err != nil {
+		log.Printf("⚠️ Không thể khởi tạo phân vùng Offline Buffer: %v", err)
+	}
+
+	// Goroutine ngầm kiểm tra và giải phóng dữ liệu vùng đệm ngoại tuyến
+	go func(c *transport.AssetClient, hID, hName string) {
+		ticker := time.NewTicker(30 * time.Second)
+		for range ticker.C {
+			offlineLogs, keys := collector.PopAllOfflineBuffer()
+			if len(offlineLogs) > 0 {
+				status := c.SendPayload(hID, hName, "batch_offline_flush", offlineLogs)
+				if status == "OK" {
+					collector.ClearFlushedLogs(keys)
+				}
+			}
+		}
+	}(client, AssetHWID, hostname)
+
 	collector.InitCollectors()
-	fmt.Printf(" [INFO] Đã nạp %d module cảm biến...\n", len(collector.Registry))
 
-	// Tách chu kỳ quét để tối ưu I/O Disk & CPU
-	immediateTicker := time.NewTicker(5 * time.Second) // Tức khắc (USB)
-	fiveMinTicker := time.NewTicker(5 * time.Minute)   // Nhóm 5 phút (Port, Data Transfer, AV, Firewall)
-	hourlyTicker := time.NewTicker(1 * time.Hour)      // Nhóm 1 tiếng (Software)
-	tenHourTicker := time.NewTicker(10 * time.Hour)    // Nhóm 5-10 tiếng (Inventory)
+	immediateTicker := time.NewTicker(5 * time.Second)
+	fiveMinTicker := time.NewTicker(5 * time.Minute)
+	hourlyTicker := time.NewTicker(1 * time.Hour)
+	tenHourTicker := time.NewTicker(10 * time.Hour)
 
-	// Gửi toàn bộ trạng thái Baseline ngay lần đầu Agent khởi động, có khoảng trễ để tránh Replay Attack
 	runSensorsBatch(client, AssetHWID, hostname, "immediate")
 	time.Sleep(500 * time.Millisecond)
 	runSensorsBatch(client, AssetHWID, hostname, "five_min")
@@ -103,14 +138,13 @@ func runSensorsBatch(client *transport.AssetClient, hwid, hostname string, group
 	for _, sensor := range collector.Registry {
 		name := sensor.Name()
 
-		// Phân loại nhóm chu kỳ quét
 		var expectedGroup string
 		switch name {
 		case "usb":
 			expectedGroup = "immediate"
 		case "port", "data_transfer", "antivirus":
 			expectedGroup = "five_min"
-		case "software":
+		case "software", "patch":
 			expectedGroup = "hourly"
 		case "inventory":
 			expectedGroup = "ten_hour"
@@ -118,17 +152,13 @@ func runSensorsBatch(client *transport.AssetClient, hwid, hostname string, group
 			expectedGroup = "five_min"
 		}
 
-		// Chỉ kích hoạt sensor nếu đúng chu kỳ của nhóm
 		if expectedGroup != group {
 			continue
 		}
 
 		data, err := sensor.Collect()
 		if err == nil && data != nil {
-			// 1. Tính toán vân tay (Hash) của bộ dữ liệu hiện tại
 			currentHash := utils.CalculateHash(data)
-
-			// 2. So sánh với bản cũ trong DB
 			if collector.IsDataNew(sensor.Name(), currentHash) {
 				batchData[name] = data
 				batchHashes[name] = currentHash
@@ -139,13 +169,13 @@ func runSensorsBatch(client *transport.AssetClient, hwid, hostname string, group
 
 	if hasNewData {
 		go func(groupName string, payload interface{}, hashes map[string]string) {
-			// 3. Gửi payload gom nhóm, nếu Server chưa phê duyệt (trả về lỗi) thì không lưu state
 			status := client.SendPayload(hwid, hostname, "batch_"+groupName, payload)
-			// 4. Chỉ lưu lại trạng thái mới để lần sau không gửi trùng khi Server đã lưu OK
 			if status == "OK" {
 				for modName, hash := range hashes {
 					collector.UpdateModuleState(modName, hash)
 				}
+			} else {
+				_ = collector.PushToOfflineBuffer("batch_"+groupName, payload)
 			}
 		}(group, batchData, batchHashes)
 	}

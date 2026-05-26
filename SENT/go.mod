@@ -5,7 +5,7 @@ go 1.25.4
 require (
 	github.com/shirou/gopsutil/v3 v3.24.5
 	go.etcd.io/bbolt v1.4.3
-	golang.org/x/sys v0.41.0
+	golang.org/x/sys v0.45.0
 )
 
 require (
