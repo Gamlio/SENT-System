@@ -11,6 +11,14 @@ import (
 )
 
 // --- CÁC STRUCT GÓI GỌN DỮ LIỆU SOC CHI TIẾT ---
+
+// TimelineData Định dạng cấu trúc dữ liệu theo ngày gửi sang Frontend
+type TimelineData struct {
+	Time      string `json:"time"`      // Định dạng "DD/MM"
+	Alerts    int64  `json:"alerts"`    // Số lượng alert thật trong ngày
+	Incidents int64  `json:"incidents"` // Số lượng incident thật trong ngày
+}
+
 type DashboardSummary struct {
 	// 1. Chỉ số Thiết bị (assets)
 	Totalassets       int64   `json:"total_assets"`
@@ -24,11 +32,11 @@ type DashboardSummary struct {
 	ResolvedIncidents int64            `json:"resolved_incidents"`
 	AlertsBySeverity  map[string]int64 `json:"alerts_by_severity"`
 
-	// 3. Chỉ số Rủi ro Tổng thể (Risk & Trust)
+	ThreatTrends []TimelineData `json:"threat_trends"`
+
 	HighRiskassets    int64   `json:"high_risk_assets"`
 	AverageTrustScore float64 `json:"average_trust_score"`
 
-	// 4. Danh sách Top (Actionable Data)
 	TopRiskassets []assetRiskView `json:"top_risk_assets"`
 	RecentAlerts  []AlertView     `json:"recent_alerts"`
 }
@@ -190,8 +198,74 @@ func (dc *DashboardController) FetchDetailedSummary(orgID uint) (map[string]inte
 		errChan <- nil
 	}()
 
-	// Đợi 7 luồng hoàn tất
-	for i := 0; i < 7; i++ {
+	// LUỒNG 8: Thống kê Threat Trends 7 ngày thực tế từ MongoDB
+	go func() {
+		if database.SecurityAlertCollection == nil {
+			summary.ThreatTrends = []TimelineData{}
+			errChan <- nil
+			return
+		}
+
+		// Tính toán mốc thời gian 7 ngày trước (Bắt đầu từ 00:00 của 6 ngày trước + hôm nay)
+		now := time.Now()
+		sevenDaysAgo := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -6)
+
+		// Pipeline Aggregation của MongoDB
+		pipeline := []bson.M{
+			{
+				"$match": bson.M{
+					"org_id":     orgID,
+					"created_at": bson.M{"$gte": sevenDaysAgo},
+				},
+			},
+			{
+				"$group": bson.M{
+					"_id": bson.M{
+						"$dateToString": bson.M{"format": "%d/%m", "date": "$created_at"},
+					},
+					"count": bson.M{"$sum": 1},
+				},
+			},
+		}
+
+		cursor, err := database.SecurityAlertCollection.Aggregate(context.TODO(), pipeline)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer cursor.Close(context.TODO())
+
+		// Lưu tạm kết quả tìm thấy từ MongoDB vào Map
+		var results []bson.M
+		if err := cursor.All(context.TODO(), &results); err != nil {
+			errChan <- err
+			return
+		}
+
+		mongoDataMap := make(map[string]int64)
+		for _, res := range results {
+			if id, ok := res["_id"].(string); ok {
+				if count, ok := res["count"].(int32); ok { // Mongo thường trả về int32 cho phép $sum
+					mongoDataMap[id] = int64(count)
+				} else if count, ok := res["count"].(int64); ok {
+					mongoDataMap[id] = count
+				}
+			}
+		}
+
+		// Điền dữ liệu liên tục 7 ngày (Điền 0 nếu ngày đó không có Alert)
+		var trends []TimelineData
+		for i := 6; i >= 0; i-- {
+			t := now.AddDate(0, 0, -i)
+			dateKey := t.Format("02/01") // Format DD/MM để khớp với Mongo
+			trends = append(trends, TimelineData{Time: dateKey, Alerts: mongoDataMap[dateKey], Incidents: 0})
+		}
+		summary.ThreatTrends = trends
+		errChan <- nil
+	}()
+
+	// Đợi 8 luồng hoàn tất
+	for i := 0; i < 8; i++ {
 		if err := <-errChan; err != nil {
 			return nil, err
 		}

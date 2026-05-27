@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, Cpu, Server, Briefcase, UserX, Trash2, X, UserCheck } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { MoreVertical, Cpu, Trash2, X, UserCheck } from 'lucide-react';
 import AppDialog from '../../../components/AppDialog';
 import axios from '../../../api/axios';
 
-const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
-    const navigate = useNavigate();
+const AssetsActions = ({ asset, onRefresh, onOpenAssignModal }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [showTypeModal, setShowTypeModal] = useState(false);
     const [isLoadingType, setIsLoadingType] = useState(false);
@@ -20,7 +18,7 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
         isAlertOnly: false,
         onConfirm: null
     });
-    const closeDialog = () => setDialogConfig({ ...dialogConfig, isOpen: false });
+    const closeDialog = () => setDialogConfig(prev => ({ ...prev, isOpen: false }));
     // Xử lý click ra ngoài để đóng menu
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -59,10 +57,9 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
             setDialogConfig({
                 isOpen: true,
                 title: 'Thành công!',
-                message: 'Đã cập nhật phân loại thiết bị. Điểm rủi ro (Risk Score) đã được tính toán lại.',
+                message: 'Đã cập nhật phân loại thiết bị. Hệ thống đang tính toán lại điểm rủi ro bất đồng bộ.',
                 type: 'success',
-                isAlertOnly: true,
-                onConfirm: () => window.location.reload()
+                isAlertOnly: true
             });
         } catch (err) {
             setDialogConfig({
@@ -76,7 +73,7 @@ const assetActions = ({ asset, onRefresh, onOpenAssignModal }) => {
             setIsLoadingType(false);
         }
     };
-const handleDeleteasset = () => {
+    const handleDeleteAsset = () => {
         setIsOpen(false); // Đóng menu thả xuống
         
         // Mở Dialog Hỏi "Bạn có chắc chắn?"
@@ -91,14 +88,14 @@ const handleDeleteasset = () => {
                 closeDialog();
                 try {
                     await axios.post(`/assets/${asset.asset_hwid}/request-delete`, {});
+                    if (onRefresh) onRefresh();
                     // Gọi API thành công -> Bật Dialog báo thành công
                     setDialogConfig({
                         isOpen: true,
                         title: 'Đã gửi yêu cầu',
                         message: 'Đơn xin gỡ bỏ thiết bị đã được chuyển đến Trung tâm Phê duyệt.',
                         type: 'success',
-                        isAlertOnly: true,
-                        onConfirm: () => window.location.reload()
+                        isAlertOnly: true
                     });
                 } catch (err) {
                     // Lỗi -> Bật Dialog báo lỗi
@@ -113,6 +110,9 @@ const handleDeleteasset = () => {
             }
         });
     };
+
+    // Xác định ID hiện tại của loại tài sản để hiển thị trạng thái Active (Hỗ trợ cả GORM ID và ID thô)
+    const currentAssetTypeId = asset.asset_type_id || asset.AssetTypeID;
 
     return (
         <div className="relative flex items-center justify-end" ref={menuRef}>
@@ -148,7 +148,7 @@ const handleDeleteasset = () => {
                     </button>
 
                     <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeleteasset(); }}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteAsset(); }}
                         className="w-full text-left px-3 py-2.5 text-[11px] font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-2.5 transition border-t border-slate-800"
                     >
                         <Trash2 size={14} /> Remove asset
@@ -161,12 +161,12 @@ const handleDeleteasset = () => {
             />
             {/* [MỚI] MODAL PHÂN LOẠI THIẾT BỊ */}
             {showTypeModal && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>
-                    <div className="bg-[#1e293b] w-full max-w-md rounded-3xl border border-slate-700 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] backdrop-blur-sm p-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-[#1e293b] w-full max-w-md rounded-3xl border border-slate-700 shadow-2xl overflow-hidden">
                         <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/50">
                             <div>
                                 <h3 className="font-bold text-white flex items-center gap-2"><Cpu className="text-purple-400"/> Phân loại Tài sản (Asset Tier)</h3>
-                                <p className="text-[10px] text-slate-500 uppercase font-black mt-1">Máy: {asset.hostname}</p>
+                                <p className="text-[10px] text-slate-400 mt-1 font-mono">Máy: {asset.hostname}</p>
                             </div>
                             <button onClick={() => setShowTypeModal(false)} className="text-slate-500 hover:text-white transition"><X size={20}/></button>
                         </div>
@@ -178,37 +178,40 @@ const handleDeleteasset = () => {
                                     <span className="text-[10px] font-black uppercase tracking-widest animate-pulse">Đang tải phân loại...</span>
                                 </div>
                             ) : assetTypes.length > 0 ? (
-                                assetTypes.map((type) => (
-                                    <button 
-                                        key={type.ID || type.id}
-                                        disabled={isLoadingType}
-                                        onClick={() => handleChangeType(type.ID || type.id)}
-                                        className={`w-full flex items-center p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${asset.device_type === (type.ID || type.id) ? 'bg-purple-500/20 border-purple-500' : 'border-slate-700 bg-slate-800/50 hover:bg-purple-500/10 hover:border-purple-500/50'}`}
-                                    >
-                                        <div className="text-left flex-1">
-                                            <p className={`text-sm font-bold transition ${asset.device_type === (type.ID || type.id) ? 'text-purple-400' : 'text-white group-hover:text-purple-400'}`}>
-                                                {type.name}
-                                            </p>
-                                            <p className="text-[10px] text-slate-400 mt-0.5 italic line-clamp-1">
-                                                {type.description || 'Không có mô tả chi tiết'}
-                                            </p>
-                                        </div>
-                                        <div className="flex flex-col items-end justify-center ml-3 shrink-0">
-                                            <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase mb-0.5">
-                                                Risk Weight
-                                            </span>
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black font-mono border ${
-                                                (type.risk_weight || 1) >= 1.5 
-                                                    ? 'bg-red-500/10 text-red-400 border-red-500/30' 
-                                                    : (type.risk_weight || 1) > 1.0 
-                                                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' 
-                                                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                                            }`}>
-                                                x{Number(type.risk_weight || 1).toFixed(1)}
-                                            </span>
-                                        </div>
-                                    </button>
-                                ))
+                                assetTypes.map((type) => {
+                                    const targetId = type.ID || type.id;
+                                    const isActive = currentAssetTypeId === targetId;
+
+                                    return (
+                                        <button 
+                                            key={targetId}
+                                            disabled={isLoadingType}
+                                            onClick={() => handleChangeType(targetId)}
+                                            className={`w-full flex items-center p-4 rounded-2xl border transition group ${isLoadingType ? 'opacity-50 cursor-not-allowed' : ''} ${isActive ? 'bg-purple-500/20 border-purple-500' : 'border-slate-700 bg-slate-800/50 hover:bg-purple-500/10 hover:border-purple-500/50'}`}
+                                        >
+                                            <div className="text-left flex-1">
+                                                <p className={`text-sm font-bold transition ${isActive ? 'text-purple-400' : 'text-white group-hover:text-purple-400'}`}>
+                                                    {type.name}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 mt-0.5 italic line-clamp-1">
+                                                    {type.description || 'Không có mô tả chi tiết'}
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-col items-end justify-center ml-3 shrink-0">
+                                                <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase mb-0.5">Risk Weight</span>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-black font-mono border ${
+                                                    (type.risk_weight || 1) >= 2.0 
+                                                        ? 'bg-red-500/10 text-red-400 border-red-500/30' 
+                                                        : (type.risk_weight || 1) >= 1.5 
+                                                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' 
+                                                            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                                }`}>
+                                                    x{Number(type.risk_weight || 1).toFixed(1)}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    );
+                                })
                             ) : (
                                 <div className="text-center py-6 text-slate-500 text-[10px] font-bold uppercase tracking-widest border-2 border-dashed border-slate-800 rounded-lg">
                                     Không tìm thấy phân loại thiết bị
@@ -222,4 +225,4 @@ const handleDeleteasset = () => {
     );
 };
 
-export default assetActions;
+export default AssetsActions;

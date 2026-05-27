@@ -11,8 +11,8 @@ import (
 )
 
 func HandleCreateGroup(c *gin.Context) {
-	orgID, _ := c.Get("org_id")
-	userID, _ := c.Get("user_id")
+	orgID := c.GetUint("org_id")
+	userID := c.GetUint("user_id")
 
 	var req models.PolicyGroupPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -21,7 +21,7 @@ func HandleCreateGroup(c *gin.Context) {
 	}
 
 	var requester models.User
-	if err := database.DB.First(&requester, userID.(uint)).Error; err != nil {
+	if err := database.DB.First(&requester, userID).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không tồn tại"})
 		return
 	}
@@ -29,13 +29,13 @@ func HandleCreateGroup(c *gin.Context) {
 	svc := &groupService.GroupService{}
 
 	if requester.PermSystemConfig {
-		if err := svc.ServiceCreateGroupDirect(req, orgID.(uint), requester); err != nil {
+		if err := svc.ServiceCreateGroupDirect(req, orgID, requester); err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Phòng ban đã được tạo thành công!"})
 	} else {
-		if err := svc.ServiceCreateGroupRequest(req, orgID.(uint), requester); err != nil {
+		if err := svc.ServiceCreateGroupRequest(req, orgID, requester); err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 			return
 		}

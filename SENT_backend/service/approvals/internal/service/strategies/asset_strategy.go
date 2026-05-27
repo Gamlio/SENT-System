@@ -17,7 +17,7 @@ type AssetEnrollPayload struct {
 	AssetHWID    string `json:"asset_hwid"`
 	Hostname     string `json:"hostname"`
 	IPAddress    string `json:"ip_address"`
-	TentativeKey string `json:"tentative_key"` // <--- Thêm trường này để bóc tách từ JSON
+	TentativeKey string `json:"tentative_key"`
 }
 
 func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTicket) error {
@@ -26,14 +26,13 @@ func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 		return err
 	}
 
-	baselineEndTime := time.Now().Add(1 * time.Hour)
+	baselineEndTime := time.Now().Add(15 * time.Minute)
 
-	// Khi phê duyệt thành công, ghi nhận trạng thái ACTIVE và áp dụng chính thức Secret Key mới
 	result := tx.Model(&models.Asset{}).
 		Where("asset_hwid = ? AND org_id = ?", payload.AssetHWID, ticket.OrgID).
 		Updates(map[string]interface{}{
 			"status":         "ACTIVE",
-			"secret_key":     payload.TentativeKey, // <--- Cập nhật chính thức key tại đây
+			"secret_key":     payload.TentativeKey,
 			"approved_by":    ticket.ReviewedBy,
 			"last_seen":      time.Now(),
 			"baseline_until": baselineEndTime,
@@ -45,7 +44,7 @@ func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("không tìm thấy máy trạm PENDING với HWID %s để phê duyệt", payload.AssetHWID)
-		return fmt.Errorf("không tìm thấy máy trạm với HWID %s để phê duyệt", payload.AssetHWID)
+
 	}
 	return nil
 }
@@ -78,6 +77,12 @@ func (s *assetDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 		}).Error
 	if err != nil {
 		return err
+	}
+
+	err = tx.Where("asset_hwid = ? AND created_by = ?", snap.AssetHWID, "System_Baseline_Engine").
+		Delete(&models.Policy{}).Error
+	if err != nil {
+		return fmt.Errorf("lỗi dọn dẹp chính sách baseline của thiết bị: %w", err)
 	}
 
 	go func(hwid string, orgID uint) {
@@ -117,6 +122,13 @@ func (s *assetBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approval
 		}).Error
 	if err != nil {
 		return err
+	}
+
+	// Dọn dẹp các luật baseline của các máy bị xóa
+	err = tx.Where("asset_hwid IN ? AND created_by = ?", snap.AssetIDs, "System_Baseline_Engine").
+		Delete(&models.Policy{}).Error
+	if err != nil {
+		return fmt.Errorf("lỗi dọn dẹp chính sách baseline của thiết bị: %w", err)
 	}
 
 	go func(ids []string, orgID uint) {

@@ -44,21 +44,27 @@ const VersionCard = ({ software }) => {
 
             {/* Platform Downloads */}
             <div className="grid grid-cols-1 gap-2.5">
-                {platforms.map(p => (
-                    <a 
-                        key={p.key} 
-                        href={software.links?.[p.key] || "#"} 
-                        className={`flex items-center justify-between p-3 ${p.bg} border border-slate-800/50 rounded-xl hover:border-indigo-500/50 hover:bg-slate-800/80 transition-all group/btn`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg bg-slate-900 border border-slate-800 ${p.color}`}>
-                                {p.icon}
+                {platforms.map(p => {
+                    const fileUrl = software.links?.[p.key] || "#";
+                    const fileName = fileUrl.split('/').pop();
+
+                    return (
+                        <a 
+                            key={p.key} 
+                            href={fileUrl} 
+                            download={fileName}
+                            className={`flex items-center justify-between p-3 ${p.bg} border border-slate-800/50 rounded-xl hover:border-indigo-500/50 hover:bg-slate-800/80 transition-all group/btn`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg bg-slate-900 border border-slate-800 ${p.color}`}>
+                                    {p.icon}
+                                </div>
+                                <span className="text-xs font-black text-slate-300 group-hover/btn:text-white transition-colors">{p.name} Build</span>
                             </div>
-                            <span className="text-xs font-black text-slate-300 group-hover/btn:text-white transition-colors">{p.name} Build</span>
-                        </div>
-                        <Download size={16} className="text-slate-600 group-hover/btn:text-indigo-400 transform group-hover/btn:translate-y-0.5 transition-all"/>
-                    </a>
-                ))}
+                            <Download size={16} className="text-slate-600 group-hover/btn:text-indigo-400 transform group-hover/btn:translate-y-0.5 transition-all"/>
+                        </a>
+                    );
+                })}
             </div>
         </div>
     );

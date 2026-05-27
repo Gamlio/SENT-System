@@ -25,10 +25,11 @@ const TypeFormModal = ({ type, onSubmit, onClose }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSaving(true);
+        
+        // Tạo cấu trúc payload đồng bộ chuẩn hóa cho database.AssetType trên Backend
         await onSubmit({
-            id: type?.id,
-            name,
-            description,
+            name: name.trim(),
+            description: description.trim(),
             risk_weight: parseFloat(riskWeight),
         });
         setIsSaving(false);
@@ -36,8 +37,8 @@ const TypeFormModal = ({ type, onSubmit, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50">
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl w-full max-w-lg p-6 animate-fade-in-up">
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50 p-4">
+            <div className="bg-[#0A101D] border border-slate-800 rounded-xl w-full max-w-lg p-6">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-bold text-white">
                         {type ? 'Chỉnh sửa Phân loại Tài sản' : 'Tạo Phân loại Tài sản mới'}
@@ -103,7 +104,7 @@ const TypeFormModal = ({ type, onSubmit, onClose }) => {
                                     ))}
                                 </select>
                             </div>
-                             <p className="text-xs text-slate-500 mt-1">Hệ số này sẽ nhân trực tiếp vào điểm rủi ro cuối cùng của tài sản.</p>
+                             <p className="text-xs text-slate-500 mt-1">Hệ số này sẽ nhân trực tiếp vào điểm rủi ro cuối cùng của tài sản khi hệ thống tính toán điểm rủi ro.</p>
                         </div>
                     </div>
 

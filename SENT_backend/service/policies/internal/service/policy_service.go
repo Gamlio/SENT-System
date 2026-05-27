@@ -4,6 +4,7 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -124,21 +125,24 @@ func (s *PolicyService) BulkCreatePolicyRequest(rows []ExcelRow, orgID uint) (in
 func (s *PolicyService) GetEffectivePolicies(orgID uint, hwid string) ([]models.Policy, error) {
 	var asset models.Asset
 	if err := database.DB.Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("thiết bị không tồn tại: %w", err)
 	}
 
 	var effectivePolicies []models.Policy
 
-	// 1. Lấy Global Policies (GroupID IS NULL)
-	var globalPolicies []models.Policy
-	database.DB.Where("org_id = ? AND group_id IS NULL AND is_active = true AND approval_status = ?", orgID, "APPROVED").Find(&globalPolicies)
-	effectivePolicies = append(effectivePolicies, globalPolicies...)
+	// Xây dựng câu truy vấn gom cụm điều kiện tối ưu để tránh chia nhỏ câu lệnh SQL xuống database
+	query := database.DB.Where("org_id = ? AND is_active = ? AND approval_status = ?", orgID, true, "APPROVED")
 
-	// 2. Lấy Group Policies nếu máy trạm có thuộc nhóm nào đó
 	if asset.GroupID != nil {
-		var groupPolicies []models.Policy
-		database.DB.Where("org_id = ? AND group_id = ? AND is_active = true AND approval_status = ?", orgID, *asset.GroupID, "APPROVED").Find(&groupPolicies)
-		effectivePolicies = append(effectivePolicies, groupPolicies...)
+		// Tìm luật thỏa mãn: (Không gán nhóm + Không gán máy) HOẶC (Thuộc nhóm máy này) HOẶC (Thuộc riêng máy này)
+		query = query.Where("(group_id IS NULL AND asset_hwid = '') OR (group_id = ?) OR (asset_hwid = ?)", *asset.GroupID, hwid)
+	} else {
+		// Tìm luật thỏa mãn: (Không gán nhóm + Không gán máy) HOẶC (Thuộc riêng máy này)
+		query = query.Where("(group_id IS NULL AND asset_hwid = '') OR (asset_hwid = ?)", hwid)
+	}
+
+	if err := query.Order("created_at DESC").Find(&effectivePolicies).Error; err != nil {
+		return nil, fmt.Errorf("lỗi truy vấn luật hiệu dụng: %w", err)
 	}
 
 	return effectivePolicies, nil
@@ -212,39 +216,63 @@ func (s *PolicyService) BulkDeletePolicyRequest(ids []uint, orgID uint, creator 
 }
 
 // CheckPolicyViolation: Bộ lọc thông minh so khớp dữ liệu log với Policy (Whitelist/Blacklist)
+// [TỐI ƯU] Hàm được viết lại để truy vấn trực tiếp vào DB thay vì tải toàn bộ luật về xử lý.
 func (s *PolicyService) CheckPolicyViolation(orgID uint, hwid string, category string, value string) (bool, string, error) {
-	policies, err := s.GetEffectivePolicies(orgID, hwid)
-	if err != nil {
-		return false, "", err
+	// Lấy thông tin group của asset để xác định phạm vi luật
+	var asset models.Asset
+	if err := database.DB.Where("asset_hwid = ? AND org_id = ?", hwid, orgID).Select("group_id").First(&asset).Error; err != nil {
+		// Nếu không tìm thấy asset, không thể kiểm tra, coi như không vi phạm nhưng log lỗi
+		return false, "", fmt.Errorf("không thể kiểm tra vi phạm, không tìm thấy asset %s: %w", hwid, err)
 	}
 
-	hasWhitelist := false
-	inWhitelist := false
+	cleanValue := strings.ToLower(strings.TrimSpace(value))
+	cleanCategory := strings.ToUpper(category)
 
-	for _, p := range policies {
-		// Chỉ kiểm tra các policy cùng danh mục (VD: SOFTWARE, USB, NETWORK)
-		if p.Category != category {
-			continue
-		}
+	var matchingPolicy models.Policy
 
-		// So khớp giá trị (không phân biệt chữ hoa chữ thường)
-		match := strings.EqualFold(strings.TrimSpace(p.Value), strings.TrimSpace(value))
+	// === BƯỚC 1: Tối ưu truy vấn tìm kiếm một luật khớp chính xác với giá trị ===
+	query := database.DB.Where(
+		"org_id = ? AND is_active = ? AND approval_status = ? AND category = ? AND LOWER(value) = ?",
+		orgID, true, "APPROVED", cleanCategory, cleanValue,
+	)
 
-		if p.PolicyType == "BLACKLIST" && match {
-			return true, fmt.Sprintf("Phát hiện vi phạm Blacklist: %s", p.Title), nil
-		}
-
-		if p.PolicyType == "WHITELIST" {
-			hasWhitelist = true
-			if match {
-				inWhitelist = true
-			}
-		}
+	// Áp dụng phạm vi (Scope) của luật: (Toàn cục) HOẶC (Nhóm) HOẶC (Cá nhân)
+	if asset.GroupID != nil {
+		query = query.Where("(group_id IS NULL AND asset_hwid = '') OR (group_id = ?) OR (asset_hwid = ?)", *asset.GroupID, hwid)
+	} else {
+		query = query.Where("(group_id IS NULL AND asset_hwid = '') OR (asset_hwid = ?)", hwid)
 	}
 
-	// Nếu có áp dụng Whitelist cho danh mục này mà giá trị log không khớp -> Vi phạm
-	if hasWhitelist && !inWhitelist {
-		return true, fmt.Sprintf("Vi phạm Whitelist: [%s] không được phép hoạt động", value), nil
+	err := query.Select("id, title, policy_type").First(&matchingPolicy).Error
+
+	// Trường hợp 1: Tìm thấy một luật khớp chính xác (Whitelist hoặc Blacklist)
+	if err == nil {
+		if matchingPolicy.PolicyType == "BLACKLIST" {
+			return true, fmt.Sprintf("Phát hiện vi phạm Blacklist: %s", matchingPolicy.Title), nil
+		}
+		// Nếu khớp với một luật Whitelist -> Hợp lệ, không vi phạm.
+		return false, "", nil
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, "", fmt.Errorf("lỗi DB khi kiểm tra luật khớp chính xác: %w", err)
+	}
+
+	// === BƯỚC 2: Kiểm tra logic Zero Trust (nếu không có luật nào khớp chính xác) ===
+	var hasWhitelistPolicy models.Policy
+	whitelistCheckQuery := database.DB.Where(
+		"org_id = ? AND is_active = ? AND approval_status = ? AND category = ? AND policy_type = 'WHITELIST'",
+		orgID, true, "APPROVED", cleanCategory,
+	)
+
+	if asset.GroupID != nil {
+		whitelistCheckQuery = whitelistCheckQuery.Where("(group_id IS NULL AND asset_hwid = '') OR (group_id = ?) OR (asset_hwid = ?)", *asset.GroupID, hwid)
+	} else {
+		whitelistCheckQuery = whitelistCheckQuery.Where("(group_id IS NULL AND asset_hwid = '') OR (asset_hwid = ?)", hwid)
+	}
+
+	if err = whitelistCheckQuery.Select("id").First(&hasWhitelistPolicy).Error; err == nil {
+		return true, fmt.Sprintf("Vi phạm Whitelist: [%s] không được phép hoạt động (Zero Trust)", value), nil
 	}
 
 	return false, "", nil
@@ -254,30 +282,43 @@ func (s *PolicyService) SaveBaselineItems(orgID uint, hwid string, category stri
 		return nil
 	}
 
-	var items []models.WhitelistItem
+	// 1. Kiểm tra nhóm (GroupID) hiện tại của máy trạm để gán thừa kế (nếu có)
+	var asset models.Asset
+	if err := database.DB.Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error; err != nil {
+		return fmt.Errorf("không thể tìm thấy thông tin thiết bị để nạp baseline: %w", err)
+	}
+
+	var items []models.Policy
 	for _, val := range values {
-		if strings.TrimSpace(val) == "" {
+		cleanVal := strings.TrimSpace(val)
+		if cleanVal == "" {
 			continue
 		}
-		items = append(items, models.WhitelistItem{
-			OrgID:       orgID,
-			AssetHWID:   hwid,
-			Type:        category, // "SOFTWARE_HASH" hoặc "PORT"
-			Value:       val,
-			Description: "Tự động tạo từ Baseline (1h đầu)",
+
+		// Chuẩn hóa tiêu đề hiển thị trên UI cho SOC dễ quản lý
+		title := fmt.Sprintf("Baseline [%s]: %s", hwid, cleanVal)
+		if len(title) > 150 {
+			title = title[:147] + "..."
+		}
+
+		items = append(items, models.Policy{
+			OrgID:          orgID,
+			Title:          title,
+			Category:       strings.ToUpper(category), // Đồng bộ HOA để Agent map chuẩn O(1)
+			Value:          strings.ToLower(cleanVal), // Đồng bộ thường cho mã băm/tiến trình
+			PolicyType:     "WHITELIST",               // Baseline bản chất là danh sách trắng
+			ApprovalStatus: "APPROVED",                // Tự động phê duyệt vì là máy sạch ban đầu
+			IsActive:       true,
+			CreatedBy:      "System_Baseline_Engine",
+			ApprovedBy:     "System_Auto_Sign",
+			GroupID:        asset.GroupID, // Thừa kế nhóm để tối ưu phân vùng
+			AssetHWID:      hwid,          // Khóa định danh máy sở hữu luật
 		})
 	}
 
-	// [TỐI ƯU] Sử dụng OnConflict để tránh trùng lặp nếu máy trạm gửi log nhiều lần trong 1h
+	// 2. Sử dụng mệnh đề OnConflict của Postgres chống tràn bộ nhớ dữ liệu lặp
 	return database.DB.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "org_id"}, {Name: "asset_hw_id"}, {Name: "type"}, {Name: "value"}},
-		DoNothing: true,
+		Columns:   []clause.Column{{Name: "org_id"}, {Name: "category"}, {Name: "policy_type"}, {Name: "value"}, {Name: "asset_hwid"}},
+		DoNothing: true, // Nếu trùng bản ghi máy sạch cũ thì bỏ qua không ghi đè
 	}).CreateInBatches(items, 100).Error
-}
-
-// GetAssetWhitelist: Lấy danh sách whitelist riêng biệt của một máy trạm
-func (s *PolicyService) GetAssetWhitelist(orgID uint, hwid string) ([]models.WhitelistItem, error) {
-	var list []models.WhitelistItem
-	err := database.DB.Where("org_id = ? AND asset_hwid = ?", orgID, hwid).Find(&list).Error
-	return list, err
 }

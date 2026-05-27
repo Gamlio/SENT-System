@@ -12,7 +12,6 @@ import (
 )
 
 func main() {
-	// 1. Khởi tạo môi trường và hạ tầng
 	_ = godotenv.Load()
 	database.InitPostgres()
 
@@ -26,15 +25,18 @@ func main() {
 
 	groupsAPI := r.Group("/api/v1/groups")
 	groupsAPI.Use(middleware.AuthRequired())
-	groupsAPI.Use(middleware.RequirePermission("group_manage"))
 	{
 		groupsAPI.GET("", handlers.HandleGetGroups)
-		groupsAPI.POST("", handlers.HandleCreateGroup)
 		groupsAPI.GET("/:id", handlers.HandleGetGroupDetail)
-		groupsAPI.PUT("/:id", handlers.HandleUpdateGroup)
-		groupsAPI.DELETE("/:id", handlers.HandleDeleteGroup)
-	}
 
+		adminAPI := groupsAPI.Group("")
+		adminAPI.Use(middleware.RequirePermission("group_manage"))
+		{
+			adminAPI.POST("", handlers.HandleCreateGroup)
+			adminAPI.PUT("/:id", handlers.HandleUpdateGroup)
+			adminAPI.DELETE("/:id", handlers.HandleDeleteGroup)
+		}
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8000"

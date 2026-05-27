@@ -177,31 +177,6 @@ func ApprovePolicy(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Chính sách đã được kích hoạt"})
 }
-func GetAssetWhitelist(c *gin.Context) {
-	hwid := c.Param("hwid")
-	orgID := c.GetUint("org_id")
-
-	svc := &policyService.PolicyService{}
-	list, err := svc.GetAssetWhitelist(orgID, hwid)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi truy vấn Whitelist"})
-		return
-	}
-	c.JSON(http.StatusOK, list)
-}
-
-// RemoveWhitelistItem (GATE): Admin có thể xóa một mục trong Whitelist nếu thấy nó khả nghi
-func RemoveWhitelistItem(c *gin.Context) {
-	idStr := c.Param("item_id")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
-	orgID := c.GetUint("org_id")
-
-	if err := database.DB.Where("id = ? AND org_id = ?", uint(id), orgID).Delete(&models.WhitelistItem{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xóa mục whitelist"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa mục khỏi Whitelist"})
-}
 
 type CheckViolationRequest struct {
 	OrgID    uint   `json:"org_id" binding:"required"`
@@ -254,4 +229,47 @@ func InternalSaveBaseline(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"status": "success"})
+}
+
+type ClientSyncReq struct {
+	AssetHWID string `json:"asset_hwid" binding:"required"`
+	Version   int64  `json:"version"`
+}
+
+func DownloadAgentPolicies(c *gin.Context) {
+	var req ClientSyncReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "error": "Sai định dạng payload xác thực"})
+		return
+	}
+
+	orgID := c.GetUint("org_id")
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "Yêu cầu chưa được xác thực hoặc thiếu OrgID"})
+		return
+	}
+
+	svc := &policyService.PolicyService{}
+
+	policies, err := svc.GetEffectivePolicies(orgID, req.AssetHWID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "error": err.Error()})
+		return
+	}
+
+	var totalBytes int64
+	for _, p := range policies {
+		totalBytes += int64(p.ID) + p.UpdatedAt.Unix()
+	}
+
+	if req.Version == totalBytes && req.Version != 0 {
+		c.JSON(http.StatusOK, gin.H{"status": "not_modified", "version": totalBytes})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "success",
+		"version":  totalBytes,
+		"policies": policies,
+	})
 }

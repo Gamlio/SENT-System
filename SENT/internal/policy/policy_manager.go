@@ -61,25 +61,36 @@ func CheckPolicy(category string, value string) (isViolation bool, reason string
 	mu.RLock()
 	defer mu.RUnlock()
 
+	// -------------------------------------------------------------------------
+	// CHỐT CHẶN AN TOÀN (CIRCUIT BREAKER):
+	// Nếu bộ nhớ đệm cache hoàn toàn trống rỗng (Ví dụ: Mới bật máy, chưa kết nối mạng
+	// hoặc máy chủ đang sập nên chưa kéo được luật lần nào), lập tức cho qua (Mặc định không vi phạm).
+	// Điều này ngăn Agent "tự sát" hoặc khóa cứng toàn bộ các phần mềm nền của hệ điều hành.
+	// -------------------------------------------------------------------------
+	if len(optimizedCache) == 0 {
+		return false, ""
+	}
+
 	cat := strings.ToUpper(category)
-	val := strings.ToLower(value)
+	val := strings.ToLower(strings.TrimSpace(value))
 
 	values, exists := optimizedCache[cat]
 	if !exists {
+		// Nếu danh mục này (Ví dụ: USB, PORT) hoàn toàn không cấu hình luật gì trên SOC, mặc định an toàn.
 		return false, ""
 	}
 
-	// Tra cứu O(1) - Không lặp qua danh sách
+	// Thực hiện phép tra cứu bản đồ băm nhanh O(1)
 	pType, found := values[val]
 	if found {
 		if pType == "BLACKLIST" {
-			return true, "Phát hiện trong danh sách cấm"
+			return true, "Thiết bị/Hành vi nằm trong danh sách cấm của tổ chức (Blacklist)"
 		}
-		// Nếu là Whitelist thì trả về false (không vi phạm)
+		// Nếu tìm thấy trong luật Whitelist (Bao gồm cả cấu hình Baseline máy sạch đã đồng bộ về) -> Hợp lệ!
 		return false, ""
 	}
 
-	// Kiểm tra xem category này có áp dụng Whitelist không (Zero Trust)
+	// Kiểm tra xem danh mục (Category) này có áp dụng cơ chế Zero Trust (Có cấu hình Whitelist) hay không
 	hasWhitelist := false
 	for _, t := range values {
 		if t == "WHITELIST" {
@@ -88,10 +99,10 @@ func CheckPolicy(category string, value string) (isViolation bool, reason string
 		}
 	}
 
-	// SỬA TẠI ĐÂY: Nếu danh mục có whitelist mà item không tìm thấy (found == false)
-	// thì mặc định là vi phạm Zero Trust.
+	// Nếu SOC có cấu hình danh sách trắng (Whitelist) cho danh mục này, mà phần mềm/cổng mạng hiện tại
+	// không tìm thấy trong danh sách (found == false), chứng tỏ đây là một hành vi lạ/bất thường.
 	if hasWhitelist {
-		return true, "Không nằm trong Whitelist (Zero Trust)"
+		return true, "Hành vi bị từ chối do không đăng ký trong danh sách trắng (Zero Trust Violation)"
 	}
 
 	return false, ""

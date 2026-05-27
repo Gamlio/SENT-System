@@ -30,7 +30,7 @@ func GetAssets(c *gin.Context) {
 	status := c.Query("status")
 
 	svc := &assetSvc.AssetDataService{}
-	total, items := svc.GetAssetList(orgID, page, limit, search, status) // Đẩy search và status xuống service
+	total, items := svc.GetAssetList(orgID, page, limit, search, status)
 
 	c.JSON(http.StatusOK, gin.H{
 		"total": total,
@@ -40,10 +40,9 @@ func GetAssets(c *gin.Context) {
 	})
 }
 
-// GetAssetDetail (GATE) - Đổi GetassetDetail -> GetAssetDetail
 func GetAssetDetail(c *gin.Context) {
 	hwid := c.Param("hwid")
-	// [SECURITY] Lấy orgID từ context để đảm bảo đúng phạm vi truy cập
+
 	orgID := c.GetUint("org_id")
 	svc := &assetSvc.AssetDataService{}
 	asset, err := svc.GetAssetDetail(hwid, orgID)
@@ -199,4 +198,37 @@ func triggerRiskRecalculation(hwid string) {
 			resp.Body.Close()
 		}
 	}(hwid)
+}
+func UpdateAssetGroup(c *gin.Context) {
+	hwid := c.Param("hwid")
+	orgID := c.GetUint("org_id")
+
+	var req struct {
+		GroupID *uint `json:"group_id"` // Dùng con trỏ để hỗ trợ gán null (Global Policy)
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu group_id không hợp lệ."})
+		return
+	}
+
+	// Nếu gán vào nhóm cụ thể, kiểm tra xem nhóm đó có tồn tại thuộc Org không
+	if req.GroupID != nil {
+		var group models.PolicyGroup
+		if err := database.DB.Where("id = ? AND org_id = ?", *req.GroupID, orgID).First(&group).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Nhóm chính sách không tồn tại hoặc không thuộc tổ chức của bạn."})
+			return
+		}
+	}
+
+	errUpdate := database.DB.Model(&models.Asset{}).
+		Where("asset_hwid = ? AND org_id = ?", hwid, orgID).
+		Update("group_id", req.GroupID).Error
+
+	if errUpdate != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi hệ thống khi cập nhật nhóm tài sản."})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Thay đổi nhóm chính sách của tài sản thành công."})
 }

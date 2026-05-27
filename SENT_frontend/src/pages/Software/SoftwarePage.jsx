@@ -8,7 +8,6 @@ const VersionsPage = () => {
 
     const softwares = [
         {
-            tag: "v4.2.5",
             is_latest: true,
             release_note: "Bản build ổn định hệ thống phân phối nội bộ SENT Agent.",
             release_date: "2026-05-23",

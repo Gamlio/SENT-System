@@ -4,54 +4,35 @@ import { Activity, ShieldAlert, Crosshair } from 'lucide-react';
 import { useSocketSubscription } from '../../../context/useSocketSubscription';
 
 const DashboardCharts = ({ stats }) => {
-    
-    // 1. TẠO STATE RIÊNG CHO BIỂU ĐỒ ĐỂ NÓ CÓ THỂ "SỐNG"
     const [liveTrendData, setLiveTrendData] = useState([]);
     const [liveTotalAlerts, setLiveTotalAlerts] = useState(0);
 
-    // Khởi tạo data ban đầu từ API (chỉ chạy 1 lần khi load)
     useEffect(() => {
-        if (stats) {
-            // Giả lập data 7 ngày như cũ
-            const data = [];
-            const baseAlerts = Math.floor(stats.summary.total_alerts / 7) || 10;
-            for (let i = 6; i >= 0; i--) {
-                const d = new Date();
-                d.setDate(d.getDate() - i);
-                data.push({
-                    time: `${d.getDate()}/${d.getMonth()+1}`,
-                    alerts: Math.abs(baseAlerts + Math.floor(Math.random() * 20) - 10),
-                    incidents: Math.floor(Math.random() * 5)
-                });
-            }
-            setLiveTrendData(data);
-            setLiveTotalAlerts(stats.summary.total_alerts);
+        if (stats && stats.summary) {
+            setLiveTrendData(stats.summary.threat_trends || []);
+            setLiveTotalAlerts(stats.summary.total_alerts || 0);
         }
     }, [stats]);
 
-    // 2. LẮNG NGHE SOCKET THỜI GIAN THỰC (TRUE REAL-TIME)
     useSocketSubscription('NEW_ALERT_TICK', (payload) => {
-        console.log("🔥 Live Alert Nhận Được:", payload);
+        console.log("🔥 Live Alert Nhận Được từ Socket:", payload);
         
-        // Cập nhật số tổng ngay lập tức
         setLiveTotalAlerts(prev => prev + 1);
 
-        // Bơm data mới vào biểu đồ (Làm cột ngày hôm nay tăng lên 1)
         setLiveTrendData(prevData => {
             const newData = [...prevData];
             if (newData.length > 0) {
-                // Lấy cột cuối cùng (Hôm nay) và +1 vào chỉ số alerts
                 const lastIndex = newData.length - 1;
                 newData[lastIndex] = {
                     ...newData[lastIndex],
-                    alerts: newData[lastIndex].alerts + 1
+                    alerts: (newData[lastIndex].alerts || 0) + 1
                 };
             }
             return newData;
         });
     });
 
-    // 1. DỮ LIỆU CHO PIE CHART (Alerts By Severity)
+    // 3. DỮ LIỆU CHO PIE CHART (Giữ nguyên)
     const severityData = useMemo(() => {
         const raw = stats.summary.alerts_by_severity || {};
         const mapColor = { 'Critical': '#ef4444', 'High': '#f97316', 'Medium': '#eab308', 'Low': '#3b82f6' };
@@ -62,23 +43,7 @@ const DashboardCharts = ({ stats }) => {
         })).filter(d => d.value > 0);
     }, [stats]);
 
-    // 2. DỮ LIỆU GIẢ LẬP TREND (Do API hiện chỉ trả Snapshot, ta tạo Data mẫu minh họa sự biến thiên)
-    const trendData = useMemo(() => {
-        const data = [];
-        const baseAlerts = Math.floor(stats.summary.total_alerts / 7) || 10;
-        for (let i = 6; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            data.push({
-                time: `${d.getDate()}/${d.getMonth()+1}`,
-                alerts: Math.abs(baseAlerts + Math.floor(Math.random() * 20) - 10),
-                incidents: Math.floor(Math.random() * 5)
-            });
-        }
-        return data;
-    }, [stats]);
-
-    // 3. RADAR DATA: So sánh các Vector bảo mật
+    // 4. RADAR DATA: So sánh các Vector bảo mật (Giữ nguyên)
     const radarData = useMemo(() => [
         { subject: 'Zero Trust', A: stats.posture.zero_trust_health, fullMark: 100 },
         { subject: 'Trust Score', A: stats.summary.average_trust_score, fullMark: 100 },
@@ -105,10 +70,8 @@ const DashboardCharts = ({ stats }) => {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-72">
-            
-            {/* AREA CHART: DETECTION TRENDS (BÂY GIỜ ĐÃ LÀ LIVE) */}
+            {/* AREA CHART: DETECTION TRENDS (BÂY GIỜ ĐÃ LÀ SỐ LIỆU THẬT) */}
             <div className="bg-[#0A101D] border border-slate-800 rounded-xl shadow-lg p-4 flex flex-col relative overflow-hidden">
-                {/* Hiệu ứng chớp nháy khi có data mới */}
                 <div key={liveTotalAlerts} className="absolute inset-0 bg-red-500/10 pointer-events-none animate-fade-out opacity-0"></div>
                 
                 <div className="flex items-center gap-2 mb-4 shrink-0">
@@ -130,15 +93,13 @@ const DashboardCharts = ({ stats }) => {
                             <XAxis dataKey="time" stroke="#334155" fontSize={9} tickLine={false} axisLine={false} />
                             <YAxis stroke="#334155" fontSize={9} tickLine={false} axisLine={false} />
                             <Tooltip content={<CustomTooltip />} />
-                            
-                            {/* Chú ý: Đổi isAnimationActive thành true để nó trượt mượt mà */}
                             <Area isAnimationActive={true} type="monotone" dataKey="alerts" stroke="#f97316" strokeWidth={2} fill="url(#colorAlerts)" />
                         </AreaChart>
                     </ResponsiveContainer>
                 </div>
             </div>
 
-            {/* DONUT CHART: SEVERITY BREAKDOWN */}
+            {/* DONUT CHART: SEVERITY BREAKDOWN (Giữ nguyên) */}
             <div className="bg-[#0A101D] border border-slate-800 rounded-xl shadow-lg p-4 flex flex-col items-center">
                 <div className="flex items-center gap-2 mb-2 w-full shrink-0">
                     <ShieldAlert size={14} className="text-orange-500"/>
@@ -160,7 +121,7 @@ const DashboardCharts = ({ stats }) => {
                 </div>
             </div>
 
-            {/* RADAR CHART: SECURITY POSTURE */}
+            {/* RADAR CHART: SECURITY POSTURE (Giữ nguyên) */}
             <div className="bg-[#0A101D] border border-slate-800 rounded-xl shadow-lg p-4 flex flex-col">
                 <div className="flex items-center gap-2 mb-2 shrink-0">
                     <Crosshair size={14} className="text-emerald-500"/>
@@ -177,7 +138,6 @@ const DashboardCharts = ({ stats }) => {
                     </ResponsiveContainer>
                 </div>
             </div>
-
         </div>
     );
 };

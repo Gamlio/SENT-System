@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layers, Edit3, ShieldAlert, Info, ArrowLeft } from 'lucide-react';
+import { Layers, Edit3, ShieldAlert, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAssetTypes } from './hooks/useAssetTypes';
 import TypeFormModal from './components/TypeFormModal';
@@ -37,30 +37,33 @@ const AssetTypeManagement = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {types.map((type) => (
-                    <div key={type.id} className="bg-[#0A101D] border border-slate-800 rounded-2xl p-5 hover:border-indigo-500/50 transition-all group relative overflow-hidden">
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="p-3 bg-indigo-500/10 rounded-xl border border-indigo-500/20 text-indigo-400">
-                                {/* Render Icon động dựa trên type.icon */}
-                                <ShieldAlert size={24}/>
+                {types.map((type) => {
+                    const typeId = type.ID || type.id; // Chốt chặn bảo mật mapping ID vững chắc
+                    return (
+                        <div key={typeId} className="bg-[#0A101D] border border-slate-800 rounded-2xl p-5 hover:border-indigo-500/50 transition-all group relative overflow-hidden">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="p-3 bg-indigo-500/10 rounded-xl border border-indigo-500/20 text-indigo-400">
+                                    {/* Render Icon động dựa trên type.icon */}
+                                    <ShieldAlert size={24}/>
+                                </div>
+                                <button 
+                                    onClick={() => { setSelectedType(type); setShowModal(true); }}
+                                    className="p-2 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-white transition"
+                                >
+                                    <Edit3 size={16}/>
+                                </button>
                             </div>
-                            <button 
-                                onClick={() => { setSelectedType(type); setShowModal(true); }}
-                                className="p-2 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-white transition"
-                            >
-                                <Edit3 size={16}/>
-                            </button>
-                        </div>
 
-                        <h3 className="font-black text-white uppercase tracking-tight text-lg">{type.name}</h3>
-                        <p className="text-xs text-slate-500 mb-4 line-clamp-2">{type.description || 'Chưa có mô tả'}</p>
-                        
-                        <div className="flex items-center justify-between border-t border-slate-800 pt-4">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hệ số rủi ro</span>
-                            <span className="text-xl font-mono font-black text-indigo-400">x{type.risk_weight}</span>
+                            <h3 className="font-black text-white uppercase tracking-tight text-lg">{type.name}</h3>
+                            <p className="text-xs text-slate-500 mb-4 line-clamp-2">{type.description || 'Chưa có mô tả'}</p>
+                            
+                            <div className="flex items-center justify-between border-t border-slate-800 pt-4">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hệ số rủi ro</span>
+                                <span className="text-xl font-mono font-black text-indigo-400">x{Number(type.risk_weight || 1).toFixed(1)}</span>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {showModal && (
@@ -68,8 +71,9 @@ const AssetTypeManagement = () => {
                     type={selectedType} 
                     onClose={() => setShowModal(false)} 
                     onSubmit={async (data) => {
+                        const targetId = selectedType?.ID || selectedType?.id;
                         const res = selectedType 
-                            ? await updateType(selectedType.id, data) 
+                            ? await updateType(targetId, data) 
                             : await createType(data);
                         if (res.success) setShowModal(false);
                     }}

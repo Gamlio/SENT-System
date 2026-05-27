@@ -1,7 +1,6 @@
 package main
 
 import (
-	"SENT_backend/pkg/cache"
 	"SENT_backend/pkg/middleware"
 	"SENT_backend/pkg/models/database"
 	handlers "SENT_backend/service/assets/internal/handlers"
@@ -17,11 +16,6 @@ func main() {
 	database.InitPostgres()
 	database.InitMongoDB()
 	database.InitRedis()
-	cache.InitRedis(
-		os.Getenv("REDIS_HOST")+":"+os.Getenv("REDIS_PORT"),
-		os.Getenv("REDIS_PASSWORD"),
-		0,
-	)
 
 	r := gin.Default()
 
@@ -54,7 +48,7 @@ func main() {
 			admin.PUT("/:hwid/type", middleware.RequirePermission("asset_move"), handlers.UpdateDeviceType)
 			admin.POST("/:hwid/request-delete", middleware.RequirePermission("asset_delete"), handlers.RequestDeleteAsset)
 			admin.DELETE("/:hwid", middleware.RequirePermission("asset_delete"), handlers.RequestDeleteAsset)
-
+			admin.PUT("/:hwid/group", middleware.RequirePermission("asset_move"), handlers.UpdateAssetGroup)
 			admin.PUT("/types/:id", middleware.RequirePermission("system_config"), handlers.UpdateAssetType)
 			admin.POST("/types", middleware.RequirePermission("system_config"), handlers.CreateAssetType)
 		}

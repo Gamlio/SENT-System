@@ -20,8 +20,8 @@ type AssetPayload struct {
 }
 
 func ProcessassetData(payload AssetPayload) error {
-	// [TỐI ƯU HIỆU NĂNG] Giảm tải (Hammering) cho Postgres bằng cách CHỈ cập nhật last_seen
-	// khi nhận gói HEARTBEAT (chu kỳ 30s-1p/lần), bỏ qua việc update cho mỗi gói DATA gửi lên.
+
+	// [TỐI ƯU HIỆU NĂNG] Giảm tải gõ búa (Hammering) cho Postgres bằng cách CHỈ cập nhật last_seen cho gói HEARTBEAT
 	if payload.Type == "HEARTBEAT" {
 		return database.DB.Model(&models.Asset{}).Where("asset_hwid = ?", payload.AssetID).
 			Update("last_seen", time.Now()).Error
@@ -32,18 +32,15 @@ func ProcessassetData(payload AssetPayload) error {
 		return fmt.Errorf("không tìm thấy thiết bị: %w", err)
 	}
 
-	// [CHỐT CHẶN BẢO MẬT]: Từ chối xử lý log nếu máy chưa được duyệt
+	// [CHỐT CHẶN BẢO MẬT]: Từ chối xử lý log nếu máy chưa được duyệt kích hoạt chính thức
 	if asset.Status != "ACTIVE" {
 		return fmt.Errorf("thiết bị chưa được phê duyệt hoạt động (Status: %s)", asset.Status)
 	}
 
-	// THÊM: Xử lý bóc tách cho các gói gộp batch_
+	// 1. LUỒNG XỬ LÝ GÓI TIN GỘP BATCH TỪ AGENT (Định kỳ đẩy lên SOC)
 	if strings.HasPrefix(payload.LogType, "batch_") {
 		var batch map[string]json.RawMessage
 
-		// Xử lý an toàn Data thô (RawMessage/Bytes) thành map các RawMessage con.
-		// Việc này giúp truyền chính xác Mảng (Array) hoặc Đối tượng (Object) con vào hàm Process
-		// mà không bị dính phím cha, đồng thời loại bỏ nguy cơ Double-Marshal làm vỡ chuỗi JSON.
 		switch v := payload.Data.(type) {
 		case json.RawMessage:
 			if err := json.Unmarshal(v, &batch); err != nil {
@@ -54,15 +51,52 @@ func ProcessassetData(payload AssetPayload) error {
 				return fmt.Errorf("lỗi giải mã batch từ []byte: %w", err)
 			}
 		default:
-			// Fallback trong trường hợp là map[string]interface{}
+			// Fallback trong trường hợp dữ liệu là map[string]interface{}
 			bytes, _ := json.Marshal(payload.Data)
 			if err := json.Unmarshal(bytes, &batch); err != nil {
 				return fmt.Errorf("lỗi giải mã batch từ cấu trúc object: %w", err)
 			}
 		}
 
-		// Phân phối dữ liệu vào các hàm chuyên biệt hiện có
+		// Duyệt qua từng module thành phần trong gói gộp batch dữ liệu gửi về từ Agent
 		for modName, modData := range batch {
+
+			// [ĐỒNG BỘ BASELINE]: Kiểm tra xem máy có đang nằm trong 15 phút cấu hình máy sạch ban đầu hay không
+			if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
+
+				// Chỉ nạp Baseline tự động cho 3 danh mục chính sách tĩnh của Zero Trust Engine
+				if modName == "software" || modName == "port" || modName == "usb" {
+					var rawValues []map[string]interface{}
+					var valuesToBaseline []string
+
+					// Giải mã an toàn mảng dữ liệu telemetry thô để trích xuất Value hoặc Hash
+					if err := json.Unmarshal(modData, &rawValues); err == nil {
+						for _, item := range rawValues {
+							if modName == "software" && item["file_hash"] != nil {
+								valuesToBaseline = append(valuesToBaseline, fmt.Sprintf("%v", item["file_hash"]))
+							} else if modName == "port" && item["port"] != nil {
+								valuesToBaseline = append(valuesToBaseline, fmt.Sprintf("%v", item["port"]))
+							} else if modName == "usb" && item["device_hash"] != nil {
+								valuesToBaseline = append(valuesToBaseline, fmt.Sprintf("%v", item["device_hash"]))
+							}
+						}
+
+						// Đẩy bất đồng bộ (Async Goroutine) sang Policy Service, tránh block luồng xử lý log chính
+						if len(valuesToBaseline) > 0 {
+							// Đồng bộ HOA tên Category (SOFTWARE_HASH, PORT, USB_DEVICE) tương thích với DB
+							categoryType := strings.ToUpper(modName)
+							if modName == "software" {
+								categoryType = "SOFTWARE_HASH"
+							} else if modName == "usb" {
+								categoryType = "USB_DEVICE"
+							}
+							go dataassets.SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, categoryType, valuesToBaseline)
+						}
+					}
+				}
+			}
+
+			// Phân luồng xuống các module phân tích dữ liệu chuyên trách hiện có
 			switch modName {
 			case "software":
 				if err := dataassets.ProcessSoftware(asset, modData); err != nil {
@@ -98,10 +132,10 @@ func ProcessassetData(payload AssetPayload) error {
 				}
 			}
 		}
-		return nil // Xử lý xong batch thì thoát hàm
+		return nil // Hoàn tất xử lý trọn vẹn gói tin gộp batch
 	}
 
-	// 2. PHÂN LUỒNG XUỐNG CÁC MODULE CHUYÊN TRÁCH
+	// 2. LUỒNG PHÂN LUỒNG CHO CÁC GÓI TIN ĐƠN LẺ KHÔNG QUA BATCH (Log đẩy trực tiếp khẩn cấp)
 	switch payload.LogType {
 	case "software":
 		if err := dataassets.ProcessSoftware(asset, payload.Data); err != nil {
@@ -137,7 +171,7 @@ func ProcessassetData(payload AssetPayload) error {
 		}
 	}
 
-	// Frontend assetDetail.jsx sẽ nhận tin này và tự fetchDetail() lại
+	// Phát tín hiệu WebSocket Real-time cập nhật trạng thái ra màn hình Dashboard của Web Admin
 	websocket.GlobalHub.BroadcastToOrg(asset.OrgID, map[string]interface{}{
 		"type": "ASSET_UPDATE",
 		"hwid": payload.AssetID,

@@ -12,7 +12,6 @@ import (
 )
 
 func main() {
-
 	_ = godotenv.Load()
 	database.InitPostgres()
 	database.InitMongoDB()
@@ -27,26 +26,28 @@ func main() {
 
 	policyAPI := r.Group("/api/v1/policies")
 	{
+		// 1. CỔNG DÀNH RIÊNG CHO AGENT (KIỂM TRA CHỮ KÝ HMAC - BẢO MẬT TUYỆT ĐỐI)
 		policyAPI.POST("/internal/baseline", handlers.InternalSaveBaseline)
 		policyAPI.POST("/internal/check-violation", handlers.CheckPolicyViolation)
-		policyAPI.Use(middleware.AuthRequired())
+
+		// Tuyến đường xử lý kéo luật thời gian thực cho Agent (Sửa lỗi dứt điểm HTTP 404)
+		policyAPI.POST("/download", middleware.AssetHMACAuth(), handlers.DownloadAgentPolicies)
+
+		// 2. CỔNG QUẢN TRỊ DÀNH CHO WEB ADMIN (XÁC THỰC SESSION / JWT TOKEN)
+		adminAPI := policyAPI.Group("")
+		adminAPI.Use(middleware.AuthRequired())
 		{
 			viewPerm := middleware.RequirePermission("policy_view")
-			policyAPI.GET("", viewPerm, handlers.GetPolicies)
-			policyAPI.GET("/:id", viewPerm, handlers.GetPolicyDetail)
+			adminAPI.GET("", viewPerm, handlers.GetPolicies)
+			adminAPI.GET("/:id", viewPerm, handlers.GetPolicyDetail)
 
 			managePerm := middleware.RequirePermission("policy_manage")
-			policyAPI.POST("", managePerm, handlers.CreatePolicy)
-			policyAPI.PUT("/:id", managePerm, handlers.UpdatePolicy)
-			policyAPI.POST("/bulk-delete", managePerm, handlers.BulkDeletePolicy)
-			policyAPI.DELETE("/:id", managePerm, handlers.DeletePolicy)
+			adminAPI.POST("", managePerm, handlers.CreatePolicy)
+			adminAPI.PUT("/:id", managePerm, handlers.UpdatePolicy)
+			adminAPI.POST("/bulk-delete", managePerm, handlers.BulkDeletePolicy)
+			adminAPI.DELETE("/:id", managePerm, handlers.DeletePolicy)
 
-			policyAPI.PUT("/:id/approve", middleware.RequirePermission("approval_final"), handlers.ApprovePolicy)
-			whitelist := policyAPI.Group("/whitelist")
-			{
-				whitelist.GET("/:hwid", viewPerm, handlers.GetAssetWhitelist)
-				whitelist.DELETE("/item/:item_id", managePerm, handlers.RemoveWhitelistItem)
-			}
+			adminAPI.PUT("/:id/approve", middleware.RequirePermission("approval_final"), handlers.ApprovePolicy)
 		}
 	}
 
