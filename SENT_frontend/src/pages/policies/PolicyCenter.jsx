@@ -52,7 +52,14 @@ const PolicyCenter = () => {
 
             // --- TAB PHẦN MỀM ---
             if (activeTab === 'software') {
-                return cat === 'SOFTWARE' || val.endsWith('.EXE') || val.endsWith('.MSI');
+                return [
+                    'SOFTWARE',
+                    'SOFTWARE_HASH',
+                    'PROCESS',
+                    'PUBLISHER',
+                    'APPLICATION',
+                    'EXECUTABLE'
+                ].includes(cat) || val.endsWith('.EXE') || val.endsWith('.MSI');
             }
 
             // --- TAB MẠNG ---

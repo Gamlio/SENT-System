@@ -14,6 +14,7 @@ func main() {
 
 	_ = godotenv.Load()
 	database.InitPostgres()
+	database.Migrate()
 	database.InitMongoDB()
 	database.InitRedis()
 

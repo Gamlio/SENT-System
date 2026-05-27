@@ -103,7 +103,7 @@ func (s *AssetDataService) GetAssetList(orgID uint, page int, limit int, search 
 
 	// 3. Tính toán Offset và Truy vấn với Order By (Sắp xếp thiết bị hoạt động gần nhất lên đầu)
 	offset := (page - 1) * limit
-	query.Preload("Manager").Order("last_seen DESC").Limit(limit).Offset(offset).Find(&assets)
+	query.Preload("Manager").Preload("Group").Order("last_seen DESC").Limit(limit).Offset(offset).Find(&assets)
 
 	var result []map[string]interface{}
 	threshold := time.Now().Add(-2 * time.Minute)
@@ -138,6 +138,13 @@ func (s *AssetDataService) GetAssetList(orgID uint, page int, limit int, search 
 				"full_name": a.Manager.FullName,
 			}
 		}
+		// Thêm thông tin nhóm nếu có
+		if a.Group != nil {
+			res["group"] = map[string]interface{}{"id": a.GroupID, "name": a.Group.Name}
+		} else {
+			res["group"] = nil
+		}
+
 		result = append(result, res)
 	}
 	return total, result
@@ -147,7 +154,7 @@ func (s *AssetDataService) GetAssetList(orgID uint, page int, limit int, search 
 func (s *AssetDataService) GetAssetDetail(hwid string, orgID uint) (models.Asset, error) {
 	var asset models.Asset
 	// [SECURITY] Bổ sung org_id để tránh IDOR
-	err := database.DB.Preload("Manager").Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error
+	err := database.DB.Preload("Manager").Preload("Group").Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error
 	if err != nil {
 		return asset, err
 	}

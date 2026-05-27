@@ -3,8 +3,11 @@ import { ShieldCheck, Globe, Laptop, List, Usb, Clock, Users } from 'lucide-reac
 import { StatCard } from './PolicyShared';
 
 const PolicyOverview = ({ policies }) => {
-    // Đã xóa dòng tính toán usbCount thừa
-    const softwareCount = policies.filter(p => p.category === 'SOFTWARE').length;
+    // Đếm các chính sách phần mềm bao gồm cả hash/publisher/process phù hợp với whitelist/blacklist software
+    const softwareCount = policies.filter(p => {
+        const cat = (p.category || '').toUpperCase().trim();
+        return ['SOFTWARE', 'SOFTWARE_HASH', 'PROCESS', 'PUBLISHER', 'APPLICATION', 'EXECUTABLE'].includes(cat);
+    }).length;
     const globalCount = policies.filter(p => p.target_type === 'GLOBAL').length;
     const specificCount = policies.filter(p => p.target_type === 'SPECIFIC').length;
 
