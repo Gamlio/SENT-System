@@ -103,15 +103,25 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 		return fmt.Errorf("không tìm thấy tài liệu")
 	}
 
+	oldDoc := doc // Preserve old values for rollback
 	return database.DB.Transaction(func(tx *gorm.DB) error {
-		// Nếu có file mới đi kèm, thực hiện ghi đè và dọn dẹp file cũ
+		snapshot := map[string]interface{}{
+			"action":            "update_content_or_file",
+			"old_title":         oldDoc.Title,
+			"old_category":      oldDoc.Category,
+			"old_file_name":     oldDoc.FileName,
+			"old_file_path":     oldDoc.FilePath,
+			"old_original_name": oldDoc.OriginalName,
+			"old_display_pdf":   oldDoc.DisplayPdfPath,
+			"new_title":         title,
+			"new_category":      category,
+		}
+
 		if file != nil {
 			ext := strings.ToLower(filepath.Ext(fileName))
 			if ext != ".doc" && ext != ".docx" {
 				return fmt.Errorf("hệ thống chỉ chấp nhận định dạng Microsoft Word (.doc, .docx)")
 			}
-
-			os.Remove(doc.FilePath) // Xóa file cũ
 
 			uploadDir := filepath.Join("uploads", "documents")
 			pdfDir := filepath.Join("uploads", "pdf_previews")
@@ -126,7 +136,9 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 				return err
 			}
 			defer out.Close()
-			io.Copy(out, file)
+			if _, err := io.Copy(out, file); err != nil {
+				return err
+			}
 
 			displayPdfName := strings.TrimSuffix(safeFileName, ext) + ".pdf"
 			displayPdfPath := filepath.ToSlash(filepath.Join(pdfDir, displayPdfName))
@@ -137,6 +149,10 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 			doc.FilePath = filepath.ToSlash(filePath)
 			doc.OriginalName = fileName
 			doc.DisplayPdfPath = displayPdfPath
+			snapshot["new_file_name"] = safeFileName
+			snapshot["new_file_path"] = filepath.ToSlash(filePath)
+			snapshot["new_original_name"] = fileName
+			snapshot["new_display_pdf"] = displayPdfPath
 		}
 
 		doc.Title = title
@@ -148,7 +164,9 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 			return err
 		}
 
-		// Tạo vé duyệt cho bản cập nhật
+		snapshot["doc_id"] = doc.ID
+		snapshotBytes, _ := json.Marshal(snapshot)
+
 		ticket := models.ApprovalTicket{
 			OrgID:         orgID,
 			ModuleType:    "DOCUMENT_UPLOAD",
@@ -158,7 +176,7 @@ func (s *DocumentService) CreateUpdateRequest(docID uint, orgID uint, title, cat
 			Status:        "PENDING",
 			RequestedBy:   requester,
 			RequestReason: reason,
-			SnapshotData:  `{"action": "update_content_or_file"}`,
+			SnapshotData:  string(snapshotBytes),
 		}
 		return tx.Create(&ticket).Error
 	})

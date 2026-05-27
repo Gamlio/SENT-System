@@ -27,7 +27,7 @@ const AssetsBulkActions = ({
     const handleConfirmBulkDelete = async (reason) => {
         setIsBulkDeleteModalOpen(false);
         try {
-            await axios.post('/assets/bulk-request-delete', {
+            await axios.post('/assets/bulk-delete', {
                 hwids: selectedassets,
                 reason: reason 
             });

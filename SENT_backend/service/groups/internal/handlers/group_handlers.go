@@ -14,9 +14,19 @@ func HandleCreateGroup(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 	userID := c.GetUint("user_id")
 
+	// Validate context values
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được để trống"})
+		return
+	}
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "UserID không được để trống"})
+		return
+	}
+
 	var req models.PolicyGroupPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ. Vui lòng kiểm tra: name (3-100 ký tự), description (tùy chọn, max 500 ký tự). Chi tiết: " + err.Error()})
 		return
 	}
 
@@ -44,7 +54,17 @@ func HandleCreateGroup(c *gin.Context) {
 }
 
 func HandleGetGroups(c *gin.Context) {
-	orgID, _ := c.Get("org_id")
+	orgIDVal, exists := c.Get("org_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+
+	orgID, ok := orgIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không hợp lệ"})
+		return
+	}
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
@@ -73,8 +93,21 @@ func HandleGetGroups(c *gin.Context) {
 }
 
 func HandleUpdateGroup(c *gin.Context) {
-	orgID, _ := c.Get("org_id")
-	userID, _ := c.Get("user_id")
+	orgIDVal, _ := c.Get("org_id")
+	userIDVal, _ := c.Get("user_id")
+
+	orgID, ok := orgIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không hợp lệ"})
+		return
+	}
+
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "UserID không hợp lệ"})
+		return
+	}
+
 	groupIDStr := c.Param("id")
 	groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
 	if err != nil {
@@ -84,18 +117,18 @@ func HandleUpdateGroup(c *gin.Context) {
 
 	var req models.PolicyGroupPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ. Vui lòng kiểm tra: name (3-100 ký tự), description (tùy chọn, max 500 ký tự). Chi tiết: " + err.Error()})
 		return
 	}
 
 	var requester models.User
-	if err := database.DB.First(&requester, userID.(uint)).Error; err != nil {
+	if err := database.DB.First(&requester, userID).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không tồn tại"})
 		return
 	}
 
 	svc := &groupService.GroupService{}
-	if err := svc.ServiceUpdateGroupDirect(uint(groupID), req, orgID.(uint), requester); err != nil {
+	if err := svc.ServiceUpdateGroupDirect(uint(groupID), req, orgID, requester); err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
@@ -104,10 +137,27 @@ func HandleUpdateGroup(c *gin.Context) {
 }
 
 func HandleDeleteGroup(c *gin.Context) {
-	orgID, _ := c.Get("org_id")
-	userID, _ := c.Get("user_id")
+	orgIDVal, _ := c.Get("org_id")
+	userIDVal, _ := c.Get("user_id")
+	
+	orgID, ok := orgIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không hợp lệ"})
+		return
+	}
+	
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "UserID không hợp lệ"})
+		return
+	}
+	
 	groupIDStr := c.Param("id")
-	groupID, _ := strconv.ParseUint(groupIDStr, 10, 32)
+	groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID nhóm không hợp lệ"})
+		return
+	}
 
 	var body struct {
 		Reason string `json:"reason" binding:"required"`
@@ -118,21 +168,34 @@ func HandleDeleteGroup(c *gin.Context) {
 	}
 
 	var requester models.User
-	database.DB.First(&requester, userID.(uint))
+	if err := database.DB.First(&requester, userID).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không tồn tại"})
+		return
+	}
 
 	svc := &groupService.GroupService{}
 
-	if err := svc.ServiceDeleteGroupRequest(uint(groupID), body.Reason, orgID.(uint), requester); err != nil {
+	if err := svc.ServiceDeleteGroupRequest(uint(groupID), body.Reason, orgID, requester); err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Yêu cầu xóa đã được gửi, vui lòng chờ duyệt."})
 }
+
 func HandleGetGroupDetail(c *gin.Context) {
 	orgID := c.GetUint("org_id")
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+	
 	groupIDStr := c.Param("id")
-	groupID, _ := strconv.ParseUint(groupIDStr, 10, 32)
+	groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID nhóm không hợp lệ"})
+		return
+	}
 
 	var group models.PolicyGroup
 	if err := database.DB.Where("id = ? AND org_id = ?", uint(groupID), orgID).First(&group).Error; err != nil {

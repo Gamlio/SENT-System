@@ -179,10 +179,10 @@ func ApprovePolicy(c *gin.Context) {
 }
 
 type CheckViolationRequest struct {
-	OrgID    uint   `json:"org_id" binding:"required"`
-	HWID     string `json:"hwid" binding:"required"`
-	Category string `json:"category" binding:"required"`
-	Value    string `json:"value" binding:"required"`
+	OrgID     uint   `json:"org_id" binding:"required"`
+	AssetHWID string `json:"asset_hwid" binding:"required"`
+	Category  string `json:"category" binding:"required"`
+	Value     string `json:"value" binding:"required"`
 }
 
 // CheckPolicyViolation is an internal endpoint for other services to check for policy violations.
@@ -195,7 +195,7 @@ func CheckPolicyViolation(c *gin.Context) {
 
 	svc := &policyService.PolicyService{}
 
-	isViolation, message, err := svc.CheckPolicyViolation(req.OrgID, req.HWID, req.Category, req.Value)
+	isViolation, message, err := svc.CheckPolicyViolation(req.OrgID, req.AssetHWID, req.Category, req.Value)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi kiểm tra chính sách: " + err.Error()})
 		return
@@ -208,27 +208,50 @@ func CheckPolicyViolation(c *gin.Context) {
 }
 
 type InternalBaselineReq struct {
-	AssetHWID string   `json:"asset_hwid"`
-	OrgID     uint     `json:"org_id"`
-	Category  string   `json:"category"`
-	Values    []string `json:"values"`
+	AssetHWID string   `json:"asset_hwid" binding:"required"`
+	OrgID     uint     `json:"org_id" binding:"required"`
+	Category  string   `json:"category" binding:"required,min=1"`
+	Values    []string `json:"values" binding:"required,min=1"`
 }
 
 func InternalSaveBaseline(c *gin.Context) {
 	var req InternalBaselineReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ: " + err.Error()})
+		return
+	}
+
+	// Validate input before processing
+	if req.OrgID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "OrgID không được để trống hoặc bằng 0"})
+		return
+	}
+	if req.AssetHWID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "AssetHWID không được để trống"})
+		return
+	}
+	if req.Category == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Category không được để trống"})
+		return
+	}
+	if len(req.Values) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Values không được để trống"})
+		return
+	}
+
+	// Check if database is initialized
+	if database.DB == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection not initialized"})
 		return
 	}
 
 	svc := &policyService.PolicyService{}
-	// Sử dụng hàm SaveBaselineItems đã viết ở bước trước
 	err := svc.SaveBaselineItems(req.OrgID, req.AssetHWID, req.Category, req.Values)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lưu baseline: " + err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"status": "success"})
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
 type ClientSyncReq struct {

@@ -70,7 +70,7 @@ func (s *assetDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 		snap.AssetHWID = ticket.TargetName
 	}
 
-	err := tx.Model(&models.Asset{}).Where("asset_hwid = ?", snap.AssetHWID).
+	err := tx.Model(&models.Asset{}).Where("asset_hwid = ? AND org_id = ?", snap.AssetHWID, ticket.OrgID).
 		Updates(map[string]interface{}{
 			"status":     "RETIRED",
 			"secret_key": "",
@@ -79,7 +79,7 @@ func (s *assetDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 		return err
 	}
 
-	err = tx.Where("asset_hwid = ? AND created_by = ?", snap.AssetHWID, "System_Baseline_Engine").
+	err = tx.Where("asset_hwid = ? AND org_id = ? AND created_by = ?", snap.AssetHWID, ticket.OrgID, "System_Baseline_Engine").
 		Delete(&models.Policy{}).Error
 	if err != nil {
 		return fmt.Errorf("lỗi dọn dẹp chính sách baseline của thiết bị: %w", err)
@@ -115,7 +115,7 @@ func (s *assetBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approval
 		return err
 	}
 
-	err := tx.Model(&models.Asset{}).Where("asset_hwid IN ?", snap.AssetIDs).
+	err := tx.Model(&models.Asset{}).Where("asset_hwid IN ? AND org_id = ?", snap.AssetIDs, ticket.OrgID).
 		Updates(map[string]interface{}{
 			"status":     "RETIRED",
 			"secret_key": "",
@@ -125,7 +125,7 @@ func (s *assetBulkDeleteStrategy) OnApprove(tx *gorm.DB, ticket *models.Approval
 	}
 
 	// Dọn dẹp các luật baseline của các máy bị xóa
-	err = tx.Where("asset_hwid IN ? AND created_by = ?", snap.AssetIDs, "System_Baseline_Engine").
+	err = tx.Where("asset_hwid IN ? AND org_id = ? AND created_by = ?", snap.AssetIDs, ticket.OrgID, "System_Baseline_Engine").
 		Delete(&models.Policy{}).Error
 	if err != nil {
 		return fmt.Errorf("lỗi dọn dẹp chính sách baseline của thiết bị: %w", err)

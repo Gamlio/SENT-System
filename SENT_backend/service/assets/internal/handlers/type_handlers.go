@@ -24,6 +24,37 @@ func GetAssetTypes(c *gin.Context) {
 	c.JSON(http.StatusOK, types)
 }
 
+func GetAssetType(c *gin.Context) {
+	orgID := c.GetUint("org_id")
+	hwid := c.Param("hwid")
+
+	if hwid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "HWID không được để trống"})
+		return
+	}
+
+	var asset models.Asset
+	if err := database.DB.Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy tài sản"})
+		return
+	}
+
+	// If asset has no type assigned, return null
+	if asset.AssetTypeID == nil {
+		c.JSON(http.StatusOK, gin.H{"asset_type_id": nil})
+		return
+	}
+
+	// Fetch the asset type
+	var assetType models.AssetType
+	if err := database.DB.Where("id = ? AND org_id = ?", *asset.AssetTypeID, orgID).First(&assetType).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Loại tài sản không tồn tại"})
+		return
+	}
+
+	c.JSON(http.StatusOK, assetType)
+}
+
 func UpdateAssetType(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)

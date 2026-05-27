@@ -20,7 +20,7 @@ type BehaviorService struct{}
 
 // LogBehavior now accepts a basePriority from the calling service (e.g., asset-service)
 func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, category, value, title, desc, basePriority string) (*models.SecurityAlert, error) {
-	checkURL := "http://policy-service:8000/api/v1/policies/check-violation"
+	checkURL := "http://policy-service:8000/api/v1/policies/internal/check-violation"
 	payload, _ := json.Marshal(map[string]interface{}{
 		"org_id":     asset.OrgID,
 		"asset_hwid": asset.AssetHWID,

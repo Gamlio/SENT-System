@@ -4,6 +4,7 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	assetSvc "SENT_backend/service/assets/internal/service"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -81,6 +82,27 @@ func AssignManager(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã phân công nhân sự"})
 }
 
+func BulkAssignManager(c *gin.Context) {
+	var req struct {
+		HWIDs  []string `json:"hwids" binding:"required"`
+		UserID uint     `json:"user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu dữ liệu (hwids, user_id) hoặc định dạng không hợp lệ"})
+		return
+	}
+
+	orgID := c.GetUint("org_id")
+	svc := &assetSvc.AssetLifecycleService{}
+
+	for _, hwid := range req.HWIDs {
+		if err := svc.AssignManager(hwid, orgID, req.UserID); err != nil {
+			log.Printf("Lỗi gán thiết bị %s cho user %d: %v", hwid, req.UserID, err)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Đã phân công nhân sự hàng loạt thành công"})
+}
+
 func RequestDeleteAsset(c *gin.Context) {
 	hwid := c.Param("hwid")
 	username, _ := c.Get("username")
@@ -125,10 +147,19 @@ func RequestBulkDeleteAssets(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Đã gửi yêu cầu gỡ bỏ hàng loạt"})
 }
 
-// BEST PRACTICE: Tái cấu trúc hoàn toàn để có API contract rõ ràng và đảm bảo toàn vẹn dữ liệu
 func UpdateDeviceType(c *gin.Context) {
 	hwid := c.Param("hwid")
 	orgID := c.GetUint("org_id")
+
+	if hwid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "HWID không được để trống"})
+		return
+	}
+
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
 
 	var req struct {
 		// Sử dụng con trỏ để cho phép gán giá trị null (gỡ bỏ phân loại)
@@ -137,7 +168,14 @@ func UpdateDeviceType(c *gin.Context) {
 
 	// Chỉ chấp nhận payload có chứa `asset_type_id`
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ. Payload phải là JSON chứa 'asset_type_id'."})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ. Payload phải là JSON chứa 'asset_type_id'. Chi tiết: " + err.Error()})
+		return
+	}
+
+	// Kiểm tra tài sản có tồn tại không
+	var asset models.Asset
+	if err := database.DB.Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy tài sản với HWID: " + hwid})
 		return
 	}
 
@@ -159,7 +197,7 @@ func UpdateDeviceType(c *gin.Context) {
 			}).Error
 
 		if errUpdate != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi cập nhật phân loại tài sản."})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi cập nhật phân loại tài sản: " + errUpdate.Error()})
 			return
 		}
 
@@ -179,7 +217,7 @@ func UpdateDeviceType(c *gin.Context) {
 		}).Error
 
 	if errUpdate != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi gỡ bỏ phân loại tài sản."})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi gỡ bỏ phân loại tài sản: " + errUpdate.Error()})
 		return
 	}
 
@@ -203,12 +241,29 @@ func UpdateAssetGroup(c *gin.Context) {
 	hwid := c.Param("hwid")
 	orgID := c.GetUint("org_id")
 
+	if hwid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "HWID không được để trống"})
+		return
+	}
+
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+
 	var req struct {
 		GroupID *uint `json:"group_id"` // Dùng con trỏ để hỗ trợ gán null (Global Policy)
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu group_id không hợp lệ."})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ. Chi tiết: " + err.Error()})
+		return
+	}
+
+	// Kiểm tra tài sản có tồn tại không
+	var asset models.Asset
+	if err := database.DB.Where("asset_hwid = ? AND org_id = ?", hwid, orgID).First(&asset).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy tài sản với HWID: " + hwid})
 		return
 	}
 
@@ -226,7 +281,7 @@ func UpdateAssetGroup(c *gin.Context) {
 		Update("group_id", req.GroupID).Error
 
 	if errUpdate != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi hệ thống khi cập nhật nhóm tài sản."})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi hệ thống khi cập nhật nhóm tài sản: " + errUpdate.Error()})
 		return
 	}
 

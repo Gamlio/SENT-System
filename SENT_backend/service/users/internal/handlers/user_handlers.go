@@ -32,14 +32,27 @@ func CreateUser(c *gin.Context) {
 	orgID := getOrgIDFromContext(c)
 	requesterID := getRequesterID(c)
 
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+
+	if requesterID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "UserID không được tìm thấy"})
+		return
+	}
+
 	var req models.UserPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ. Chi tiết: " + err.Error()})
 		return
 	}
 
 	var requester models.User
-	database.DB.First(&requester, requesterID)
+	if err := database.DB.Where("id = ? AND org_id = ?", requesterID, orgID).First(&requester).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không tồn tại hoặc không thuộc tổ chức của bạn"})
+		return
+	}
 
 	userSvc := &userService.UserService{}
 	if err := userSvc.CreateUserRequest(req, orgID, requester); err != nil {
@@ -51,8 +64,17 @@ func CreateUser(c *gin.Context) {
 }
 func GetUserDetail(c *gin.Context) {
 	idStr := c.Param("id")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID người dùng không hợp lệ"})
+		return
+	}
+
 	orgID := getOrgIDFromContext(c)
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
 
 	var user models.User
 	if err := database.DB.Where("id = ? AND org_id = ?", uint(id), orgID).First(&user).Error; err != nil {
@@ -68,18 +90,36 @@ func UpdatePermissions(c *gin.Context) {
 }
 func UpdateUser(c *gin.Context) {
 	idStr := c.Param("id")
-	targetID, _ := strconv.ParseUint(idStr, 10, 32)
+	targetID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID người dùng không hợp lệ"})
+		return
+	}
+
 	orgID := getOrgIDFromContext(c)
 	requesterID := getRequesterID(c)
 
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+
+	if requesterID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "UserID không được tìm thấy"})
+		return
+	}
+
 	var req models.UserPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ. Chi tiết: " + err.Error()})
 		return
 	}
 
 	var requester models.User
-	database.DB.First(&requester, requesterID)
+	if err := database.DB.Where("id = ? AND org_id = ?", requesterID, orgID).First(&requester).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không tồn tại hoặc không thuộc tổ chức của bạn"})
+		return
+	}
 
 	// Gọi Service Brain
 	userSvc := &userService.UserService{}
@@ -94,12 +134,30 @@ func UpdateUser(c *gin.Context) {
 // DeleteUser (GATE)
 func DeleteUser(c *gin.Context) {
 	idStr := c.Param("id")
-	targetID, _ := strconv.ParseUint(idStr, 10, 32)
+	targetID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID người dùng không hợp lệ"})
+		return
+	}
+
 	orgID := getOrgIDFromContext(c)
 	requesterID := getRequesterID(c)
 
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+
+	if requesterID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "UserID không được tìm thấy"})
+		return
+	}
+
 	var requester models.User
-	database.DB.First(&requester, requesterID)
+	if err := database.DB.Where("id = ? AND org_id = ?", requesterID, orgID).First(&requester).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không tồn tại hoặc không thuộc tổ chức của bạn"})
+		return
+	}
 
 	// Gọi Service Brain
 	userSvc := &userService.UserService{}
@@ -114,7 +172,16 @@ func DeleteUser(c *gin.Context) {
 // GetUsers vẫn giữ ở Gate vì chỉ là truy vấn
 func GetUsers(c *gin.Context) {
 	orgID := getOrgIDFromContext(c)
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+
 	var usersList []models.User
-	database.DB.Where("org_id = ?", orgID).Order("created_at desc").Find(&usersList)
+	if err := database.DB.Where("org_id = ?", orgID).Order("created_at desc").Find(&usersList).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi truy vấn danh sách người dùng"})
+		return
+	}
+
 	c.JSON(http.StatusOK, usersList)
 }

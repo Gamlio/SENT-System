@@ -23,8 +23,10 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 		err := tx.Where("asset_hwid = ?", req.AssetHWID).First(&asset).Error
 
 		if err == nil {
+			if asset.OrgID != orgID {
+				return fmt.Errorf("Asset %s đã thuộc về tổ chức khác và không thể đăng ký lại", req.AssetHWID)
+			}
 			if err := tx.Model(&asset).Updates(map[string]interface{}{
-				"org_id":     orgID,
 				"status":     "PENDING",
 				"hostname":   req.Hostname,
 				"ip_address": req.IPAddress,
