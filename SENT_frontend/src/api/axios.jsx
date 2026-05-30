@@ -1,10 +1,9 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL
-
+const baseURL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const instance = axios.create({
-    baseURL: baseURL,
+    baseURL,
     headers: {
         'Content-Type': 'application/json',
     }

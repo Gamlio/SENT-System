@@ -43,13 +43,18 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 	}
 
 	if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
-		var hashes []string
+		var entries []map[string]interface{}
 		for _, r := range records {
 			if r.FileHash != "" {
-				hashes = append(hashes, r.FileHash)
+				entries = append(entries, map[string]interface{}{
+					"file_hash":     r.FileHash,
+					"software_name": r.SoftwareName,
+					"publisher":     r.Publisher,
+					"version":       r.Version,
+				})
 			}
 		}
-		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "SOFTWARE_HASH", hashes)
+		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "SOFTWARE_HASH", entries)
 	}
 
 	if database.SoftwareCollection == nil {
@@ -71,18 +76,21 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 				pubs = append(pubs, rec.Publisher)
 			}
 		}
-		var wlItems []models.WhitelistItem
+
+		// Query approved WHITELIST policies instead of legacy WhitelistItem
 		if len(hashes) > 0 {
-			database.DB.Where("org_id = ? AND type = 'SOFTWARE_HASH' AND value IN ?", asset.OrgID, hashes).Find(&wlItems)
-			for _, item := range wlItems {
-				trustedHashes[item.Value] = true
+			var policies []models.Policy
+			database.DB.Where("org_id = ? AND policy_type = 'WHITELIST' AND category = ? AND value IN ? AND approval_status = ?", asset.OrgID, "SOFTWARE_HASH", hashes, "APPROVED").Find(&policies)
+			for _, p := range policies {
+				trustedHashes[p.Value] = true
 			}
 		}
-		wlItems = nil
+
 		if len(pubs) > 0 {
-			database.DB.Where("org_id = ? AND type = 'PUBLISHER' AND value IN ?", asset.OrgID, pubs).Find(&wlItems)
-			for _, item := range wlItems {
-				trustedPubs[item.Value] = true
+			var policies []models.Policy
+			database.DB.Where("org_id = ? AND policy_type = 'WHITELIST' AND category = ? AND value IN ? AND approval_status = ?", asset.OrgID, "PUBLISHER", pubs, "APPROVED").Find(&policies)
+			for _, p := range policies {
+				trustedPubs[p.Value] = true
 			}
 		}
 	}
@@ -179,26 +187,48 @@ func HandleSoftwareBaseline(asset models.Asset, data interface{}) error {
 		return err
 	}
 
-	// [GIẢM TẢI DB] Chuyển SQL Loop thành Insert Batch
-	var hashItems []models.WhitelistItem
-	var pubItems []models.WhitelistItem
+	// [GIẢM TẢI DB] Chuyển SQL Loop thành Insert Batch vào bảng policies (BASELINE)
+	var hashPolicies []models.Policy
+	var pubPolicies []models.Policy
 
 	for _, rec := range records {
-		hashItems = append(hashItems, models.WhitelistItem{
-			OrgID: asset.OrgID, AssetHWID: asset.AssetHWID, Type: "SOFTWARE_HASH", Value: rec.FileHash, Description: "Baseline: " + rec.SoftwareName,
-		})
+		if rec.FileHash != "" {
+			hashPolicies = append(hashPolicies, models.Policy{
+				OrgID:          asset.OrgID,
+				Title:          fmt.Sprintf("Baseline [%s]: %s", asset.AssetHWID, rec.FileHash),
+				Category:       "SOFTWARE_HASH",
+				Value:          strings.ToLower(rec.FileHash),
+				PolicyType:     "WHITELIST",
+				ApprovalStatus: "BASELINE",
+				IsActive:       false,
+				CreatedBy:      "System_Baseline_Engine",
+				AssetHWID:      asset.AssetHWID,
+				GroupID:        asset.GroupID,
+			})
+		}
 
 		if rec.Publisher != "Unsigned" && rec.Publisher != "" {
-			pubItems = append(pubItems, models.WhitelistItem{
-				OrgID: asset.OrgID, AssetHWID: asset.AssetHWID, Type: "PUBLISHER", Value: rec.Publisher, Description: "Trusted Publisher",
+			pubPolicies = append(pubPolicies, models.Policy{
+				OrgID:          asset.OrgID,
+				Title:          fmt.Sprintf("Baseline Publisher [%s]: %s", asset.AssetHWID, rec.Publisher),
+				Category:       "PUBLISHER",
+				Value:          rec.Publisher,
+				PolicyType:     "WHITELIST",
+				ApprovalStatus: "BASELINE",
+				IsActive:       false,
+				CreatedBy:      "System_Baseline_Engine",
+				AssetHWID:      asset.AssetHWID,
+				GroupID:        asset.GroupID,
 			})
 		}
 	}
 
 	tx := database.DB.Begin()
-	tx.CreateInBatches(hashItems, 200) // Chunk size 200 an toàn cho Postgres
-	if len(pubItems) > 0 {
-		tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(pubItems, 200)
+	if len(hashPolicies) > 0 {
+		tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "org_id"}, {Name: "category"}, {Name: "policy_type"}, {Name: "value"}, {Name: "asset_hwid"}}, DoNothing: true}).CreateInBatches(hashPolicies, 200)
+	}
+	if len(pubPolicies) > 0 {
+		tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "org_id"}, {Name: "category"}, {Name: "policy_type"}, {Name: "value"}, {Name: "asset_hwid"}}, DoNothing: true}).CreateInBatches(pubPolicies, 200)
 	}
 
 	if err := tx.Commit().Error; err != nil {

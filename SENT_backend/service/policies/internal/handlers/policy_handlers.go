@@ -178,6 +178,44 @@ func ApprovePolicy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Chính sách đã được kích hoạt"})
 }
 
+func BulkApprovePolicy(c *gin.Context) {
+	var req struct {
+		IDs []uint `json:"ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+	orgID := c.GetUint("org_id")
+	username, _ := c.Get("username")
+
+	svc := &policyService.PolicyService{}
+	if err := svc.BulkApprovePolicies(req.IDs, orgID, username.(string)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Đã phê duyệt hàng loạt chính sách"})
+}
+
+func ApproveAssetBaseline(c *gin.Context) {
+	var req struct {
+		AssetHWID string `json:"asset_hwid" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+	orgID := c.GetUint("org_id")
+	username, _ := c.Get("username")
+
+	svc := &policyService.PolicyService{}
+	if err := svc.ApproveBaselineByAsset(req.AssetHWID, orgID, username.(string)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Đã phê duyệt baseline cho máy"})
+}
+
 type CheckViolationRequest struct {
 	OrgID     uint   `json:"org_id" binding:"required"`
 	AssetHWID string `json:"asset_hwid" binding:"required"`
@@ -203,15 +241,15 @@ func CheckPolicyViolation(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"is_violation": isViolation,
-		"message":      message,
+		"reason":       message,
 	})
 }
 
 type InternalBaselineReq struct {
-	AssetHWID string   `json:"asset_hwid" binding:"required"`
-	OrgID     uint     `json:"org_id" binding:"required"`
-	Category  string   `json:"category" binding:"required,min=1"`
-	Values    []string `json:"values" binding:"required,min=1"`
+	AssetHWID string                   `json:"asset_hwid" binding:"required"`
+	OrgID     uint                     `json:"org_id" binding:"required"`
+	Category  string                   `json:"category" binding:"required,min=1"`
+	Values    []map[string]interface{} `json:"values" binding:"required,min=1"`
 }
 
 func InternalSaveBaseline(c *gin.Context) {

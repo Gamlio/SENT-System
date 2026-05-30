@@ -131,7 +131,6 @@ func processRiskScore(assetAssetID string) {
 		}
 	}
 
-	// --- Tính toán R_active theo công thức logarit từ SCORING.md ---
 	rActive := 0.0
 	alertWeights := map[string]float64{
 		"P1": 5.0,
@@ -140,11 +139,11 @@ func processRiskScore(assetAssetID string) {
 	}
 	for priority, count := range priorityCounts {
 		if weight, ok := alertWeights[priority]; ok {
+
 			rActive += weight * math.Log2(float64(count)+1.0)
 		}
 	}
 
-	// --- Tính toán R_history với hàm suy giảm theo thời gian ---
 	var pastIncidents []models.Incident
 	halfYearAgo := time.Now().AddDate(0, 0, -180)
 	rHistory := 0.0
@@ -166,13 +165,11 @@ func processRiskScore(assetAssetID string) {
 		}
 	}
 
-	// --- Tính toán các hệ số ngữ cảnh C và V theo SCORING.md ---
 	cFactor := 1.0
 	if asset.AssetType != nil && asset.AssetType.RiskWeight > 0 {
 		cFactor = asset.AssetType.RiskWeight
 	}
 
-	// V = 1.0 + (Số cổng mạng mở * 0.05) + log10(n_usb_unknown + 1) + log10((Delta Disk I/O / 10^6) + 1)
 	var totalDiskIO uint64
 	for _, activity := range ioActivities {
 

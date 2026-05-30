@@ -38,13 +38,19 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 	}
 
 	if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
-		var hashes []string
+		var entries []map[string]interface{}
 		for _, r := range records {
 			if r.DeviceHash != "" {
-				hashes = append(hashes, r.DeviceHash)
+				entries = append(entries, map[string]interface{}{
+					"device_hash":   r.DeviceHash,
+					"device_name":   r.DeviceName,
+					"vid":           r.VID,
+					"pid":           r.PID,
+					"serial_number": r.SerialNumber,
+				})
 			}
 		}
-		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "USB_DEVICE", hashes)
+		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "USB_DEVICE", entries)
 	}
 
 	if database.USBCollection == nil {
@@ -60,10 +66,10 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 
 	whitelistedHashes := make(map[string]bool)
 	if len(allHashes) > 0 {
-		var wlItems []models.WhitelistItem
-		database.DB.Where("org_id = ? AND type = 'USB_DEVICE' AND value IN ?", asset.OrgID, allHashes).Find(&wlItems)
-		for _, item := range wlItems {
-			whitelistedHashes[item.Value] = true
+		var policies []models.Policy
+		database.DB.Where("org_id = ? AND policy_type = 'WHITELIST' AND category = ? AND value IN ? AND approval_status = ?", asset.OrgID, "USB_DEVICE", allHashes, "APPROVED").Find(&policies)
+		for _, p := range policies {
+			whitelistedHashes[p.Value] = true
 		}
 	}
 

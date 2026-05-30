@@ -67,17 +67,31 @@ func ProcessassetData(payload AssetPayload) error {
 				// Chỉ nạp Baseline tự động cho 3 danh mục chính sách tĩnh của Zero Trust Engine
 				if modName == "software" || modName == "port" || modName == "usb" {
 					var rawValues []map[string]interface{}
-					var valuesToBaseline []string
+					var valuesToBaseline []map[string]interface{}
 
 					// Giải mã an toàn mảng dữ liệu telemetry thô để trích xuất Value hoặc Hash
 					if err := json.Unmarshal(modData, &rawValues); err == nil {
 						for _, item := range rawValues {
 							if modName == "software" && item["file_hash"] != nil {
-								valuesToBaseline = append(valuesToBaseline, fmt.Sprintf("%v", item["file_hash"]))
+								valuesToBaseline = append(valuesToBaseline, map[string]interface{}{
+									"file_hash":     item["file_hash"],
+									"software_name": item["software_name"],
+									"publisher":     item["publisher"],
+									"version":       item["version"],
+								})
 							} else if modName == "port" && item["port"] != nil {
-								valuesToBaseline = append(valuesToBaseline, fmt.Sprintf("%v", item["port"]))
+								valuesToBaseline = append(valuesToBaseline, map[string]interface{}{
+									"port":         item["port"],
+									"process_name": item["process_name"],
+								})
 							} else if modName == "usb" && item["device_hash"] != nil {
-								valuesToBaseline = append(valuesToBaseline, fmt.Sprintf("%v", item["device_hash"]))
+								valuesToBaseline = append(valuesToBaseline, map[string]interface{}{
+									"device_hash":   item["device_hash"],
+									"device_name":   item["device_name"],
+									"vid":           item["vid"],
+									"pid":           item["pid"],
+									"serial_number": item["serial_number"],
+								})
 							}
 						}
 

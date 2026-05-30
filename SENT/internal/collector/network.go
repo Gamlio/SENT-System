@@ -1,7 +1,10 @@
 package collector
 
 import (
+	"SENT/internal/policy"
 	"SENT/internal/utils"
+	"fmt"
+	"log"
 
 	psnet "github.com/shirou/gopsutil/v3/net"
 )
@@ -27,6 +30,18 @@ type OpenPortInfo struct {
 }
 
 // 4. Đưa logic cũ vào hàm Collect()
+func warnPortPolicy(openPort OpenPortInfo) {
+	portValue := fmt.Sprintf("%d", openPort.Port)
+	if violated, reason := policy.CheckPolicy("PORT", portValue); violated {
+		log.Printf("[Port Sensor] CẢNH BÁO: Port %s không nằm trong whitelist - %s", portValue, reason)
+	}
+	if openPort.ProcessName != "" {
+		if violated, reason := policy.CheckPolicy("PROCESS", openPort.ProcessName); violated {
+			log.Printf("[Port Sensor] CẢNH BÁO: tiến trình lắng nghe '%s' không nằm trong whitelist PROCESS - %s", openPort.ProcessName, reason)
+		}
+	}
+}
+
 func (s *PortSensor) Collect() (interface{}, error) {
 	// BƯỚC 1: Chụp ảnh nhanh toàn bộ tiến trình TRƯỚC (Tránh Race Condition)
 	procs, _ := GetProcessesCached() // Dùng bộ nhớ đệm để tránh gọi Syscall liên tục
@@ -63,10 +78,12 @@ func (s *PortSensor) Collect() (interface{}, error) {
 				}
 			}
 
-			openPorts = append(openPorts, OpenPortInfo{
+			openPort := OpenPortInfo{
 				Port:        conn.Laddr.Port,
 				ProcessName: procName,
-			})
+			}
+			openPorts = append(openPorts, openPort)
+			warnPortPolicy(openPort)
 		}
 	}
 

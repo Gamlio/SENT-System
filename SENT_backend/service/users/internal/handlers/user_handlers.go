@@ -85,6 +85,93 @@ func GetUserDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// GetUserPermissions - Lấy danh sách quyền của một người dùng
+func GetUserPermissions(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID người dùng không hợp lệ"})
+		return
+	}
+
+	orgID := getOrgIDFromContext(c)
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+
+	var user models.User
+	if err := database.DB.Where("id = ? AND org_id = ?", uint(id), orgID).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
+		return
+	}
+
+	// Trả về toàn bộ quyền dưới dạng map
+	c.JSON(http.StatusOK, gin.H{
+		"id":                   user.ID,
+		"username":             user.Username,
+		"full_name":            user.FullName,
+		"perm_asset_view":      user.PermAssetView,
+		"perm_asset_action":    user.PermAssetAction,
+		"perm_asset_delete":    user.PermAssetDelete,
+		"perm_asset_move":      user.PermAssetMove,
+		"perm_policy_view":     user.PermPolicyView,
+		"perm_policy_manage":   user.PermPolicyManage,
+		"perm_incident_view":   user.PermIncidentView,
+		"perm_incident_action": user.PermIncidentAction,
+		"perm_doc_view":        user.PermDocView,
+		"perm_doc_manage":      user.PermDocManage,
+		"perm_user_view":       user.PermUserView,
+		"perm_user_manage":     user.PermUserManage,
+		"perm_system_config":   user.PermSystemConfig,
+		"perm_group_manage":    user.PermGroupManage,
+		"perm_approval_view":   user.PermApprovalView,
+		"perm_approval_final":  user.PermApprovalFinal,
+	})
+}
+
+// GetCurrentUserPermissions - Lấy quyền của người dùng hiện tại
+func GetCurrentUserPermissions(c *gin.Context) {
+	userID := getRequesterID(c)
+	orgID := getOrgIDFromContext(c)
+
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "UserID không được tìm thấy"})
+		return
+	}
+
+	if orgID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "OrgID không được tìm thấy"})
+		return
+	}
+
+	var user models.User
+	if err := database.DB.Where("id = ? AND org_id = ?", userID, orgID).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy thông tin người dùng"})
+		return
+	}
+
+	// Trả về toàn bộ quyền dưới dạng map
+	c.JSON(http.StatusOK, gin.H{
+		"perm_asset_view":      user.PermAssetView,
+		"perm_asset_action":    user.PermAssetAction,
+		"perm_asset_delete":    user.PermAssetDelete,
+		"perm_asset_move":      user.PermAssetMove,
+		"perm_policy_view":     user.PermPolicyView,
+		"perm_policy_manage":   user.PermPolicyManage,
+		"perm_incident_view":   user.PermIncidentView,
+		"perm_incident_action": user.PermIncidentAction,
+		"perm_doc_view":        user.PermDocView,
+		"perm_doc_manage":      user.PermDocManage,
+		"perm_user_view":       user.PermUserView,
+		"perm_user_manage":     user.PermUserManage,
+		"perm_system_config":   user.PermSystemConfig,
+		"perm_group_manage":    user.PermGroupManage,
+		"perm_approval_view":   user.PermApprovalView,
+		"perm_approval_final":  user.PermApprovalFinal,
+	})
+}
+
 func UpdatePermissions(c *gin.Context) {
 	UpdateUser(c)
 }

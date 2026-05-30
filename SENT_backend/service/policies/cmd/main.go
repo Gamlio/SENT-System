@@ -49,6 +49,8 @@ func main() {
 			adminAPI.POST("", managePerm, handlers.CreatePolicy)
 			adminAPI.PUT("/:id", managePerm, handlers.UpdatePolicy)
 			adminAPI.POST("/bulk-delete", managePerm, handlers.BulkDeletePolicy)
+			adminAPI.POST("/bulk-approve", middleware.RequirePermission("approval_final"), handlers.BulkApprovePolicy)
+			adminAPI.POST("/approve-by-asset", middleware.RequirePermission("approval_final"), handlers.ApproveAssetBaseline)
 			adminAPI.DELETE("/:id", managePerm, handlers.DeletePolicy)
 
 			adminAPI.PUT("/:id/approve", middleware.RequirePermission("approval_final"), handlers.ApprovePolicy)

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Cpu, ArrowLeft, User, ShieldCheck, Fingerprint, Tag, Network, Monitor, AlertTriangle, ShieldAlert, Zap, Usb, Package } from 'lucide-react';
+import { Cpu, ArrowLeft, User, ShieldCheck, Fingerprint, Tag, Network, Monitor, AlertTriangle, ShieldAlert, Zap, Usb, Package, PlusCircle } from 'lucide-react';
 import axios from '../../api/axios';
 
 import AssetsUSB from './components/AssetsUSB';
 import AssetsSoftware from './components/AssetsSoftware';
 import AssetsLogs from './components/AssetsLogs';
 import AssetsPort from './components/AssetsPort';
+import AssetsBaseline from './components/AssetsBaseline';
 import { useSocketSubscription } from '../../context/useSocketSubscription';
 
 const AssetDetail = () => {
@@ -177,6 +178,7 @@ const AssetDetail = () => {
                         <TabButton active={activeTab === 'SOFTWARE'} onClick={() => setActiveTab('SOFTWARE')} icon={Package} label={`Software (${counts.software})`} color="text-blue-400" />
                         <TabButton active={activeTab === 'USB'} onClick={() => setActiveTab('USB')} icon={Usb} label={`USB History (${counts.usb})`} color="text-emerald-400" />
                         <TabButton active={activeTab === 'PORTS'} onClick={() => setActiveTab('PORTS')} icon={Network} label={`Open Ports (${counts.ports})`} color="text-amber-400" />
+                        <TabButton active={activeTab === 'BASELINE'} onClick={() => setActiveTab('BASELINE')} icon={PlusCircle} label={`Proposed Baseline`} color="text-indigo-400" />
                     </div>
 
                     {/* TABS CONTENT (KHUNG ĐỦ TO ĐỂ CHỨA CÁC COMPONENT CON) */}
@@ -187,6 +189,7 @@ const AssetDetail = () => {
                             {activeTab === 'SOFTWARE' && <AssetsSoftware hwid={hwid} />}
                             {activeTab === 'USB' && <AssetsUSB hwid={hwid} />}
                             {activeTab === 'PORTS' && <AssetsPort hwid={hwid} />}
+                            {activeTab === 'BASELINE' && <AssetsBaseline hwid={hwid} onRefresh={() => fetchDetail(true)} />}
                         </div>
                     </div>
                 </div>

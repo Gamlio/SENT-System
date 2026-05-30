@@ -97,7 +97,7 @@ func (s *AuthService) Login(companyCode, username, password string) (string, *mo
 	return token, &user, &org, err
 }
 
-// Helper: Sinh mã công ty[cite: 45]
+// Helper: Sinh mã công ty
 func (s *AuthService) generateUniqueCompanyCode() string {
 	for {
 		b := make([]byte, 3)

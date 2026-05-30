@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Mail, Shield, Settings, X, Save, Key, Briefcase, Users, FileText, AlertTriangle } from 'lucide-react';
+import { User, Lock, Mail, Shield, Settings, X, Save, Key, Briefcase, Users, FileText, AlertTriangle, Loader } from 'lucide-react';
+import axios from '../../../api/axios';
 
 // --- Placeholder Components (Giả lập để code dễ đọc) ---
 const Modal = ({ isOpen, onClose, children, title }) => {
@@ -74,22 +75,55 @@ const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading, grou
         perm_asset_view: false,
         perm_asset_action: false,
         perm_asset_delete: false,
+        perm_asset_move: false,
         perm_policy_view: false,
         perm_policy_manage: false,
         perm_incident_view: false,
         perm_incident_action: false,
         perm_doc_view: false,
         perm_doc_manage: false,
+        perm_user_view: false,
         perm_user_manage: false,
         perm_group_manage: false,
-        perm_approval_manage: false, 
-        perm_asset_move: false,    
-        perm_user_view: false,     
-        perm_system_config: false, 
-        perm_approval_final: false
+        perm_approval_view: false,
+        perm_approval_final: false,
+        perm_system_config: false,
     });
 
     const [formData, setFormData] = useState(createDefaultFormState());
+    const [permissionsLoading, setPermissionsLoading] = useState(false);
+
+    // Tải quyền hiện tại của người dùng
+    const loadUserPermissions = async (userId) => {
+        setPermissionsLoading(true);
+        try {
+            const res = await axios.get(`/users/${userId}/permissions`);
+            const permData = res.data;
+            setFormData(prev => ({
+                ...prev,
+                perm_asset_view: permData.perm_asset_view || false,
+                perm_asset_action: permData.perm_asset_action || false,
+                perm_asset_delete: permData.perm_asset_delete || false,
+                perm_asset_move: permData.perm_asset_move || false,
+                perm_policy_view: permData.perm_policy_view || false,
+                perm_policy_manage: permData.perm_policy_manage || false,
+                perm_incident_view: permData.perm_incident_view || false,
+                perm_incident_action: permData.perm_incident_action || false,
+                perm_doc_view: permData.perm_doc_view || false,
+                perm_doc_manage: permData.perm_doc_manage || false,
+                perm_user_view: permData.perm_user_view || false,
+                perm_user_manage: permData.perm_user_manage || false,
+                perm_group_manage: permData.perm_group_manage || false,
+                perm_approval_view: permData.perm_approval_view || false,
+                perm_approval_final: permData.perm_approval_final || false,
+                perm_system_config: permData.perm_system_config || false,
+            }));
+        } catch (err) {
+            console.error("Lỗi tải quyền:", err);
+        } finally {
+            setPermissionsLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -97,6 +131,11 @@ const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading, grou
                 const populatedData = { ...createDefaultFormState(), ...initialData };
                 populatedData.password = ''; // Không hiển thị password cũ
                 setFormData(populatedData);
+                
+                // Tải quyền từ server để đảm bảo cập nhật nhất
+                if (initialData.id || initialData.ID) {
+                    loadUserPermissions(initialData.id || initialData.ID);
+                }
             } else {
                 setFormData(createDefaultFormState());
             }
@@ -157,11 +196,15 @@ const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading, grou
 
                     {/* Phần 2: Ma trận đặc quyền */}
                     <div className="p-5 bg-slate-900/50 border border-slate-800 rounded-xl space-y-6">
-                        <h3 className="text-lg font-semibold text-emerald-400 mb-4">Ma trận Đặc quyền</h3>
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-semibold text-emerald-400">Ma trận Đặc quyền</h3>
+                            {permissionsLoading && <Loader size={16} className="animate-spin text-emerald-400" />}
+                            {isEditMode && <span className="text-xs text-slate-500">({isEditMode ? 'Quyền hiện tại' : 'Quyền mới'})</span>}
+                        </div>
                         
                         <PermissionBlock title="Quản trị Hệ thống" icon={<Settings size={16} />} color="text-purple-400">
                             <ToggleSwitch field="perm_group_manage" label="Quản lý Nhóm (Groups)" data={formData} onToggle={handleToggle} />
-                            <ToggleSwitch field="perm_approval_manage" label="Duyệt yêu cầu (Maker-Checker)" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_approval_view" label="Xem yêu cầu Duyệt" data={formData} onToggle={handleToggle} />
                             <ToggleSwitch field="perm_system_config" label="Cấu hình Hệ thống" data={formData} onToggle={handleToggle} isDanger />
                             <ToggleSwitch field="perm_approval_final" label="Duyệt đơn cuối (Checker)" data={formData} onToggle={handleToggle} isDanger />
                             <ToggleSwitch field="perm_user_view" label="Xem danh sách Nhân sự" data={formData} onToggle={handleToggle} />                                                                   
@@ -178,6 +221,7 @@ const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isLoading, grou
                         <PermissionBlock title="Chính sách & Tài liệu" icon={<FileText size={16} />} color="text-amber-400">
                             <ToggleSwitch field="perm_policy_view" label="Xem Chính sách" data={formData} onToggle={handleToggle} />
                             <ToggleSwitch field="perm_policy_manage" label="Quản lý Chính sách" data={formData} onToggle={handleToggle} />
+                            <ToggleSwitch field="perm_doc_view" label="Xem Tài liệu" data={formData} onToggle={handleToggle} />
                             <ToggleSwitch field="perm_doc_manage" label="Quản lý Tài liệu" data={formData} onToggle={handleToggle} />
                         </PermissionBlock>
 

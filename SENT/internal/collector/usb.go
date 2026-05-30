@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"SENT/internal/policy"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -62,4 +63,19 @@ func parseWindowsUSBID(pnpID string) (vid, pid, serial string) {
 	log.Printf("[USB Sensor] Đã bóc tách '%s' -> VID: %s, PID: %s, Serial: %s", pnpID, vid, pid, serial)
 
 	return vid, pid, serial
+}
+
+func warnUSBDevicePolicy(rec USBRecord) {
+	if rec.DeviceHash != "" {
+		if violated, reason := policy.CheckPolicy("USB_DEVICE", rec.DeviceHash); violated {
+			log.Printf("[USB Sensor] CẢNH BÁO: USB device không nằm trong whitelist: %s (hash=%s) - %s", rec.DeviceName, rec.DeviceHash, reason)
+		}
+		return
+	}
+
+	if rec.DeviceName != "" {
+		if violated, reason := policy.CheckPolicy("USB_DEVICE", rec.DeviceName); violated {
+			log.Printf("[USB Sensor] CẢNH BÁO: USB device không nằm trong whitelist: %s - %s", rec.DeviceName, reason)
+		}
+	}
 }

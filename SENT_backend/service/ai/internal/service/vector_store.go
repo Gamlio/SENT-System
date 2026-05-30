@@ -250,8 +250,7 @@ func SearchPlaybookByVector(userQuery string) string {
 		var chunk models.PlaybookVectorChunk
 		if err := cursor.Decode(&chunk); err == nil {
 			similarity := CosineSimilarity(queryVector, chunk.Embedding)
-			// Ngưỡng khớp lệnh ngữ cảnh tối thiểu (0.7)
-			if similarity > maxSimilarity && similarity > 0.7 {
+			if similarity > maxSimilarity && similarity > 0.2 {
 				maxSimilarity = similarity
 				bestContent = chunk.Content
 			}

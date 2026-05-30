@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -162,6 +163,50 @@ func (s *PolicyService) GetPolicies(orgID uint, category, status string) []model
 	return list
 }
 
+// ApprovePolicyByID: Approve a single policy (set APPROVED, active)
+func (s *PolicyService) ApprovePolicyByID(id uint, orgID uint, approver string) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var p models.Policy
+		if err := tx.Where("id = ? AND org_id = ?", id, orgID).First(&p).Error; err != nil {
+			return fmt.Errorf("policy not found")
+		}
+		p.ApprovalStatus = "APPROVED"
+		p.IsActive = true
+		p.ApprovedBy = approver
+		if err := tx.Save(&p).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// BulkApprovePolicies: Approve multiple policies by IDs
+func (s *PolicyService) BulkApprovePolicies(ids []uint, orgID uint, approver string) error {
+	if len(ids) == 0 {
+		return fmt.Errorf("no ids provided")
+	}
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Policy{}).
+			Where("id IN ? AND org_id = ?", ids, orgID).
+			Updates(map[string]interface{}{"approval_status": "APPROVED", "is_active": true, "approved_by": approver}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// ApproveBaselineByAsset: Approve all BASELINE policies for a given asset (or group)
+func (s *PolicyService) ApproveBaselineByAsset(assetHWID string, orgID uint, approver string) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Policy{}).
+			Where("asset_hwid = ? AND org_id = ? AND approval_status = ?", assetHWID, orgID, "BASELINE").
+			Updates(map[string]interface{}{"approval_status": "APPROVED", "is_active": true, "approved_by": approver}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 // DeletePolicyRequest: Tạo yêu cầu xóa 1 luật
 func (s *PolicyService) DeletePolicyRequest(id uint, orgID uint, creator string) error {
 	var policy models.Policy
@@ -277,7 +322,7 @@ func (s *PolicyService) CheckPolicyViolation(orgID uint, hwid string, category s
 
 	return false, "", nil
 }
-func (s *PolicyService) SaveBaselineItems(orgID uint, hwid string, category string, values []string) error {
+func (s *PolicyService) SaveBaselineItems(orgID uint, hwid string, category string, values []map[string]interface{}) error {
 	if len(values) == 0 {
 		return nil
 	}
@@ -288,15 +333,56 @@ func (s *PolicyService) SaveBaselineItems(orgID uint, hwid string, category stri
 		return fmt.Errorf("không thể tìm thấy thông tin thiết bị để nạp baseline: %w", err)
 	}
 
+	// Nếu không trong cửa sổ Baseline thì không lưu (tránh agent liên tục push khi không cần)
+	if asset.BaselineUntil == nil || time.Now().After(*asset.BaselineUntil) {
+		return nil
+	}
+
 	var items []models.Policy
-	for _, val := range values {
-		cleanVal := strings.TrimSpace(val)
+	cleanCategory := strings.ToUpper(category)
+	for _, entry := range values {
+		// Extract canonical value depending on category
+		var rawVal string
+		var title string
+		switch cleanCategory {
+		case "SOFTWARE_HASH":
+			if v, ok := entry["file_hash"]; ok {
+				rawVal = fmt.Sprintf("%v", v)
+				title = fmt.Sprintf("Baseline [%s]: %s", hwid, rawVal)
+				if name, ok := entry["software_name"]; ok {
+					title = fmt.Sprintf("Baseline [%s]: %s (%s)", hwid, name, rawVal)
+				}
+			}
+		case "USB_DEVICE":
+			if v, ok := entry["device_hash"]; ok {
+				rawVal = fmt.Sprintf("%v", v)
+				title = fmt.Sprintf("Baseline USB [%s]: %s", hwid, rawVal)
+				if dn, ok := entry["device_name"]; ok {
+					title = fmt.Sprintf("Baseline USB [%s]: %s (%s)", hwid, dn, rawVal)
+				}
+			}
+		case "PORT":
+			if v, ok := entry["port"]; ok {
+				rawVal = fmt.Sprintf("%v", v)
+				title = fmt.Sprintf("Baseline PORT [%s]: %s", hwid, rawVal)
+			}
+		case "PUBLISHER":
+			if v, ok := entry["publisher"]; ok {
+				rawVal = fmt.Sprintf("%v", v)
+				title = fmt.Sprintf("Baseline Publisher [%s]: %s", hwid, rawVal)
+			}
+		default:
+			// Fallback: marshal entry to JSON as the value
+			b, _ := json.Marshal(entry)
+			rawVal = string(b)
+			title = fmt.Sprintf("Baseline [%s]: %s", hwid, rawVal)
+		}
+
+		cleanVal := strings.TrimSpace(rawVal)
 		if cleanVal == "" {
 			continue
 		}
 
-		// Chuẩn hóa tiêu đề hiển thị trên UI cho SOC dễ quản lý
-		title := fmt.Sprintf("Baseline [%s]: %s", hwid, cleanVal)
 		if len(title) > 150 {
 			title = title[:147] + "..."
 		}
@@ -304,15 +390,15 @@ func (s *PolicyService) SaveBaselineItems(orgID uint, hwid string, category stri
 		items = append(items, models.Policy{
 			OrgID:          orgID,
 			Title:          title,
-			Category:       strings.ToUpper(category), // Đồng bộ HOA để Agent map chuẩn O(1)
-			Value:          strings.ToLower(cleanVal), // Đồng bộ thường cho mã băm/tiến trình
-			PolicyType:     "WHITELIST",               // Baseline bản chất là danh sách trắng
-			ApprovalStatus: "APPROVED",                // Tự động phê duyệt vì là máy sạch ban đầu
-			IsActive:       true,
+			Category:       cleanCategory,
+			Value:          strings.ToLower(cleanVal),
+			PolicyType:     "WHITELIST",
+			ApprovalStatus: "BASELINE",
+			IsActive:       false,
 			CreatedBy:      "System_Baseline_Engine",
-			ApprovedBy:     "System_Auto_Sign",
-			GroupID:        asset.GroupID, // Thừa kế nhóm để tối ưu phân vùng
-			AssetHWID:      hwid,          // Khóa định danh máy sở hữu luật
+			ApprovedBy:     "",
+			GroupID:        asset.GroupID,
+			AssetHWID:      hwid,
 		})
 	}
 

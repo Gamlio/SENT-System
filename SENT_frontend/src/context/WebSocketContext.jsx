@@ -13,17 +13,16 @@ export const useSocket = () => {
     return context;
 };
 
-/**
- * Provider quản lý một kết nối WebSocket duy nhất cho toàn bộ ứng dụng.
- * Tự động kết nối, tái kết nối và phân phát tin nhắn đến các component con.
- */
+
 export const WebSocketProvider = ({ children }) => {
     const [isConnected, setIsConnected] = useState(false);
     
     // 1. Dùng useMemo để ổn định URL, tránh reconnect liên tục
     const socketUrl = useMemo(() => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}/api/v1/ws`;
+        const apiUrl = import.meta.env.VITE_API_URL || '/api/v1';
+        const apiPath = apiUrl.startsWith('http') ? new URL(apiUrl).pathname : apiUrl;
+        return `${protocol}//${window.location.host}${apiPath.replace(/\/$/, '')}/ws`;
     }, []);
 
     const listeners = useRef({}); 

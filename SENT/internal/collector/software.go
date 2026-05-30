@@ -59,7 +59,47 @@ func (s *SoftwareSensor) Name() string {
 func (s *SoftwareSensor) Collect() (interface{}, error) {
 	runningProcs := getRunningProcesses()
 	// Hàm getOSSoftware sẽ tự động được Go gọi đúng file tùy theo lúc build
-	return getOSSoftware(runningProcs) // Hàm này cần trả về (interface{}, error)
+	softwareList, err := getOSSoftware(runningProcs)
+	if err != nil {
+		return nil, err
+	}
+	warnSoftwarePolicy(softwareList)
+	return softwareList, nil
+}
+
+func warnSoftwarePolicy(records []SoftwareRecord) {
+	seen := make(map[string]bool)
+	for _, rec := range records {
+		if rec.FileHash != "" {
+			if violated, reason := policy.CheckPolicy("SOFTWARE_HASH", rec.FileHash); violated {
+				key := "hash:" + rec.FileHash
+				if !seen[key] {
+					log.Printf("⚠️ Phần mềm %q với hash %s không hợp lệ: %s", rec.SoftwareName, rec.FileHash, reason)
+					seen[key] = true
+				}
+			}
+		}
+
+		if rec.Publisher != "" {
+			if violated, reason := policy.CheckPolicy("PUBLISHER", rec.Publisher); violated {
+				key := "publisher:" + strings.ToLower(rec.Publisher)
+				if !seen[key] {
+					log.Printf("⚠️ Phần mềm %q do nhà phát hành %q không hợp lệ: %s", rec.SoftwareName, rec.Publisher, reason)
+					seen[key] = true
+				}
+			}
+		}
+
+		if rec.SoftwareName != "" {
+			if violated, reason := policy.CheckPolicy("SOFTWARE", rec.SoftwareName); violated {
+				key := "software:" + strings.ToLower(rec.SoftwareName)
+				if !seen[key] {
+					log.Printf("⚠️ Phần mềm %q không hợp lệ theo chính sách: %s", rec.SoftwareName, reason)
+					seen[key] = true
+				}
+			}
+		}
+	}
 }
 
 // EnforceSoftwarePolicy kiểm tra các tiến trình đang chạy với blacklist và chấm dứt chúng.

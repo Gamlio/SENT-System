@@ -50,7 +50,7 @@ func SendBehaviorLog(payload map[string]interface{}) {
 		defer resp.Body.Close()
 	}()
 }
-func SendToPolicyBaseline(orgID uint, hwid string, category string, values []string) {
+func SendToPolicyBaseline(orgID uint, hwid string, category string, values []map[string]interface{}) {
 	if len(values) == 0 {
 		return
 	}

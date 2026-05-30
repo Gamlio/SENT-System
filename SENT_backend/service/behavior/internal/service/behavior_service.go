@@ -120,13 +120,36 @@ func (s *BehaviorService) getSeverityByPriority(p string) string {
 	return "Medium"
 }
 
-func (s *BehaviorService) GetBehaviors(ctx context.Context, orgID uint, page, limit int64) ([]models.SecurityAlert, int64, error) {
+func (s *BehaviorService) GetBehaviors(ctx context.Context, orgID uint, page, limit int64, search, severity, status string) ([]models.SecurityAlert, int64, error) {
 	alerts := []models.SecurityAlert{}
 	if database.SecurityAlertCollection == nil {
 		return alerts, 0, nil
 	}
 
 	filter := bson.M{"org_id": orgID}
+
+	if search != "" {
+		r := primitive.Regex{Pattern: search, Options: "i"}
+		filter["$or"] = []bson.M{
+			{"title": bson.M{"$regex": r}},
+			{"description": bson.M{"$regex": r}},
+			{"asset_hwid": bson.M{"$regex": r}},
+			{"alert_type": bson.M{"$regex": r}},
+		}
+	}
+
+	if severity != "" && severity != "all" {
+		filter["severity"] = severity
+	}
+
+	if status != "" && status != "all" {
+		if status == "resolved" {
+			filter["is_resolved"] = true
+		} else if status == "open" {
+			filter["is_resolved"] = false
+		}
+	}
+
 	total, err := database.SecurityAlertCollection.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, err

@@ -15,11 +15,14 @@ func GetBehaviors(c *gin.Context) {
 	orgID := c.GetUint("org_id") // Lấy từ Middleware Auth
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
 	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "10"), 10, 64)
+	search := c.Query("search")
+	severity := c.DefaultQuery("severity", "all")
+	status := c.DefaultQuery("status", "all")
 
 	svc := behaviorSvc.BehaviorService{}
 
 	// [FIX] Sử dụng biến total để trả về cho Frontend
-	alerts, total, err := svc.GetBehaviors(c.Request.Context(), orgID, page, limit)
+	alerts, total, err := svc.GetBehaviors(c.Request.Context(), orgID, page, limit, search, severity, status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu"})
 		return

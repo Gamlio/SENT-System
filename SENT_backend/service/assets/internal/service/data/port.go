@@ -52,11 +52,14 @@ func ProcessPorts(asset models.Asset, data interface{}) error {
 
 	// NHÁNH RIÊNG CHO POLICY BASELINE: Không ảnh hưởng đến logic bên dưới
 	if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
-		var ports []string
+		var entries []map[string]interface{}
 		for _, p := range payload.OpenPorts {
-			ports = append(ports, fmt.Sprintf("%d", p.Port))
+			entries = append(entries, map[string]interface{}{
+				"port":         p.Port,
+				"process_name": p.ProcessName,
+			})
 		}
-		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "PORT", ports)
+		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "PORT", entries)
 	}
 
 	var activePorts []int

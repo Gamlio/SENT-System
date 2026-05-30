@@ -32,6 +32,10 @@ func main() {
 		viewPerm := middleware.RequirePermission("user_view")
 		usersAPI.GET("", viewPerm, handlers.GetUsers)
 		usersAPI.GET("/:id", viewPerm, handlers.GetUserDetail)
+		usersAPI.GET("/:id/permissions", viewPerm, handlers.GetUserPermissions)
+
+		// Lấy quyền của người dùng hiện tại
+		usersAPI.GET("/me/permissions", handlers.GetCurrentUserPermissions)
 
 		// Quyền quản trị nhân sự (Thêm/Sửa/Xóa/Phân quyền)
 		managePerm := middleware.RequirePermission("user_manage")
