@@ -20,9 +20,9 @@ func ProcessFirewall(asset models.Asset, data interface{}) error {
 			"asset":    asset,
 			"category": "Firewall Disabled",
 			"value":    "Disabled",
-			"title":    "[P1] Tường lửa bị vô hiệu hóa",
+			"title":    "[P3] Tường lửa bị vô hiệu hóa",
 			"desc":     "Lớp phòng thủ OS Firewall đã bị tắt, nguy cơ bị tấn công mạng cao.",
-			"priority": "P1",
+			"priority": "P3",
 		})
 	}
 	return nil

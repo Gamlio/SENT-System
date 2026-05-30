@@ -57,9 +57,9 @@ func ProcessPatch(asset models.Asset, data interface{}) error {
 			"asset":    asset,
 			"category": "Vulnerability Risk",
 			"value":    fmt.Sprintf("%d patches missing", agentPatch.TotalMissing),
-			"title":    "[P2] Máy trạm thiếu bản cập nhật an ninh",
+			"title":    "[P3] Máy trạm thiếu bản cập nhật an ninh",
 			"desc":     fmt.Sprintf("Hệ thống phát hiện máy trạm đang thiếu %d bản cập nhật vá lỗi an ninh quan trọng.", agentPatch.TotalMissing),
-			"priority": "P2",
+			"priority": "P3",
 		})
 	}
 

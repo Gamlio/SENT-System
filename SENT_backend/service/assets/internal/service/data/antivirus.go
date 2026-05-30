@@ -22,9 +22,9 @@ func ProcessAntivirus(asset models.Asset, data interface{}) error {
 			"asset":    asset,
 			"category": "Malware",
 			"value":    "Infection Detected",
-			"title":    "[P1] Malware Detected",
+			"title":    "[P3] Malware Detected",
 			"desc":     "Phát hiện mã độc trên máy trạm",
-			"priority": "P1",
+			"priority": "P3",
 		})
 	}
 	return nil

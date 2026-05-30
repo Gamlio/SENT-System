@@ -101,9 +101,9 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 			"asset":    asset,
 			"category": "USB Violation",
 			"value":    "New Device",
-			"title":    "[P1] Thiết bị ngoại vi mới",
+			"title":    "[P3] Thiết bị ngoại vi mới",
 			"desc":     fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, Serial: %s)", rec.DeviceName, rec.VID, rec.SerialNumber),
-			"priority": "P1",
+			"priority": "P3",
 		})
 	}
 	if len(activeHashes) > 0 {
