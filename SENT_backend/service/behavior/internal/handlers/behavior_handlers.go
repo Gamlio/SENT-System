@@ -86,12 +86,19 @@ func CreateIncidentHandler(c *gin.Context) {
 
 func HandleLogBehavior(c *gin.Context) {
 	var req struct {
-		Asset    models.Asset `json:"asset"`
-		Category string       `json:"category"`
-		Value    string       `json:"value"`
-		Title    string       `json:"title"`
-		Desc     string       `json:"desc"`
-		Priority string       `json:"priority"`
+		// Sử dụng DTO rút gọn để tránh Recursive Validation từ models.Asset
+		Asset struct {
+			AssetHWID     string `json:"asset_hwid" binding:"required"`
+			Hostname      string `json:"hostname"`
+			IPAddress     string `json:"ip_address"`
+			OrgID         uint   `json:"org_id" binding:"required"`
+			DepartmentTag string `json:"department_tag"`
+		} `json:"asset" binding:"required"`
+		Category string `json:"category" binding:"required"`
+		Value    string `json:"value"`
+		Title    string `json:"title" binding:"required"`
+		Desc     string `json:"desc"`
+		Priority string `json:"priority"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -106,9 +113,18 @@ func HandleLogBehavior(c *gin.Context) {
 		basePriority = "P3"
 	}
 
+	// Khởi tạo instance models.Asset và gán giá trị từ DTO
+	// Việc này giúp khớp kiểu dữ liệu cho Service mà vẫn tránh được lỗi Validation 400 của các trường Inventory
+	assetModel := models.Asset{
+		AssetHWID:     req.Asset.AssetHWID,
+		Hostname:      req.Asset.Hostname,
+		IPAddress:     req.Asset.IPAddress,
+		OrgID:         req.Asset.OrgID,
+		DepartmentTag: req.Asset.DepartmentTag,
+	}
+
 	svc := behaviorSvc.BehaviorService{}
-	// The full asset object (req.Asset) and the base priority are passed to the service
-	alert, err := svc.LogBehavior(c.Request.Context(), req.Asset, req.Category, req.Value, req.Title, req.Desc, basePriority)
+	alert, err := svc.LogBehavior(c.Request.Context(), assetModel, req.Category, req.Value, req.Title, req.Desc, basePriority)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

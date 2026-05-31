@@ -1,6 +1,7 @@
 package data
 
 import (
+	"SENT_backend/pkg/models"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -37,17 +38,36 @@ func GetBytesFromData(data interface{}) ([]byte, error) {
 		return json.Marshal(data)
 	}
 }
-func SendBehaviorLog(payload map[string]interface{}) {
+func SendBehaviorLog(category string, value string, title string, desc string, priority string, asset models.Asset) {
 	go func() {
+		payload := map[string]interface{}{
+			"asset": map[string]interface{}{
+				"asset_hwid":     asset.AssetHWID,
+				"hostname":       asset.Hostname,
+				"ip_address":     asset.IPAddress,
+				"org_id":         asset.OrgID,
+				"department_tag": asset.DepartmentTag,
+			},
+			"category": category,
+			"value":    value,
+			"title":    title,
+			"desc":     desc,
+			"priority": priority,
+		}
+
 		jsonData, _ := json.Marshal(payload)
 		url := "http://behavior-service:8000/api/v1/behaviors/log"
 
 		resp, err := behaviorClient.Post(url, "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
-			log.Printf("⚠️ Lỗi gửi sự kiện sang Behavior Service: %v\n", err)
+			log.Printf("⚠️ Lỗi kết nối sang Behavior Service: %v\n", err)
 			return
 		}
 		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("⚠️ Behavior Service từ chối log (%d) cho máy %s\n", resp.StatusCode, asset.AssetHWID)
+		}
 	}()
 }
 func SendToPolicyBaseline(orgID uint, hwid string, category string, values []map[string]interface{}) {

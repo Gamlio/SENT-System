@@ -24,13 +24,15 @@ func main() {
 		}
 	}()
 
-	forkLinuxDaemon()
-
 	os.MkdirAll("data", 0755)
 	os.MkdirAll("config", 0755)
 
 	if !utils.IsAdmin() {
 		log.Fatal("FATAL: asset yêu cầu quyền Administrator/Root để hoạt động. Vui lòng chạy lại bằng 'Run as Administrator' hoặc 'sudo'.")
+	}
+
+	if os.Getenv("SENT_DAEMON") != "1" {
+		utils.SetupAutoStart()
 	}
 
 	hInfo, _ := host.Info()
@@ -49,14 +51,20 @@ func main() {
 
 	if os.Getenv("SENT_DAEMON") != "1" || runtime.GOOS == "windows" {
 		fmt.Printf("\n 🛡️ SENT asset V4.0 (Ninja Thin-Client) | HOST: %s\n", hostname)
-		ipAddress := utils.GetOutboundIP()
+	}
+	ipAddress := utils.GetOutboundIP()
+	if os.Getenv("SENT_DAEMON") != "1" || runtime.GOOS == "windows" {
 		fmt.Printf(" [DEBUG] IP phát hiện được: '%s'\n", ipAddress)
+	}
 
-		config.LoadOrBootstrap(AssetHWID, hostname, ipAddress)
+	config.LoadOrBootstrap(AssetHWID, hostname, ipAddress)
 
+	if os.Getenv("SENT_DAEMON") != "1" || runtime.GOOS == "windows" {
 		fmt.Println("🚀 Khởi tạo Agent thành công. Ứng dụng đang chuyển sang chế độ chạy ngầm...")
 		time.Sleep(1 * time.Second)
 	}
+
+	forkLinuxDaemon()
 
 	if runtime.GOOS == "windows" {
 		hideConsoleWindow()

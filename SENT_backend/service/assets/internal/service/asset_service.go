@@ -7,6 +7,7 @@ import (
 	dataassets "SENT_backend/service/assets/internal/service/data"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -146,6 +147,13 @@ func ProcessassetData(payload AssetPayload) error {
 				}
 			}
 		}
+
+		// Kích hoạt tính lại điểm rủi ro qua Scoring Service
+		go func(id string) {
+			url := "http://scoring-service:8000/api/v1/scoring/recalculate/" + id
+			_, _ = http.Post(url, "application/json", nil)
+		}(payload.AssetID)
+
 		return nil // Hoàn tất xử lý trọn vẹn gói tin gộp batch
 	}
 
@@ -190,6 +198,12 @@ func ProcessassetData(payload AssetPayload) error {
 		"type": "ASSET_UPDATE",
 		"hwid": payload.AssetID,
 	})
+
+	// Kích hoạt tính lại điểm rủi ro qua Scoring Service
+	go func(id string) {
+		url := "http://scoring-service:8000/api/v1/scoring/recalculate/" + id
+		_, _ = http.Post(url, "application/json", nil)
+	}(payload.AssetID)
 
 	return nil
 }

@@ -36,7 +36,7 @@ func GetActiveEnrollmentToken(c *gin.Context) {
 	err := database.DB.Select("token", "expires_at").
 		Where("org_id = ? AND expires_at > ?", orgID, time.Now()).
 		Order("expires_at desc").
-		First(&tokenRecord).Error
+		Find(&tokenRecord).Error
 
 	// 2. NẾU KHÔNG TÌM THẤY (Hoặc đã hết hạn) -> TỰ ĐỘNG SINH MÃ MỚI
 	if err != nil {

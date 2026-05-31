@@ -53,14 +53,13 @@ func ProcessPatch(asset models.Asset, data interface{}) error {
 	}
 
 	if agentPatch.TotalMissing > 0 {
-		SendBehaviorLog(map[string]interface{}{
-			"asset":    asset,
-			"category": "Vulnerability Risk",
-			"value":    fmt.Sprintf("%d patches missing", agentPatch.TotalMissing),
-			"title":    "[P3] Máy trạm thiếu bản cập nhật an ninh",
-			"desc":     fmt.Sprintf("Hệ thống phát hiện máy trạm đang thiếu %d bản cập nhật vá lỗi an ninh quan trọng.", agentPatch.TotalMissing),
-			"priority": "P3",
-		})
+		// Thay thế hàm cũ:
+		SendBehaviorLog("Vulnerability Risk",
+			fmt.Sprintf("%d patches missing",
+				agentPatch.TotalMissing),
+			"[P3] Máy trạm thiếu bản cập nhật an ninh",
+			fmt.Sprintf("Hệ thống phát hiện máy trạm đang thiếu %d bản cập nhật vá lỗi an ninh quan trọng.",
+				agentPatch.TotalMissing), "P3", asset)
 	}
 
 	return nil

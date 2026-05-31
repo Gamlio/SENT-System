@@ -84,14 +84,14 @@ func ProcessPorts(asset models.Asset, data interface{}) error {
 		// 2. Kiểm tra nếu cổng nằm trong danh sách nguy hiểm
 		if riskDesc, isDangerous := dangerousPorts[incomingPort.Port]; isDangerous {
 			// GỌI API SANG BEHAVIOR SERVICE
-			SendBehaviorLog(map[string]interface{}{
-				"asset":    asset,
-				"category": "Unauthorized Port",
-				"value":    fmt.Sprintf("%d", incomingPort.Port),
-				"title":    fmt.Sprintf("[P2] Phát hiện cổng %d (%s)", incomingPort.Port, riskDesc),
-				"desc":     fmt.Sprintf("Tiến trình '%s' đang mở cổng dịch vụ nhạy cảm %d.", incomingPort.ProcessName, incomingPort.Port),
-				"priority": "P2",
-			})
+			SendBehaviorLog(
+				"Unauthorized Port",
+				fmt.Sprintf("%d", incomingPort.Port),
+				fmt.Sprintf("[P2] Phát hiện cổng %d (%s)", incomingPort.Port, riskDesc),
+				fmt.Sprintf("Tiến trình '%s' đang mở cổng dịch vụ nhạy cảm %d.", incomingPort.ProcessName, incomingPort.Port),
+				"P2",
+				asset,
+			)
 		}
 	}
 

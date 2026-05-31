@@ -77,7 +77,7 @@ func RecalculateRiskScore(assetAssetID string) {
 
 func processRiskScore(assetAssetID string) {
 	var asset models.Asset
-	if err := database.DB.Select("id", "asset_hwid", "hostname", "risk_score", "trust_score", "asset_type_id").Preload("AssetType").Where("asset_hwid = ?", assetAssetID).First(&asset).Error; err != nil {
+	if err := database.DB.Select("asset_hwid", "hostname", "ip_address", "risk_score", "trust_score", "asset_type_id", "org_id", "department_tag").Preload("AssetType").Where("asset_hwid = ?", assetAssetID).First(&asset).Error; err != nil {
 		return
 	}
 	var activeAlerts []models.SecurityAlert
@@ -181,8 +181,13 @@ func processRiskScore(assetAssetID string) {
 		math.Log10(float64(len(usbLogs))+1.0) +
 		math.Log10((float64(totalDiskIO)/1_000_000)+1.0)
 
+	baseRisk := rActive + rHistory
+	if baseRisk < 1.0 {
+		baseRisk = 1.0 // Đảm bảo baseline có tác dụng khi không có sự cố
+	}
+
 	// --- Tính điểm tổng hợp ---
-	displayScore := (rActive + rHistory) * cFactor * vFactor
+	displayScore := baseRisk * cFactor * vFactor
 	if displayScore > 100.0 {
 		displayScore = 100.0
 	}
@@ -204,7 +209,13 @@ func processRiskScore(assetAssetID string) {
 	if displayScore > 80.0 {
 		log.Printf("🚨 [FORENSIC SEAL] %s: Điểm rủi ro=%.1f > 80. Hệ thống kích hoạt Snapshot Immutable!", asset.Hostname, displayScore)
 		sendCommandToBehaviorService(map[string]interface{}{
-			"asset":    asset,
+			"asset": map[string]interface{}{
+				"asset_hwid":     asset.AssetHWID,
+				"hostname":       asset.Hostname,
+				"ip_address":     asset.IPAddress,
+				"org_id":         asset.OrgID,
+				"department_tag": asset.DepartmentTag,
+			},
 			"category": "Forensic Snapshot",
 			"value":    "High Risk Score",
 			"title":    "[P1] Kích hoạt thu thập dữ liệu pháp y",
@@ -253,27 +264,27 @@ func (s *ScoreService) GetPriorityFromMatrix(sensorType, departmentTag string) (
 	return "P3", fmt.Errorf("sensor type '%s' not found in department matrix, defaulting to P3", sensorType)
 }
 
-// CalculateCurrentRiskScore calculates the instantaneous risk score (R_current) for an asset.
+// CalculateRiskScore calculates the instantaneous risk score (R_current) for an asset.
 // This score reflects the current active threats.
-func (s *ScoreService) CalculateCurrentRiskScore(assetID uint) (float64, error) {
+func (s *ScoreService) CalculateRiskScore(ctx context.Context, assetHWID string) error {
 	// 1. Lấy thông tin thiết bị và cấu hình loại máy trạm (AssetType) để lấy RiskWeight (cFactor)
 	var asset models.Asset
-	if err := s.db.Preload("AssetType").First(&asset, assetID).Error; err != nil {
-		return 0, fmt.Errorf("failed to fetch asset info: %w", err)
+	if err := s.db.WithContext(ctx).Preload("AssetType").Where("asset_hwid = ?", assetHWID).First(&asset).Error; err != nil {
+		return fmt.Errorf("failed to fetch asset info: %w", err)
 	}
 
 	var incidents []models.Incident
 	// Lấy các sự cố đang mở (Open) thuộc về máy trạm này
-	if err := s.db.Where("asset_hwid = ? AND status = ?", asset.AssetHWID, "Open").Find(&incidents).Error; err != nil {
-		return 0, fmt.Errorf("failed to fetch open incidents for asset %s: %w", asset.AssetHWID, err)
+	if err := s.db.WithContext(ctx).Where("asset_hwid = ? AND status = ?", asset.AssetHWID, "Open").Find(&incidents).Error; err != nil {
+		return fmt.Errorf("failed to fetch open incidents for asset %s: %w", asset.AssetHWID, err)
 	}
 
 	// Nếu không có sự cố nào, reset điểm rủi ro tức thời về 0
 	if len(incidents) == 0 {
-		if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", asset.AssetHWID).Update("risk_score", 0.0).Error; err != nil {
-			return 0, fmt.Errorf("failed to reset risk score for asset %s: %w", asset.AssetHWID, err)
+		if err := s.db.WithContext(ctx).Model(&models.Asset{}).Where("asset_hwid = ?", asset.AssetHWID).Update("risk_score", 0.0).Error; err != nil {
+			return fmt.Errorf("failed to reset risk score for asset %s: %w", asset.AssetHWID, err)
 		}
-		return 0, nil
+		return nil
 	}
 
 	// 2. Đếm số lượng sự cố theo từng mức độ ưu tiên
@@ -310,11 +321,11 @@ func (s *ScoreService) CalculateCurrentRiskScore(assetID uint) (float64, error) 
 	}
 
 	// 6. Cập nhật điểm số chuẩn hóa vào cơ sở dữ liệu Postgres
-	if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", asset.AssetHWID).Update("risk_score", rCurrent).Error; err != nil {
-		return rCurrent, fmt.Errorf("failed to update risk score for asset %s: %w", asset.AssetHWID, err)
+	if err := s.db.WithContext(ctx).Model(&models.Asset{}).Where("asset_hwid = ?", asset.AssetHWID).Update("risk_score", rCurrent).Error; err != nil {
+		return fmt.Errorf("failed to update risk score for asset %s: %w", asset.AssetHWID, err)
 	}
 
-	return rCurrent, nil
+	return nil
 }
 
 // UpdateTrustScore updates the long-term trust score (D_debt) for an asset.
@@ -322,7 +333,7 @@ func (s *ScoreService) CalculateCurrentRiskScore(assetID uint) (float64, error) 
 // and also when an incident is created or resolved to ensure immediate reflection of changes.
 func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
 	var asset models.Asset
-	if err := s.db.First(&asset, assetID).Error; err != nil {
+	if err := s.db.Where("id = ?", assetID).First(&asset).Error; err != nil {
 		return 0, fmt.Errorf("asset not found: %w", err)
 	}
 
@@ -339,7 +350,7 @@ func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
 	// The document implies "lỗi P1 trong 30 ngày qua" (P1 errors in the past 30 days)
 	// should cause deduction, regardless of their current status (Open/Resolved).
 	if err := s.db.Where("asset_hwid = ? AND occurred_at >= ? AND (priority = ? OR priority = ?)",
-		assetID, thirtyDaysAgo, "P1", "P2").Find(&recentIncidents).Error; err != nil {
+		asset.AssetHWID, thirtyDaysAgo, "P1", "P2").Find(&recentIncidents).Error; err != nil {
 		return 0, fmt.Errorf("failed to fetch recent incidents for trust score deduction for asset %d: %w", assetID, err)
 	}
 
@@ -393,7 +404,7 @@ func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
 		updates["last_trust_recovery_applied_at"] = asset.LastTrustRecoveryAppliedAt
 	}
 
-	if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", assetID).Updates(updates).Error; err != nil {
+	if err := s.db.Model(&asset).Updates(updates).Error; err != nil {
 		return currentTrustScore, fmt.Errorf("failed to update trust score for asset %d: %w", assetID, err)
 	}
 
@@ -402,17 +413,17 @@ func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
 
 // UpdateassetLastIncidentTime updates the LastIncidentAt field for an asset.
 // This should be called whenever a new incident is created for an asset.
-func (s *ScoreService) UpdateassetLastIncidentTime(assetID uint, incidentTime time.Time) error {
+func (s *ScoreService) UpdateassetLastIncidentTime(assetHWID string, incidentTime time.Time) error {
 	var asset models.Asset
-	if err := s.db.First(&asset, assetID).Error; err != nil {
+	if err := s.db.Where("asset_hwid = ?", assetHWID).First(&asset).Error; err != nil {
 		return fmt.Errorf("asset not found: %w", err)
 	}
 
 	// Only update if the new incident time is more recent than the current LastIncidentAt
 	// or if LastIncidentAt is nil.
 	if asset.LastIncidentAt == nil || incidentTime.After(*asset.LastIncidentAt) {
-		if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", assetID).Update("last_incident_at", incidentTime).Error; err != nil {
-			return fmt.Errorf("failed to update last incident time for asset %d: %w", assetID, err)
+		if err := s.db.Model(&models.Asset{}).Where("asset_hwid = ?", assetHWID).Update("last_incident_at", incidentTime).Error; err != nil {
+			return fmt.Errorf("failed to update last incident time for asset %s: %w", assetHWID, err)
 		}
 	}
 	return nil

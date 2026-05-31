@@ -18,14 +18,11 @@ func ProcessAntivirus(asset models.Asset, data interface{}) error {
 
 	if err := json.Unmarshal(bytesData, &record); err == nil && record.HasThreat {
 		// 1. Chuẩn bị Payload khớp với SecurityEventReq của Incident Service
-		SendBehaviorLog(map[string]interface{}{
-			"asset":    asset,
-			"category": "Malware",
-			"value":    "Infection Detected",
-			"title":    "[P3] Malware Detected",
-			"desc":     "Phát hiện mã độc trên máy trạm",
-			"priority": "P3",
-		})
+		SendBehaviorLog("Malware",
+			"Infection Detected",
+			"[P3] Malware Detected",
+			"Phát hiện mã độc trên máy trạm",
+			"P3", asset)
 	}
 	return nil
 }

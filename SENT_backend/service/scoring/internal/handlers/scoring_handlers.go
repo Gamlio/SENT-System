@@ -17,7 +17,6 @@ func RecalculateAll(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 
 	var assetHWIDs []string
-	// Lấy danh sách HWID của tất cả máy thuộc Org này
 	err := database.DB.Model(&models.Asset{}).
 		Where("org_id = ?", orgID).
 		Pluck("asset_hwid", &assetHWIDs).Error
@@ -27,14 +26,15 @@ func RecalculateAll(c *gin.Context) {
 		return
 	}
 
-	// Chạy vòng lặp gọi hàm tính toán có sẵn trong score_service.go
+	svc := service.NewScoreService(database.DB)
 	for _, hwid := range assetHWIDs {
-		service.RecalculateRiskScore(hwid)
+		// Gọi thông qua thực thể struct và truyền đúng chuỗi string hwid
+		_ = svc.CalculateRiskScore(c.Request.Context(), hwid)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Đã bắt đầu tiến trình tính toán lại điểm cho toàn bộ hệ thống",
-		"total":   len(assetHWIDs),
+		"message": "Đã bắt đầu tiến trình tính toán lại điểm số cho toàn bộ thiết bị",
+		"count":   len(assetHWIDs),
 	})
 }
 
@@ -42,24 +42,25 @@ func RecalculateAll(c *gin.Context) {
 func RecalculateByType(c *gin.Context) {
 	orgID := c.GetUint("org_id")
 	typeID, _ := strconv.Atoi(c.Param("type_id"))
+	typeIDStr := strconv.Itoa(typeID)
 
 	var assetHWIDs []string
-	// Chỉ lấy các máy thuộc loại thiết bị được chỉ định
 	err := database.DB.Model(&models.Asset{}).
-		Where("asset_type_id = ? AND org_id = ?", typeID, orgID).
+		Where("org_id = ? AND asset_type_id = ?", orgID, typeIDStr).
 		Pluck("asset_hwid", &assetHWIDs).Error
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi truy vấn danh sách thiết bị theo loại"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lọc danh sách thiết bị"})
 		return
 	}
 
+	svc := service.NewScoreService(database.DB)
 	for _, hwid := range assetHWIDs {
-		service.RecalculateRiskScore(hwid)
+		_ = svc.CalculateRiskScore(c.Request.Context(), hwid)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Đã cập nhật lại điểm rủi ro theo loại thiết bị",
+		"message": "Đã cập nhật lại điểm rủi ro theo loại thiết bị thành công",
 		"count":   len(assetHWIDs),
 	})
 }
@@ -94,19 +95,28 @@ func GetScoreHistory(c *gin.Context) {
 
 	c.JSON(http.StatusOK, history)
 }
+
+// HandleRecalculate: Xử lý endpoint POST "/api/v1/scoring/recalculate/:hwid" (Đã đồng bộ tên với main.go)
 func HandleRecalculate(c *gin.Context) {
-	hwid := c.Param("hwid")
+	hwid := c.Param("hwid") // Lấy trực tiếp chuỗi UUID HWID
+
 	if hwid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu Asset HWID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu thông tin asset_hwid"})
 		return
 	}
 
-	// Gọi logic tính toán đã có trong score_service.go
-	// Hàm này đã có sẵn cơ chế Debounce để tối ưu hiệu năng
-	service.RecalculateRiskScore(hwid)
+	// Khởi tạo instance ScoreService chuẩn cấu trúc Go
+	svc := service.NewScoreService(database.DB)
+
+	// Truyền trực tiếp chuỗi hwid (string) vào hàm CalculateRiskScore
+	err := svc.CalculateRiskScore(c.Request.Context(), hwid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi tính toán điểm số rủi ro", "detail": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Yêu cầu tính toán lại điểm đã được tiếp nhận",
-		"hwid":    hwid,
+		"message":    "Tính toán và cập nhật điểm rủi ro thành công",
+		"asset_hwid": hwid,
 	})
 }

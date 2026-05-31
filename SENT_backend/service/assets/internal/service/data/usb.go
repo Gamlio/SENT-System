@@ -97,14 +97,14 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 		}
 
 		// Gọi đến Behavior Service thông qua hàm dùng chung
-		SendBehaviorLog(map[string]interface{}{
-			"asset":    asset,
-			"category": "USB Violation",
-			"value":    "New Device",
-			"title":    "[P3] Thiết bị ngoại vi mới",
-			"desc":     fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, Serial: %s)", rec.DeviceName, rec.VID, rec.SerialNumber),
-			"priority": "P3",
-		})
+		SendBehaviorLog(
+			"USB Violation",
+			"New Device",
+			"[P3] Thiết bị ngoại vi mới",
+			fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, Serial: %s)", rec.DeviceName, rec.VID, rec.SerialNumber),
+			"P3",
+			asset,
+		)
 	}
 	if len(activeHashes) > 0 {
 		if _, err := database.USBCollection.UpdateMany(context.TODO(), bson.M{

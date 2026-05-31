@@ -68,14 +68,11 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) error {
 		}
 		reason := fmt.Sprintf("Lưu lượng mạng đột biến. Ứng dụng khả nghi: %s", topApp)
 
-		SendBehaviorLog(map[string]interface{}{
-			"asset":    asset,
-			"category": "Data Exfiltration",
-			"value":    fmt.Sprintf("%d MB", diffSent/1024/1024),
-			"title":    "[P1] Hoạt động mạng bất thường",
-			"desc":     fmt.Sprintf("%s. Lượng dữ liệu: %d MB/30s", reason, diffSent/1024/1024),
-			"priority": "P1",
-		})
+		SendBehaviorLog("Data Exfiltration",
+			fmt.Sprintf("%d MB", diffSent/1024/1024),
+			"[P1] Hoạt động mạng bất thường",
+			fmt.Sprintf("%s. Lượng dữ liệu: %d MB/30s",
+				reason, diffSent/1024/1024), "P1", asset)
 	}
 	return nil
 }

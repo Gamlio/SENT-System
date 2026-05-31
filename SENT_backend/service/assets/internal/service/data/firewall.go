@@ -16,14 +16,12 @@ func ProcessFirewall(asset models.Asset, data interface{}) error {
 	}
 
 	if err := json.Unmarshal(bytesData, &record); err == nil && record.FirewallOff {
-		SendBehaviorLog(map[string]interface{}{
-			"asset":    asset,
-			"category": "Firewall Disabled",
-			"value":    "Disabled",
-			"title":    "[P3] Tường lửa bị vô hiệu hóa",
-			"desc":     "Lớp phòng thủ OS Firewall đã bị tắt, nguy cơ bị tấn công mạng cao.",
-			"priority": "P3",
-		})
+		// Thay thế hàm cũ bằng cấu trúc tường minh:
+		SendBehaviorLog("Firewall Disabled",
+			"Disabled",
+			"[P3] Tường lửa bị vô hiệu hóa",
+			"Lớp phòng thủ OS Firewall đã bị tắt, nguy cơ bị tấn công mạng cao.",
+			"P3", asset)
 	}
 	return nil
 }

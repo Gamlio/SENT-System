@@ -151,14 +151,14 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 			descBuilder.WriteString(fmt.Sprintf("%s: %s. ", vType, strings.Join(names, ", ")))
 		}
 
-		SendBehaviorLog(map[string]interface{}{
-			"asset":    asset,
-			"category": highestAlertType,
-			"value":    fmt.Sprintf("%d violations", len(violations)),
-			"title":    fmt.Sprintf("[%s] Phát hiện vi phạm phần mềm tổng hợp", highestPriority),
-			"desc":     descBuilder.String(),
-			"priority": highestPriority,
-		})
+		SendBehaviorLog(
+			highestAlertType,
+			fmt.Sprintf("%d violations", len(violations)),
+			fmt.Sprintf("[%s] Phát hiện vi phạm phần mềm tổng hợp", highestPriority),
+			descBuilder.String(),
+			highestPriority,
+			asset,
+		)
 	}
 
 	if len(activeHashes) > 0 {

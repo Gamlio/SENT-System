@@ -61,6 +61,11 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 	}
 
 	// Nếu chưa đăng ký, tiến hành Bootstrap
+	if os.Getenv("SENT_DAEMON") == "1" {
+		fmt.Println("❌ Lỗi: Không tìm thấy file cấu hình trong chế độ Daemon. Vui lòng chạy Agent ở chế độ foreground trước để thiết lập.")
+		os.Exit(1)
+	}
+
 	updateBackendURL()
 
 	fmt.Println("===========================================")
@@ -70,7 +75,11 @@ func LoadOrBootstrap(hwid, hostname, ipAddress string) {
 
 	for {
 		fmt.Print(">> Nhập Mã Cài Đặt (Enrollment Token): ")
-		token, _ := reader.ReadString('\n')
+		token, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("\n❌ Lỗi đọc mã cài đặt: %v\n", err)
+			os.Exit(1)
+		}
 		token = strings.TrimSpace(token)
 
 		if enrollToServer(token, hwid, hostname, ipAddress) {
