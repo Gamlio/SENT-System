@@ -4,6 +4,8 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	assetSvc "SENT_backend/service/assets/internal/service"
+	"bytes"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -230,8 +232,19 @@ func UpdateDeviceType(c *gin.Context) {
 // Hàm bổ trợ kích hoạt tính toán lại điểm rủi ro qua API Scoring
 func triggerRiskRecalculation(hwid string) {
 	go func(id string) {
-		url := "http://scoring-service:8000/api/v1/scoring/recalculate/" + id
-		resp, err := http.Post(url, "application/json", nil)
+		// Notify Behavior Service; Behavior will persist and trigger scoring centrally
+		payload := map[string]interface{}{
+			"org_id":        0,
+			"asset_hwid":    id,
+			"category":      "AssetUpdate",
+			"value":         "",
+			"title":         "Asset metadata changed",
+			"desc":          "Trigger recalculation via Behavior Service",
+			"base_priority": "P3",
+		}
+		b, _ := json.Marshal(payload)
+		url := "http://behavior-service:8000/api/v1/behaviors/log"
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(b))
 		if err == nil {
 			resp.Body.Close()
 		}

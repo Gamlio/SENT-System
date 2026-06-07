@@ -4,8 +4,8 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	assetService "SENT_backend/service/assets/internal/service"
+	"bytes"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -44,9 +44,18 @@ func PushDataHandler(c *gin.Context) {
 		return
 	}
 
+	// [SỬA LỖI]: Phân loại Type dựa trên LogType để kích hoạt luồng xử lý nhanh trong Service
+	// Nếu không, mọi gói tin đều bị coi là DATA và phải truy vấn DB nặng nề
+	payloadType := "DATA"
+	if req.LogType == "heartbeat" {
+		payloadType = "HEARTBEAT"
+	} else if req.LogType == "offline" {
+		payloadType = "OFFLINE"
+	}
+
 	// 3. Đẩy dữ liệu cho Bộ não xử lý và bắt trọn các lỗi trả về
 	err := assetService.ProcessassetData(assetService.AssetPayload{
-		Type:     "DATA",
+		Type:     payloadType,
 		LogType:  req.LogType,
 		AssetID:  req.AssetID,
 		Hostname: req.Hostname,
@@ -81,13 +90,25 @@ func UpdateDepartment(c *gin.Context) {
 		return
 	}
 
-	// [TÙY CHỌN] Tính lại điểm rủi ro ngay lập tức vì đổi ngữ cảnh có thể làm thay đổi P1/P4
+	// Notify Behavior Service to trigger a centralized recalculation (Behavior will call Scoring)
 	go func(id string) {
-		url := fmt.Sprintf("http://scoring-service:8000/api/v1/scoring/recalculate/%s", id)
-		_, err := http.Post(url, "application/json", nil)
-		if err != nil {
-			log.Printf("⚠️ Lỗi gọi Scoring API cho máy %s: %v\n", id, err)
+		payload := map[string]interface{}{
+			"org_id":        c.GetUint("org_id"),
+			"asset_hwid":    id,
+			"category":      "DepartmentChange",
+			"value":         "",
+			"title":         "Department tag updated",
+			"desc":          "Department updated, request centralized scoring",
+			"base_priority": "P3",
 		}
+		b, _ := json.Marshal(payload)
+		url := "http://behavior-service:8000/api/v1/behaviors/log"
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(b))
+		if err != nil {
+			log.Printf("⚠️ Lỗi gọi Behavior Service cho máy %s: %v\n", id, err)
+			return
+		}
+		resp.Body.Close()
 	}(hwid)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã cập nhật Nhãn bảo mật (Department)"})
@@ -129,6 +150,7 @@ func GetAssetSoftware(c *gin.Context) {
 	}
 
 	total, _ := database.SoftwareCollection.CountDocuments(c, filter)
+
 	cursor, err := database.SoftwareCollection.Find(c, filter, &options.FindOptions{
 		Skip:  &skip,
 		Limit: &limit64,

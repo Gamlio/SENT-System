@@ -37,7 +37,9 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 		return fmt.Errorf("lỗi giải mã JSON USB: %w", err)
 	}
 
-	if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
+	isInBaseline := asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil)
+
+	if isInBaseline {
 		var entries []map[string]interface{}
 		for _, r := range records {
 			if r.DeviceHash != "" {
@@ -51,6 +53,7 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 			}
 		}
 		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "USB_DEVICE", entries)
+		// [LOGIC FIX]: Không return ở đây để dữ liệu vẫn được lưu vào MongoDB
 	}
 
 	if database.USBCollection == nil {
@@ -97,14 +100,16 @@ func ProcessUSB(asset models.Asset, data interface{}) error {
 		}
 
 		// Gọi đến Behavior Service thông qua hàm dùng chung
-		SendBehaviorLog(
-			"USB Violation",
-			"New Device",
-			"[P3] Thiết bị ngoại vi mới",
-			fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, Serial: %s)", rec.DeviceName, rec.VID, rec.SerialNumber),
-			"P3",
-			asset,
-		)
+		if !isInBaseline && !whitelistedHashes[rec.DeviceHash] {
+			SendBehaviorLog(
+				"USB Violation",
+				"New Device",
+				"[P3] Thiết bị ngoại vi mới",
+				fmt.Sprintf("Phát hiện USB lạ: %s (VID: %s, Serial: %s)", rec.DeviceName, rec.VID, rec.SerialNumber),
+				"P3",
+				asset,
+			)
+		}
 	}
 	if len(activeHashes) > 0 {
 		if _, err := database.USBCollection.UpdateMany(context.TODO(), bson.M{

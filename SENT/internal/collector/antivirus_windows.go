@@ -15,12 +15,25 @@ func (s *AntivirusSensor) Collect() (interface{}, error) {
 	defer cancel()
 
 	// [TỐI ƯU HIỆU SUẤT] Sử dụng WMI Command-line (WMIC) nhanh hơn Powershell
-	cmd := exec.CommandContext(ctx, "wmic", "/namespace:\\\\root\\Microsoft\\Windows\\Defender", "path", "MSFT_MpThreat", "where", "RollupStatus=1", "get", "ThreatID")
+	// Lấy trực tiếp tên mã độc (Name) thay vì chỉ lấy ID để hiển thị chi tiết cho SOC
+	cmd := exec.CommandContext(ctx, "wmic", "/namespace:\\\\root\\Microsoft\\Windows\\Defender", "path", "MSFT_MpThreat", "where", "RollupStatus=1", "get", "Name")
 
 	out, err := cmd.Output()
-	// Nếu output có chứa "ThreatID", tức là Defender đang báo cáo mã độc (RollupStatus=1)
-	if err == nil && strings.Contains(string(out), "ThreatID") {
-		return AntivirusRecord{HasThreat: true}, nil
+	if err != nil {
+		return AntivirusRecord{HasThreat: false}, nil
+	}
+
+	lines := strings.Split(string(out), "\r\n")
+	var names []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && trimmed != "Name" {
+			names = append(names, trimmed)
+		}
+	}
+
+	if len(names) > 0 {
+		return AntivirusRecord{HasThreat: true, ThreatNames: names}, nil
 	}
 	return AntivirusRecord{HasThreat: false}, nil
 }

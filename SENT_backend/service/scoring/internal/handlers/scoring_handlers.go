@@ -4,6 +4,8 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	"SENT_backend/service/scoring/internal/service" // Import logic tính điểm
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -114,6 +116,14 @@ func HandleRecalculate(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi tính toán điểm số rủi ro", "detail": err.Error()})
 		return
 	}
+
+	// Gọi nội bộ Asset Service để broadcast sự kiện cập nhật (ASSET_UPDATE)
+	go func(id string) {
+		url := "http://asset-service:8000/api/v1/assets/internal/notify"
+		payload := map[string]string{"asset_hwid": id}
+		b, _ := json.Marshal(payload)
+		_, _ = http.Post(url, "application/json", bytes.NewBuffer(b))
+	}(hwid)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Tính toán và cập nhật điểm rủi ro thành công",

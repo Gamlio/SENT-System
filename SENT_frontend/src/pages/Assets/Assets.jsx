@@ -15,12 +15,7 @@ import AssetsBulkActions from './components/AssetsBulkActions';
 import { useSocketSubscription } from '../../context/useSocketSubscription';
 import axios from '../../api/axios';
 
-const riskScoringLevels = [
-    { label: 'Rủi Ro Thấp', value: 'Low', color: '#10b981', icon: <ShieldCheck /> },
-    { label: 'Rủi Ro Trung Bình', value: 'Medium', color: '#f59e0b', icon: <Monitor /> },
-    { label: 'Rủi Ro Cao', value: 'High', color: '#ef4444', icon: <ShieldAlert /> },
-    { label: 'Nguy Hiểm', value: 'Critical', color: '#be123c', icon: <ShieldAlert /> },
-];
+import { getRiskLevel } from '../../utils/risk';
 
 // [FIX] React yêu cầu Custom Component phải viết hoa chữ cái đầu tiên
 const AssetStatusTag = React.memo(({ status }) => {
@@ -36,19 +31,12 @@ const AssetStatusTag = React.memo(({ status }) => {
 });
 
 const RiskScoreDisplay = React.memo(({ score }) => {
-    const level = riskScoringLevels.find(l => {
-        if (l.value === 'Low' && score <= 30) return true;
-        if (l.value === 'Medium' && score > 30 && score <= 70) return true;
-        if (l.value === 'High' && score > 70 && score <= 90) return true;
-        if (l.value === 'Critical' && score > 90) return true;
-        return false;
-    });
-
-    if (!level) return <span className="text-slate-500 text-xs font-mono">{score}</span>;
+    const level = getRiskLevel(score);
+    const display = Math.round(Number(score) || 0);
 
     return (
         <div className="flex items-center gap-2">
-            <span className={`text-lg font-black w-8 text-right font-mono ${score > 70 ? 'text-red-500' : score > 30 ? 'text-amber-500' : 'text-emerald-500'}`}>{score}</span>
+            <span className={`text-lg font-black w-8 text-right font-mono ${display > 70 ? 'text-red-500' : display > 30 ? 'text-amber-500' : 'text-emerald-500'}`}>{display}</span>
             <div style={{ color: level.color, borderColor: `${level.color}40`, backgroundColor: `${level.color}10` }} className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border">
                 {React.cloneElement(level.icon, { size: 10 })} {level.label}
             </div>
@@ -78,7 +66,7 @@ const Assets = () => {
         debounceRef.current = setTimeout(() => fetchassets(), 500);
     }, [fetchassets]);
 
-    useSocketSubscription(['asset_STATUS_CHANGED', 'REFRESH_asset_LIST', 'BASELINE_COMPLETED'], handleassetUpdate);
+    useSocketSubscription(['asset_STATUS_CHANGED', 'REFRESH_asset_LIST', 'BASELINE_COMPLETED', 'ASSET_UPDATE'], handleassetUpdate);
 
     const handleAssignManager = async (userId) => {
         try {

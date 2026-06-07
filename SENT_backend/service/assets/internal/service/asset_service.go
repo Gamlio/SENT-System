@@ -7,13 +7,13 @@ import (
 	dataassets "SENT_backend/service/assets/internal/service/data"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"log"
 	"strings"
 	"time"
 )
 
 type AssetPayload struct {
-	Type     string      `json:"type" binding:"required,oneof=DATA HEARTBEAT ALERT"` // "DATA" | "HEARTBEAT"
+	Type     string      `json:"type" binding:"required,oneof=DATA HEARTBEAT ALERT OFFLINE"` // "DATA" | "HEARTBEAT" | "OFFLINE"
 	LogType  string      `json:"log_type" binding:"required,max=50"`
 	AssetID  string      `json:"asset_hwid" binding:"required,max=64"`
 	Hostname string      `json:"hostname" binding:"required,min=1,max=255"`
@@ -24,8 +24,35 @@ func ProcessassetData(payload AssetPayload) error {
 
 	// [TỐI ƯU HIỆU NĂNG] Giảm tải gõ búa (Hammering) cho Postgres bằng cách CHỈ cập nhật last_seen cho gói HEARTBEAT
 	if payload.Type == "HEARTBEAT" {
-		return database.DB.Model(&models.Asset{}).Where("asset_hwid = ?", payload.AssetID).
-			Update("last_seen", time.Now()).Error
+		// Truy vấn nhanh OrgID để broadcast WebSocket chính xác
+		var asset models.Asset
+		err := database.DB.Select("org_id").Where("asset_hwid = ?", payload.AssetID).First(&asset).Error
+
+		if err == nil {
+			// Cập nhật last_seen cực nhanh không qua hooks
+			database.DB.Model(&models.Asset{}).Where("asset_hwid = ?", payload.AssetID).UpdateColumn("last_seen", time.Now())
+
+			// Phát tín hiệu Online cho Dashboard của đúng tổ chức (OrgID)
+			websocket.GlobalHub.BroadcastToOrg(asset.OrgID, map[string]interface{}{
+				"type":      "ASSET_HEARTBEAT",
+				"hwid":      payload.AssetID,
+				"last_seen": time.Now(),
+			})
+		}
+		return err
+	}
+
+	// [LUỒNG TẮT MÁY NHANH]: Khi Agent gửi tín hiệu Logout/Shutdown
+	if payload.Type == "OFFLINE" {
+		var asset models.Asset
+		database.DB.Select("org_id").Where("asset_hwid = ?", payload.AssetID).First(&asset)
+
+		err := database.DB.Model(&models.Asset{}).Where("asset_hwid = ?", payload.AssetID).
+			UpdateColumn("last_seen", time.Now().Add(-10*time.Minute)).Error // Ép Offline ngay
+		if err == nil && asset.OrgID != 0 {
+			websocket.GlobalHub.BroadcastToOrg(asset.OrgID, map[string]interface{}{"type": "ASSET_UPDATE", "hwid": payload.AssetID})
+		}
+		return err
 	}
 
 	var asset models.Asset
@@ -34,7 +61,9 @@ func ProcessassetData(payload AssetPayload) error {
 	}
 
 	// [CHỐT CHẶN BẢO MẬT]: Từ chối xử lý log nếu máy chưa được duyệt kích hoạt chính thức
-	if asset.Status != "ACTIVE" {
+	// Chấp nhận cả APPROVED vì máy vừa duyệt Baseline xong thường ở trạng thái này
+	if asset.Status != "ACTIVE" && asset.Status != "APPROVED" {
+		log.Printf("⚠️ [ProcessassetData] Từ chối xử lý dữ liệu cho HWID %s vì trạng thái: %s", payload.AssetID, asset.Status)
 		return fmt.Errorf("thiết bị chưa được phê duyệt hoạt động (Status: %s)", asset.Status)
 	}
 
@@ -61,98 +90,48 @@ func ProcessassetData(payload AssetPayload) error {
 
 		// Duyệt qua từng module thành phần trong gói gộp batch dữ liệu gửi về từ Agent
 		for modName, modData := range batch {
-
-			// [ĐỒNG BỘ BASELINE]: Kiểm tra xem máy có đang nằm trong 15 phút cấu hình máy sạch ban đầu hay không
-			if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
-
-				// Chỉ nạp Baseline tự động cho 3 danh mục chính sách tĩnh của Zero Trust Engine
-				if modName == "software" || modName == "port" || modName == "usb" {
-					var rawValues []map[string]interface{}
-					var valuesToBaseline []map[string]interface{}
-
-					// Giải mã an toàn mảng dữ liệu telemetry thô để trích xuất Value hoặc Hash
-					if err := json.Unmarshal(modData, &rawValues); err == nil {
-						for _, item := range rawValues {
-							if modName == "software" && item["file_hash"] != nil {
-								valuesToBaseline = append(valuesToBaseline, map[string]interface{}{
-									"file_hash":     item["file_hash"],
-									"software_name": item["software_name"],
-									"publisher":     item["publisher"],
-									"version":       item["version"],
-								})
-							} else if modName == "port" && item["port"] != nil {
-								valuesToBaseline = append(valuesToBaseline, map[string]interface{}{
-									"port":         item["port"],
-									"process_name": item["process_name"],
-								})
-							} else if modName == "usb" && item["device_hash"] != nil {
-								valuesToBaseline = append(valuesToBaseline, map[string]interface{}{
-									"device_hash":   item["device_hash"],
-									"device_name":   item["device_name"],
-									"vid":           item["vid"],
-									"pid":           item["pid"],
-									"serial_number": item["serial_number"],
-								})
-							}
-						}
-
-						// Đẩy bất đồng bộ (Async Goroutine) sang Policy Service, tránh block luồng xử lý log chính
-						if len(valuesToBaseline) > 0 {
-							// Đồng bộ HOA tên Category (SOFTWARE_HASH, PORT, USB_DEVICE) tương thích với DB
-							categoryType := strings.ToUpper(modName)
-							if modName == "software" {
-								categoryType = "SOFTWARE_HASH"
-							} else if modName == "usb" {
-								categoryType = "USB_DEVICE"
-							}
-							go dataassets.SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, categoryType, valuesToBaseline)
-						}
-					}
-				}
-			}
-
 			// Phân luồng xuống các module phân tích dữ liệu chuyên trách hiện có
 			switch modName {
 			case "software":
 				if err := dataassets.ProcessSoftware(asset, modData); err != nil {
-					return err
+					fmt.Printf("⚠️ Lỗi Software (%s): %v\n", asset.AssetHWID, err)
 				}
 			case "usb":
 				if err := dataassets.ProcessUSB(asset, modData); err != nil {
-					return err
+					fmt.Printf("⚠️ Lỗi USB (%s): %v\n", asset.AssetHWID, err)
 				}
 			case "port":
 				if err := dataassets.ProcessPorts(asset, modData); err != nil {
-					return err
+					fmt.Printf("⚠️ Lỗi Port (%s): %v\n", asset.AssetHWID, err)
 				}
 			case "inventory":
 				if err := dataassets.ProcessInventory(asset, modData); err != nil {
-					return err
+					fmt.Printf("⚠️ Lỗi Inventory (%s): %v\n", asset.AssetHWID, err)
 				}
 			case "firewall":
 				if err := dataassets.ProcessFirewall(asset, modData); err != nil {
-					return err
+					fmt.Printf("⚠️ Lỗi Firewall (%s): %v\n", asset.AssetHWID, err)
 				}
 			case "antivirus":
 				if err := dataassets.ProcessAntivirus(asset, modData); err != nil {
-					return err
+					fmt.Printf("⚠️ Lỗi Antivirus (%s): %v\n", asset.AssetHWID, err)
 				}
 			case "data_transfer":
 				if err := dataassets.ProcessDataTransfer(asset, modData); err != nil {
-					return err
+					fmt.Printf("⚠️ Lỗi DataTransfer (%s): %v\n", asset.AssetHWID, err)
 				}
 			case "patch":
 				if err := dataassets.ProcessPatch(asset, modData); err != nil {
-					return err
+					fmt.Printf("⚠️ Lỗi Patch (%s): %v\n", asset.AssetHWID, err)
 				}
 			}
 		}
 
-		// Kích hoạt tính lại điểm rủi ro qua Scoring Service
-		go func(id string) {
-			url := "http://scoring-service:8000/api/v1/scoring/recalculate/" + id
-			_, _ = http.Post(url, "application/json", nil)
-		}(payload.AssetID)
+		// Broadcast update; scoring recalculation will be triggered by Behavior Service only
+		websocket.GlobalHub.BroadcastToOrg(asset.OrgID, map[string]interface{}{
+			"type": "ASSET_UPDATE",
+			"hwid": payload.AssetID,
+		})
 
 		return nil // Hoàn tất xử lý trọn vẹn gói tin gộp batch
 	}
@@ -193,17 +172,11 @@ func ProcessassetData(payload AssetPayload) error {
 		}
 	}
 
-	// Phát tín hiệu WebSocket Real-time cập nhật trạng thái ra màn hình Dashboard của Web Admin
+	// Broadcast update; scoring recalculation should originate from Behavior Service
 	websocket.GlobalHub.BroadcastToOrg(asset.OrgID, map[string]interface{}{
 		"type": "ASSET_UPDATE",
 		"hwid": payload.AssetID,
 	})
-
-	// Kích hoạt tính lại điểm rủi ro qua Scoring Service
-	go func(id string) {
-		url := "http://scoring-service:8000/api/v1/scoring/recalculate/" + id
-		_, _ = http.Post(url, "application/json", nil)
-	}(payload.AssetID)
 
 	return nil
 }

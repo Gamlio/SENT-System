@@ -36,7 +36,7 @@ func GetActiveEnrollmentToken(c *gin.Context) {
 	err := database.DB.Select("token", "expires_at").
 		Where("org_id = ? AND expires_at > ?", orgID, time.Now()).
 		Order("expires_at desc").
-		Find(&tokenRecord).Error
+		First(&tokenRecord).Error
 
 	// 2. NẾU KHÔNG TÌM THẤY (Hoặc đã hết hạn) -> TỰ ĐỘNG SINH MÃ MỚI
 	if err != nil {
@@ -109,6 +109,8 @@ func EnrollAsset(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
+
+	fmt.Printf("ℹ️ Đang tiếp nhận yêu cầu đăng ký cho HWID: %s\n", req.AssetHWID)
 
 	// SỬ DỤNG SERVICE ĐÃ TẠO
 	enrollSvc := &assetSvc.AssetEnrollmentService{}

@@ -22,9 +22,11 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) error {
 	}
 
 	var payload struct {
-		TotalNetSent uint64 `json:"total_net_sent"`
-		TotalNetRecv uint64 `json:"total_net_recv"`
-		TopProcesses []struct {
+		TotalNetSent     uint64 `json:"total_net_sent"`
+		TotalNetRecv     uint64 `json:"total_net_recv"`
+		DiskBytesRead    uint64 `json:"disk_bytes_read"`
+		DiskBytesWritten uint64 `json:"disk_bytes_written"`
+		TopProcesses     []struct {
 			Name      string `json:"name"`
 			BytesSent uint64 `json:"bytes_sent"`
 		} `json:"top_processes"`
@@ -37,12 +39,14 @@ func ProcessDataTransfer(asset models.Asset, data interface{}) error {
 
 	if database.AssetIOActivityCollection != nil {
 		ioRecord := bson.M{
-			"asset_hwid":     asset.AssetHWID,
-			"org_id":         int64(asset.OrgID),
-			"timestamp":      time.Now(),
-			"total_net_sent": payload.TotalNetSent,
-			"total_net_recv": payload.TotalNetRecv,
-			"top_processes":  payload.TopProcesses,
+			"asset_hwid":         asset.AssetHWID,
+			"org_id":             int64(asset.OrgID),
+			"timestamp":          time.Now(),
+			"net_bytes_sent":     payload.TotalNetSent,
+			"net_bytes_recv":     payload.TotalNetRecv,
+			"disk_bytes_read":    payload.DiskBytesRead,
+			"disk_bytes_written": payload.DiskBytesWritten,
+			"top_processes":      payload.TopProcesses,
 		}
 		_, _ = database.AssetIOActivityCollection.InsertOne(context.TODO(), ioRecord)
 	}

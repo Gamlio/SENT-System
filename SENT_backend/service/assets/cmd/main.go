@@ -25,6 +25,8 @@ func main() {
 		assetsAPI.POST("/enroll", middleware.AssetEnrollRateLimitMiddleware(), handlers.EnrollAsset)
 
 		assetsAPI.POST("/internal/cleanup", handlers.InternalCleanupHandler)
+		// Internal notify endpoint used by other services (no auth)
+		assetsAPI.POST("/internal/notify", handlers.InternalNotify)
 
 		agentProtected := assetsAPI.Group("")
 		agentProtected.Use(middleware.AssetFloodProtectionMiddleware())

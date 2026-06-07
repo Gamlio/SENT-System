@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -73,6 +74,20 @@ func (s *BehaviorService) LogBehavior(ctx context.Context, asset models.Asset, c
 			}
 		}
 	}
+
+	// Trigger scoring recalculation via Scoring Service (behavior is the single source of scoring triggers)
+	go func(hwid string) {
+		url := fmt.Sprintf("http://scoring-service:8000/api/v1/scoring/recalculate/%s", hwid)
+		resp, err := http.Post(url, "application/json", nil)
+		if err != nil {
+			log.Printf("⚠️ Lỗi gọi Scoring API cho máy %s từ Behavior Service: %v", hwid, err)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			log.Printf("⚠️ Scoring Service phản hồi lỗi: %s", resp.Status)
+		}
+	}(asset.AssetHWID)
 
 	return &alert, nil
 }

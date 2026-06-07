@@ -1,6 +1,7 @@
 package strategies
 
 import (
+	"SENT_backend/pkg/cache"
 	"SENT_backend/pkg/models"
 	"bytes"
 	"encoding/json"
@@ -25,8 +26,8 @@ func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 	if err := json.Unmarshal([]byte(ticket.SnapshotData), &payload); err != nil {
 		return err
 	}
-
-	baselineEndTime := time.Now().Add(15 * time.Minute)
+	loc, _ := time.LoadLocation("Asia/Ho_Chi_Minh")
+	baselineEndTime := time.Now().In(loc).Add(15 * time.Minute)
 
 	result := tx.Model(&models.Asset{}).
 		Where("asset_hwid = ? AND org_id = ?", payload.AssetHWID, ticket.OrgID).
@@ -44,8 +45,12 @@ func (s *assetEnrollStrategy) OnApprove(tx *gorm.DB, ticket *models.ApprovalTick
 
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("không tìm thấy máy trạm PENDING với HWID %s để phê duyệt", payload.AssetHWID)
-
 	}
+
+	// [FIX] Cập nhật ngay lập tức vào Redis Cache để tránh lỗi 403 sau khi hết hạn 1 tiếng.
+	// Việc này đảm bảo SecretKey trong RAM (Cache) và Database luôn đồng nhất ngay sau khi Admin phê duyệt.
+	cache.SetAssetCache(payload.AssetHWID, payload.TentativeKey, ticket.OrgID, 1*time.Hour)
+
 	return nil
 }
 

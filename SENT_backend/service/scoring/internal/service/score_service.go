@@ -144,15 +144,21 @@ func processRiskScore(assetAssetID string) {
 		}
 	}
 
-	var pastIncidents []models.Incident
+	var pastAlerts []models.SecurityAlert
 	halfYearAgo := time.Now().AddDate(0, 0, -180)
 	rHistory := 0.0
 
-	if err := database.DB.Where("asset_hwid = ? AND created_at >= ?", assetAssetID, halfYearAgo).Find(&pastIncidents).Error; err == nil {
-		for _, inc := range pastIncidents {
-			daysOld := time.Since(inc.CreatedAt).Hours() / 24.0
+	if database.SecurityAlertCollection != nil {
+		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{"asset_hwid": assetAssetID, "created_at": bson.M{"$gte": halfYearAgo}})
+		if err == nil {
+			cursor.All(context.TODO(), &pastAlerts)
+		}
+	}
+	if len(pastAlerts) > 0 {
+		for _, a := range pastAlerts {
+			daysOld := time.Since(a.CreatedAt).Hours() / 24.0
 			hImpact := 1.0
-			switch inc.Priority {
+			switch a.Priority {
 			case "P1":
 				hImpact = 5.0
 			case "P2":
@@ -160,7 +166,6 @@ func processRiskScore(assetAssetID string) {
 			case "P3":
 				hImpact = 1.0
 			}
-
 			rHistory += hImpact / (1.0 + 0.01*daysOld)
 		}
 	}
@@ -171,10 +176,16 @@ func processRiskScore(assetAssetID string) {
 	}
 
 	var totalDiskIO uint64
+	var totalDiskRead uint64
+	var totalDiskWritten uint64
 	for _, activity := range ioActivities {
-
+		totalDiskRead += activity.DiskBytesRead
+		totalDiskWritten += activity.DiskBytesWritten
 		totalDiskIO += activity.DiskBytesRead + activity.DiskBytesWritten
 	}
+
+	log.Printf("🖴 [Disk I/O] %s: records=%d read=%d written=%d total=%d bytes",
+		asset.Hostname, len(ioActivities), totalDiskRead, totalDiskWritten, totalDiskIO)
 
 	vFactor := 1.0 +
 		(float64(len(openPorts)) * 0.05) +
@@ -273,24 +284,27 @@ func (s *ScoreService) CalculateRiskScore(ctx context.Context, assetHWID string)
 		return fmt.Errorf("failed to fetch asset info: %w", err)
 	}
 
-	var incidents []models.Incident
-	// Lấy các sự cố đang mở (Open) thuộc về máy trạm này
-	if err := s.db.WithContext(ctx).Where("asset_hwid = ? AND status = ?", asset.AssetHWID, "Open").Find(&incidents).Error; err != nil {
-		return fmt.Errorf("failed to fetch open incidents for asset %s: %w", asset.AssetHWID, err)
+	// Query active alerts from MongoDB SecurityAlertCollection instead of Postgres incidents
+	var alerts []models.SecurityAlert
+	if database.SecurityAlertCollection != nil {
+		cursor, err := database.SecurityAlertCollection.Find(ctx, bson.M{"asset_hwid": asset.AssetHWID, "is_resolved": false})
+		if err == nil {
+			cursor.All(ctx, &alerts)
+		}
 	}
 
-	// Nếu không có sự cố nào, reset điểm rủi ro tức thời về 0
-	if len(incidents) == 0 {
+	// If no active alerts, reset risk score to 0
+	if len(alerts) == 0 {
 		if err := s.db.WithContext(ctx).Model(&models.Asset{}).Where("asset_hwid = ?", asset.AssetHWID).Update("risk_score", 0.0).Error; err != nil {
 			return fmt.Errorf("failed to reset risk score for asset %s: %w", asset.AssetHWID, err)
 		}
 		return nil
 	}
 
-	// 2. Đếm số lượng sự cố theo từng mức độ ưu tiên
+	// Count priorities from alerts
 	priorityCounts := make(map[string]int)
-	for _, inc := range incidents {
-		priorityCounts[inc.Priority]++
+	for _, a := range alerts {
+		priorityCounts[a.Priority]++
 	}
 
 	// 3. Áp dụng công thức R_active từ SCORING.md: sum(T_i * log2(n_i + 1))
@@ -328,12 +342,9 @@ func (s *ScoreService) CalculateRiskScore(ctx context.Context, assetHWID string)
 	return nil
 }
 
-// UpdateTrustScore updates the long-term trust score (D_debt) for an asset.
-// This function should be called periodically (e.g., daily via a cron job)
-// and also when an incident is created or resolved to ensure immediate reflection of changes.
-func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
+func (s *ScoreService) UpdateTrustScore(assetHWID string) (float64, error) {
 	var asset models.Asset
-	if err := s.db.Where("id = ?", assetID).First(&asset).Error; err != nil {
+	if err := s.db.Where("asset_hwid = ?", assetHWID).First(&asset).Error; err != nil {
 		return 0, fmt.Errorf("asset not found: %w", err)
 	}
 
@@ -342,24 +353,25 @@ func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
 		currentTrustScore = trustScoreMin // Cap at min before deductions
 	}
 
-	// --- Deduct points for P1 and P2 incidents in the last 30 days ---
-	var recentIncidents []models.Incident
+	// --- Deduct points for P1 and P2 alerts in the last 30 days from MongoDB ---
 	thirtyDaysAgo := time.Now().AddDate(0, 0, -incidentLookbackDays)
-
-	// Fetch incidents that occurred within the last 30 days and are P1 or P2.
-	// The document implies "lỗi P1 trong 30 ngày qua" (P1 errors in the past 30 days)
-	// should cause deduction, regardless of their current status (Open/Resolved).
-	if err := s.db.Where("asset_hwid = ? AND occurred_at >= ? AND (priority = ? OR priority = ?)",
-		asset.AssetHWID, thirtyDaysAgo, "P1", "P2").Find(&recentIncidents).Error; err != nil {
-		return 0, fmt.Errorf("failed to fetch recent incidents for trust score deduction for asset %d: %w", assetID, err)
+	var recentAlerts []models.SecurityAlert
+	if database.SecurityAlertCollection != nil {
+		cursor, err := database.SecurityAlertCollection.Find(context.TODO(), bson.M{
+			"asset_hwid": asset.AssetHWID,
+			"created_at": bson.M{"$gte": thirtyDaysAgo},
+			"priority":   bson.M{"$in": []string{"P1", "P2"}},
+		})
+		if err == nil {
+			cursor.All(context.TODO(), &recentAlerts)
+		}
 	}
 
-	// Calculate total deduction from recent incidents
 	totalDeduction := 0.0
-	for _, inc := range recentIncidents {
-		if inc.Priority == "P1" {
+	for _, a := range recentAlerts {
+		if a.Priority == "P1" {
 			totalDeduction += trustScoreP1Deduction
-		} else if inc.Priority == "P2" {
+		} else if a.Priority == "P2" {
 			totalDeduction += trustScoreP2Deduction
 		}
 	}
@@ -405,7 +417,7 @@ func (s *ScoreService) UpdateTrustScore(assetID uint) (float64, error) {
 	}
 
 	if err := s.db.Model(&asset).Updates(updates).Error; err != nil {
-		return currentTrustScore, fmt.Errorf("failed to update trust score for asset %d: %w", assetID, err)
+		return currentTrustScore, fmt.Errorf("failed to update trust score for asset %s: %w", assetHWID, err)
 	}
 
 	return currentTrustScore, nil

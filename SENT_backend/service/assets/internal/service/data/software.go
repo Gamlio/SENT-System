@@ -42,7 +42,10 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 		return fmt.Errorf("lỗi giải mã JSON software: %w", err)
 	}
 
-	if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
+	isInBaseline := asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil)
+
+	// [LOGIC FIX]: Không return ở đây để dữ liệu vẫn được lưu vào MongoDB trong lúc làm Baseline
+	if isInBaseline {
 		var entries []map[string]interface{}
 		for _, r := range records {
 			if r.FileHash != "" {
@@ -126,7 +129,7 @@ func ProcessSoftware(asset models.Asset, data interface{}) error {
 		if checkBannedSoftware(rec.SoftwareName) {
 			violations = append(violations, softwareViolation{Name: rec.SoftwareName, Type: "Software Violation", Priority: "P3"})
 		}
-		if asset.IsZeroTrust && !trustedPubs[rec.Publisher] && !trustedHashes[rec.FileHash] {
+		if !isInBaseline && asset.IsZeroTrust && !trustedPubs[rec.Publisher] && !trustedHashes[rec.FileHash] {
 			violations = append(violations, softwareViolation{Name: rec.SoftwareName, Type: "Zero Trust Violation", Priority: "P1"})
 		}
 	}

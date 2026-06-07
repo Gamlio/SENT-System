@@ -50,8 +50,10 @@ func ProcessPorts(asset models.Asset, data interface{}) error {
 		return fmt.Errorf("lỗi giải mã JSON port: %w", err)
 	}
 
+	isInBaseline := asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil)
+
 	// NHÁNH RIÊNG CHO POLICY BASELINE: Không ảnh hưởng đến logic bên dưới
-	if asset.BaselineUntil != nil && time.Now().Before(*asset.BaselineUntil) {
+	if isInBaseline {
 		var entries []map[string]interface{}
 		for _, p := range payload.OpenPorts {
 			entries = append(entries, map[string]interface{}{
@@ -60,6 +62,7 @@ func ProcessPorts(asset models.Asset, data interface{}) error {
 			})
 		}
 		SendToPolicyBaseline(asset.OrgID, asset.AssetHWID, "PORT", entries)
+		// [LOGIC FIX]: Không return ở đây để dữ liệu vẫn được lưu vào MongoDB
 	}
 
 	var activePorts []int
@@ -82,7 +85,7 @@ func ProcessPorts(asset models.Asset, data interface{}) error {
 		}
 
 		// 2. Kiểm tra nếu cổng nằm trong danh sách nguy hiểm
-		if riskDesc, isDangerous := dangerousPorts[incomingPort.Port]; isDangerous {
+		if riskDesc, isDangerous := dangerousPorts[incomingPort.Port]; !isInBaseline && isDangerous {
 			// GỌI API SANG BEHAVIOR SERVICE
 			SendBehaviorLog(
 				"Unauthorized Port",

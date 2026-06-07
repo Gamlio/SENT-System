@@ -3,17 +3,20 @@ package collector
 import (
 	"sort"
 
+	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/net"
 )
 
 // 1. Khai báo Struct cho Sensor
 type DataTransferSensor struct{}
 
-// Mở rộng Record để chứa danh sách ứng dụng tiêu thụ mạng
+// Mở rộng Record để chứa danh sách ứng dụng tiêu thụ mạng và I/O đĩa
 type DataTransferRecord struct {
-	TotalNetSent uint64            `json:"total_net_sent"`
-	TotalNetRecv uint64            `json:"total_net_recv"`
-	TopProcesses []ProcessNetStats `json:"top_processes"`
+	TotalNetSent     uint64            `json:"total_net_sent"`
+	TotalNetRecv     uint64            `json:"total_net_recv"`
+	DiskBytesRead    uint64            `json:"disk_bytes_read"`
+	DiskBytesWritten uint64            `json:"disk_bytes_written"`
+	TopProcesses     []ProcessNetStats `json:"top_processes"`
 }
 
 type ProcessNetStats struct {
@@ -35,6 +38,15 @@ func (s *DataTransferSensor) Collect() (interface{}, error) {
 	if err == nil && len(netStats) > 0 {
 		totalSent = netStats[0].BytesSent
 		totalRecv = netStats[0].BytesRecv
+	}
+
+	var totalDiskRead, totalDiskWritten uint64
+	diskStats, err := disk.IOCounters()
+	if err == nil {
+		for _, stats := range diskStats {
+			totalDiskRead += stats.ReadBytes
+			totalDiskWritten += stats.WriteBytes
+		}
 	}
 
 	// [SỬA LỖI LOGIC] Loại bỏ việc dùng p.IOCounters() vì nó trả về số liệu đọc/ghi Disk I/O,
@@ -65,8 +77,10 @@ func (s *DataTransferSensor) Collect() (interface{}, error) {
 	}
 
 	return DataTransferRecord{
-		TotalNetSent: totalSent,
-		TotalNetRecv: totalRecv,
-		TopProcesses: procStats,
+		TotalNetSent:     totalSent,
+		TotalNetRecv:     totalRecv,
+		DiskBytesRead:    totalDiskRead,
+		DiskBytesWritten: totalDiskWritten,
+		TopProcesses:     procStats,
 	}, nil
 }

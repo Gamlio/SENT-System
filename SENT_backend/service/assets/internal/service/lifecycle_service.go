@@ -4,6 +4,7 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	"SENT_backend/pkg/websocket"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -48,12 +49,12 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 			return err
 		}
 
-		// Tạo đơn phê duyệt
 		snapData, _ := json.Marshal(map[string]interface{}{
-			"hostname":     req.Hostname,
-			"ip_address":   req.IPAddress,
-			"asset_hwid":   req.AssetHWID, // Sửa key từ "hwid" -> "asset_hwid"
-			"is_re_enroll": err == nil,    // True if the device is re-enrolling
+			"hostname":      req.Hostname,
+			"ip_address":    req.IPAddress,
+			"asset_hwid":    req.AssetHWID,
+			"is_re_enroll":  err == nil,
+			"tentative_key": secretKey,
 		})
 
 		ticket := models.ApprovalTicket{
@@ -62,7 +63,7 @@ func (s *AssetLifecycleService) EnrollWithKey(req models.EnrollRequest, orgID ui
 			ActionType:    "ENROLL",
 			TargetName:    req.AssetHWID,
 			Status:        "PENDING",
-			RequestedBy:   "Hệ thống (Tự động)", // Tên người tạo đơn mặc định cho Enroll
+			RequestedBy:   "Hệ thống (Tự động)",
 			RequestReason: "Thiết bị xin gia nhập hệ thống thông qua mã cài đặt",
 			SnapshotData:  string(snapData),
 		}
@@ -142,14 +143,25 @@ func (s *AssetLifecycleService) UpdateDeviceType(hwid string, orgID uint, device
 		return err
 	}
 
-	// 2. TỰ ĐỘNG: Tính lại điểm rủi ro ngay vì DeviceType làm thay đổi trọng số tài sản
-	// Chúng ta dùng Goroutine để không làm chậm phản hồi của API
+	// 2. TỰ ĐỘNG: Thông báo Behavior Service; Behavior sẽ chịu trách nhiệm kích hoạt Scoring
 	go func(id string) {
-		url := fmt.Sprintf("http://scoring-service:8000/api/v1/scoring/recalculate/%s", id)
-		_, err := http.Post(url, "application/json", nil)
-		if err != nil {
-			fmt.Printf("⚠️ Lỗi gọi Scoring API cho máy %s: %v\n", id, err)
+		payload := map[string]interface{}{
+			"org_id":        orgID,
+			"asset_hwid":    id,
+			"category":      "DeviceTypeChange",
+			"value":         "",
+			"title":         "Device type changed",
+			"desc":          "Device type update; request centralized scoring",
+			"base_priority": "P3",
 		}
+		b, _ := json.Marshal(payload)
+		url := "http://behavior-service:8000/api/v1/behaviors/log"
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(b))
+		if err != nil {
+			fmt.Printf("⚠️ Lỗi gọi Behavior Service cho máy %s: %v\n", id, err)
+			return
+		}
+		resp.Body.Close()
 	}(hwid)
 
 	return nil
