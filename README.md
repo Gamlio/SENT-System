@@ -8,7 +8,7 @@ Hệ thống Quản trị An ninh tập trung (SOC) & Tuân thủ rủi ro (GRC)
 👉 [Xem Cấu trúc Thư mục Dự án SENT trực tuyến](https://Gamlio.github.io/SENT-System/project_visual.html)
 
 📌 Tổng quan
-SENT-SYSTEM là một nền tảng giám sát an ninh mạng dành cho các doanh nghiệp SME, kết hợp giữa việc thu thập dữ liệu viễn trắc (Telemetry) từ máy trạm và khả năng tư vấn của Trí tuệ nhân tạo (AI Copilot). Hệ thống giúp đội ngũ IT HD/SOC phát hiện sớm các vi phạm chính sách, lệch chuẩn Baseline và nhận được hướng dẫn xử lý sự cố theo thời gian thực.
+SENT-SYSTEM là một nền tảng giám sát an ninh mạng dành cho các doanh nghiệp, kết hợp giữa việc thu thập dữ liệu viễn trắc (Telemetry) từ máy trạm và khả năng tư vấn của Trí tuệ nhân tạo (AI Copilot). Hệ thống giúp đội ngũ IT HD/SOC phát hiện sớm các vi phạm chính sách, lệch chuẩn Baseline và nhận được hướng dẫn xử lý sự cố theo thời gian thực.
 
 ✨ Tính năng cốt lõi
 Giám sát thiết bị (Asset Monitoring): Thu thập thông tin phần cứng, phần mềm, trạng thái cổng mạng, USB và lưu lượng I/O theo thời gian thực.
