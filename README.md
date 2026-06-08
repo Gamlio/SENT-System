@@ -5,7 +5,7 @@ Hệ thống giám sát an ninh đầu cuối và quản trị chính sách tậ
 ##  Tổng quan hệ thống
 SENT-SYSTEM (Sentinex)
 Hệ thống Quản trị An ninh tập trung (SOC) & Tuân thủ rủi ro (GRC) tích hợp Trợ lý AI.
-
+👉 [Xem Cấu trúc Thư mục Dự án SENT trực tuyến](https://htmlpreview.github.io/?https://github.com/Gamlio/SENT-System/blob/main/project_visual.html)
 📌 Tổng quan
 SENT-SYSTEM là một nền tảng giám sát an ninh mạng dành cho các doanh nghiệp SME, kết hợp giữa việc thu thập dữ liệu viễn trắc (Telemetry) từ máy trạm và khả năng tư vấn của Trí tuệ nhân tạo (AI Copilot). Hệ thống giúp đội ngũ IT HD/SOC phát hiện sớm các vi phạm chính sách, lệch chuẩn Baseline và nhận được hướng dẫn xử lý sự cố theo thời gian thực.
 
