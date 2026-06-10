@@ -11,12 +11,11 @@ Hệ thống Quản trị An ninh tập trung (SOC) & Tuân thủ rủi ro (GRC)
 SENT-SYSTEM là một nền tảng giám sát an ninh mạng dành cho các doanh nghiệp, kết hợp giữa việc thu thập dữ liệu viễn trắc (Telemetry) từ máy trạm và khả năng tư vấn của Trí tuệ nhân tạo (AI Copilot). Hệ thống giúp đội ngũ IT HD/SOC phát hiện sớm các vi phạm chính sách, lệch chuẩn Baseline và nhận được hướng dẫn xử lý sự cố theo thời gian thực.
 
 ✨ Tính năng cốt lõi
-
 Giám sát thiết bị (Asset Monitoring): Thu thập thông tin phần cứng, phần mềm, trạng thái cổng mạng, USB và lưu lượng I/O theo thời gian thực.
 
 Quản lý tuân thủ (Baseline & Policy): Định nghĩa cấu hình chuẩn (Baseline) và các chính sách Whitelist/Blacklist để phát hiện sai lệch an ninh.
 
-Trợ lý AI Copilot (RAG-based): Sử dụng Gemini API để tăng tốc độ, với fallback tới Local LLM (Ollama) nếu cần, kết hợp ngữ cảnh từ Chính sách và Playbook để tư vấn hướng xử lý sự cố cho IT HD.
+Trợ lý AI Copilot (RAG-based): Sử dụng Local LLM (Ollama) kết hợp với ngữ cảnh từ Chính sách và Playbook để tư vấn hướng xử lý sự cố cho IT HD.
 
 Quản lý sự cố (Incident Management): Quy trình xử lý sự cố chặt chẽ với cơ chế xác minh tính toàn vẹn của bằng chứng (Hash Chain).
 
@@ -40,7 +39,7 @@ PostgreSQL: Quản lý cấu hình, người dùng, chính sách (Dữ liệu qu
 
 MongoDB: Lưu trữ nhật ký sự cố, log viễn trắc, audit logs (Dữ liệu lớn).
 
-AI: Gemini API (Model: gemini-2.5-flash) when AI_PROVIDER=gemini, otherwise local Ollama fallback.
+AI: Ollama API (Model: Qwen/Phi3).
 
 Bảo mật: JWT Authentication, HMAC Payload Signing, Hash Chaining.
 

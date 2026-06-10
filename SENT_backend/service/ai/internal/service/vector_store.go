@@ -127,13 +127,6 @@ type OllamaEmbeddingResponse struct {
 }
 
 func GetTextEmbedding(text string) ([]float32, error) {
-	if AIProvider == "gemini" {
-		return GetGeminiEmbedding(text)
-	}
-	return getOllamaEmbedding(text)
-}
-
-func getOllamaEmbedding(text string) ([]float32, error) {
 	reqBody := OllamaEmbeddingRequest{
 		Model: MODEL_EMBED,
 		Input: text,
@@ -153,53 +146,12 @@ func getOllamaEmbedding(text string) ([]float32, error) {
 		return nil, fmt.Errorf("lỗi giải mã dữ liệu Vector từ AI: %v", err)
 	}
 
+	// Kiểm tra xem mảng trả về có dữ liệu không và lấy phần tử đầu tiên [0]
 	if len(embedResp.Embeddings) == 0 {
 		return nil, fmt.Errorf("không nhận được dữ liệu vector từ Ollama")
 	}
 
 	return embedResp.Embeddings[0], nil
-}
-
-func GetGeminiEmbedding(text string) ([]float32, error) {
-	if GEMINI_API_KEY == "" {
-		return nil, fmt.Errorf("missing Gemini API key")
-	}
-
-	reqBody := map[string]interface{}{
-		"model": MODEL_EMBED,
-		"input": text,
-	}
-
-	jsonData, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/models/%s:embedText", strings.TrimRight(GEMINI_BASE, "/"), MODEL_EMBED)
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("lỗi tạo request Gemini embedding: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+GEMINI_API_KEY)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("lỗi kết nối Gemini Embeddings: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var embedResp GeminiEmbeddingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
-		return nil, fmt.Errorf("lỗi giải mã embedding Gemini: %v", err)
-	}
-
-	if len(embedResp.Embeddings) > 0 {
-		return embedResp.Embeddings[0], nil
-	}
-	if len(embedResp.Embedding) > 0 {
-		return embedResp.Embedding, nil
-	}
-
-	return nil, fmt.Errorf("không nhận được dữ liệu vector từ Gemini")
 }
 
 func IngestPlaybookMarkdownToVectorDB(mdContent string) error {
