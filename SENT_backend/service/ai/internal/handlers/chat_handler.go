@@ -56,6 +56,26 @@ func parseID(val interface{}) (uint, bool) {
 	return 0, false
 }
 
+func extractAIResponseText(rawChunk map[string]interface{}) string {
+	if response, ok := rawChunk["response"].(string); ok && response != "" {
+		return response
+	}
+	if candidates, ok := rawChunk["candidates"].([]interface{}); ok && len(candidates) > 0 {
+		if candidateMap, ok := candidates[0].(map[string]interface{}); ok {
+			if content, ok := candidateMap["content"].(string); ok {
+				return content
+			}
+		}
+	}
+	if text, ok := rawChunk["text"].(string); ok {
+		return text
+	}
+	if output, ok := rawChunk["output"].(string); ok {
+		return output
+	}
+	return ""
+}
+
 func CreateSession(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
@@ -158,20 +178,26 @@ func ChatHandler(c *gin.Context) {
 
 	c.Stream(func(w io.Writer) bool {
 		line, err := reader.ReadBytes('\n')
-		if err != nil {
+		if err != nil && len(line) == 0 {
 			return false
 		}
 		cleanedLine := bytes.TrimSpace(line)
 		if len(cleanedLine) == 0 {
+			if err != nil {
+				return false
+			}
 			return true
 		}
 		var rawChunk map[string]interface{}
 		if err := json.Unmarshal(cleanedLine, &rawChunk); err != nil {
-			fmt.Printf("⚠️ Lỗi giải mã dòng JSON từ Ollama: %v | Data: %s\n", err, string(cleanedLine))
+			fmt.Printf("⚠️ Lỗi giải mã dòng JSON từ AI: %v | Data: %s\n", err, string(cleanedLine))
+			if err != nil {
+				return false
+			}
 			return true
 		}
 
-		responseText, _ := rawChunk["response"].(string)
+		responseText := extractAIResponseText(rawChunk)
 		isDone, _ := rawChunk["done"].(bool)
 
 		fullAIResponse += responseText
@@ -182,6 +208,10 @@ func ChatHandler(c *gin.Context) {
 		})
 
 		if isDone {
+			return false
+		}
+
+		if err != nil {
 			return false
 		}
 
