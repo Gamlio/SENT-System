@@ -111,8 +111,9 @@ const AssetsActions = ({ asset, onRefresh, onOpenAssignModal }) => {
         });
     };
 
-    // Xác định ID hiện tại của loại tài sản để hiển thị trạng thái Active (Hỗ trợ cả GORM ID và ID thô)
-    const currentAssetTypeId = asset.asset_type_id || asset.AssetTypeID;
+    // Xác định ID hiện tại của loại tài sản để hiển thị trạng thái Active (nếu backend trả về asset type object)
+    const currentAssetTypeId = asset.assets_type?.id || asset.assets_type?.ID || asset.asset_type_id || asset.AssetTypeID;
+    const currentAssetTypeName = asset.assets_type?.name || asset.assets_type?.Name || asset.device_type || 'Chưa phân loại';
 
     return (
         <div className="relative flex items-center justify-end" ref={menuRef}>
@@ -167,6 +168,7 @@ const AssetsActions = ({ asset, onRefresh, onOpenAssignModal }) => {
                             <div>
                                 <h3 className="font-bold text-white flex items-center gap-2"><Cpu className="text-purple-400"/> Phân loại Tài sản (Asset Tier)</h3>
                                 <p className="text-[10px] text-slate-400 mt-1 font-mono">Máy: {asset.hostname}</p>
+                                <p className="text-[10px] font-bold text-emerald-300 mt-1">Loại hiện tại: {currentAssetTypeName}</p>
                             </div>
                             <button onClick={() => setShowTypeModal(false)} className="text-slate-500 hover:text-white transition"><X size={20}/></button>
                         </div>

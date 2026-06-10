@@ -1,8 +1,10 @@
 package collector
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -57,14 +59,40 @@ func (s *SoftwareSensor) Name() string {
 }
 
 func (s *SoftwareSensor) Collect() (interface{}, error) {
-	runningProcs := getRunningProcesses()
-	// Hàm getOSSoftware sẽ tự động được Go gọi đúng file tùy theo lúc build
-	softwareList, err := getOSSoftware(runningProcs)
-	if err != nil {
+	// [FIX-TIMEOUT] Đặt timeout 30 giây để tránh treo như Linux version (15s)
+	// Windows có nhiều file hơn nên cần timeout dài hơn
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Channel để lấy kết quả từ goroutine
+	resultChan := make(chan interface{}, 1)
+	errChan := make(chan error, 1)
+
+	// Chạy collection trong goroutine để có thể cancel nếu timeout
+	go func() {
+		runningProcs := getRunningProcesses()
+		// Hàm getOSSoftware sẽ tự động được Go gọi đúng file tùy theo lúc build
+		softwareList, err := getOSSoftware(runningProcs)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		resultChan <- softwareList
+	}()
+
+	// Chờ kết quả hoặc timeout
+	select {
+	case <-ctx.Done():
+		// Timeout xảy ra
+		log.Printf("⚠️ Software collection timeout sau 30 giây")
+		return nil, fmt.Errorf("software collection timeout")
+	case err := <-errChan:
 		return nil, err
+	case result := <-resultChan:
+		softwareList := result.([]SoftwareRecord)
+		warnSoftwarePolicy(softwareList)
+		return softwareList, nil
 	}
-	warnSoftwarePolicy(softwareList)
-	return softwareList, nil
 }
 
 func warnSoftwarePolicy(records []SoftwareRecord) {
@@ -179,8 +207,13 @@ func calculateSHA256(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// [BẢO MẬT] Đã gỡ bỏ rào cản bỏ qua file > 50MB để ngăn chặn tấn công chèn rác (Padding Bypass).
-	_ = info
+
+	// [FIX-PERFORMANCE] Bỏ qua file > 100MB để tránh treo hệ thống
+	// Các file lớn thường là dữ liệu hoặc video, không phải executable quan trọng
+	const maxHashSize = 100 * 1024 * 1024 // 100MB
+	if info.Size() > maxHashSize {
+		return "", fmt.Errorf("file quá lớn (%d bytes), bỏ qua hashing", info.Size())
+	}
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {

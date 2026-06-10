@@ -54,8 +54,13 @@ func (s *IncidentService) TriggerSecurityEvent(ctx context.Context, asset models
 	finalPriority := s.applyContextualMatrix(alertType, priority, asset.DepartmentTag)
 
 	payload, _ := json.Marshal(map[string]interface{}{
-		"org_id":        asset.OrgID,
-		"asset_hwid":    asset.AssetHWID,
+		"asset": map[string]interface{}{
+			"asset_hwid":     asset.AssetHWID,
+			"hostname":       asset.Hostname,
+			"ip_address":     asset.IPAddress,
+			"org_id":         asset.OrgID,
+			"department_tag": asset.DepartmentTag,
+		},
 		"category":      alertType,
 		"value":         "",
 		"title":         title,

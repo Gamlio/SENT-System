@@ -4,12 +4,9 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	assetSvc "SENT_backend/service/assets/internal/service"
-	"bytes"
-	"encoding/json"
-	"log"
+	datahelpers "SENT_backend/service/assets/internal/service/data"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,7 +64,6 @@ func UpdateAssetType(c *gin.Context) {
 	}
 
 	svc := &assetSvc.AssetTypeService{}
-	// Giả định: svc.UpdateType đã được sửa để trả về (updatedObject, error)
 	updatedType, err := svc.UpdateType(uint(id), orgID, req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -75,7 +71,7 @@ func UpdateAssetType(c *gin.Context) {
 	}
 
 	// Kích hoạt tính toán lại điểm rủi ro cho tất cả các máy thuộc loại này
-	triggerRecalculationByType(uint(id))
+	triggerRecalculationByType(uint(id), orgID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Cập nhật thành công. Hệ thống đang tính toán lại điểm rủi ro cho các thiết bị liên quan.",
@@ -83,25 +79,21 @@ func UpdateAssetType(c *gin.Context) {
 	})
 }
 
-func triggerRecalculationByType(typeID uint) {
+func triggerRecalculationByType(typeID uint, orgID uint) {
 	go func() {
-		time.Sleep(1 * time.Second) // Đợi 1 chút để DB commit xong
-		payload := map[string]interface{}{
-			"org_id":   0,
-			"type_id":  typeID,
-			"category": "AssetTypeChange",
-			"title":    "Asset type updated",
-			"desc":     "Trigger centralized scoring via Behavior Service",
-		}
-		b, _ := json.Marshal(payload)
-		url := "http://behavior-service:8000/api/v1/behaviors/log"
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(b))
-		if err != nil {
-			log.Printf("Lỗi: Không thể thông báo Behavior Service cho loại tài sản %d: %v", typeID, err)
+		// Lấy danh sách HWID các tài sản thuộc loại này và gọi Scoring Service cho từng máy
+		var assetHWIDs []string
+		if err := database.DB.Model(&models.Asset{}).
+			Where("org_id = ? AND asset_type_id = ?", orgID, typeID).
+			Pluck("asset_hwid", &assetHWIDs).Error; err != nil {
 			return
 		}
-		defer resp.Body.Close()
-		log.Printf("Đã thông báo Behavior Service cho loại tài sản %d, status: %s", typeID, resp.Status)
+
+		for _, hwid := range assetHWIDs {
+			url := "http://scoring-service:8000/api/v1/scoring/recalculate/" + hwid
+			// fire-and-forget; scoring handler is unprotected for per-hwid calls
+			_, _ = http.Post(url, "application/json", nil)
+		}
 	}()
 }
 
@@ -147,26 +139,8 @@ func AssignAssetTypeToAsset(c *gin.Context) {
 		return
 	}
 
-	// Asynchronously notify Behavior Service; Behavior will trigger centralized scoring
-	go func(assetHWID string) {
-		payload := map[string]interface{}{
-			"org_id":        orgID,
-			"asset_hwid":    assetHWID,
-			"category":      "AssetTypeAssign",
-			"value":         "",
-			"title":         "Asset type assigned",
-			"desc":          "Asset type assignment triggered recalculation via Behavior",
-			"base_priority": "P3",
-		}
-		b, _ := json.Marshal(payload)
-		url := "http://behavior-service:8000/api/v1/behaviors/log"
-		if resp, err := http.Post(url, "application/json", bytes.NewBuffer(b)); err != nil {
-			log.Printf("Lỗi: Không thể thông báo Behavior Service cho tài sản %s: %v", assetHWID, err)
-		} else {
-			resp.Body.Close()
-			log.Printf("Đã thông báo Behavior Service cho tài sản %s.", assetHWID)
-		}
-	}(hwid)
+	// Use the centralized helper to send a correctly shaped Behavior log (includes nested `asset` object)
+	datahelpers.SendBehaviorLog("AssetTypeAssign", "", "Asset type assigned", "Asset type assignment triggered recalculation via Behavior", "P3", asset)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã cập nhật phân loại tài sản. Hệ thống đang tính toán lại điểm rủi ro."})
 }

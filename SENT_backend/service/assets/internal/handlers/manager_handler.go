@@ -4,8 +4,7 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	assetSvc "SENT_backend/service/assets/internal/service"
-	"bytes"
-	"encoding/json"
+	datahelpers "SENT_backend/service/assets/internal/service/data"
 	"log"
 	"net/http"
 	"strconv"
@@ -232,22 +231,12 @@ func UpdateDeviceType(c *gin.Context) {
 // Hàm bổ trợ kích hoạt tính toán lại điểm rủi ro qua API Scoring
 func triggerRiskRecalculation(hwid string) {
 	go func(id string) {
-		// Notify Behavior Service; Behavior will persist and trigger scoring centrally
-		payload := map[string]interface{}{
-			"org_id":        0,
-			"asset_hwid":    id,
-			"category":      "AssetUpdate",
-			"value":         "",
-			"title":         "Asset metadata changed",
-			"desc":          "Trigger recalculation via Behavior Service",
-			"base_priority": "P3",
+		// Load asset and call centralized helper to send proper payload
+		var asset models.Asset
+		if err := database.DB.Where("asset_hwid = ?", id).First(&asset).Error; err != nil {
+			return
 		}
-		b, _ := json.Marshal(payload)
-		url := "http://behavior-service:8000/api/v1/behaviors/log"
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(b))
-		if err == nil {
-			resp.Body.Close()
-		}
+		datahelpers.SendBehaviorLog("AssetUpdate", "", "Asset metadata changed", "Trigger recalculation via Behavior Service", "P3", asset)
 	}(hwid)
 }
 func UpdateAssetGroup(c *gin.Context) {

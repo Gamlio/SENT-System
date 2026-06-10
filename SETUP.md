@@ -9,9 +9,9 @@ Bước 3:  tạo .env với cấu trúc sau
 
 # DATABASE_URL=postgresql:
 # có thể tuỳ biến theo dự án và bảo mật
-DATABASE_URL=postgresql://postgres 
+DATABASE_URL=
 # cổng ở đây đặt không đáng kể vì chúng ta sẽ chạy ở docker
-MONGODB_URI=mongodb://mongodb:27017
+MONGODB_URI=
  # host mặc định
 REDIS_HOST=redis
  # port mặc định

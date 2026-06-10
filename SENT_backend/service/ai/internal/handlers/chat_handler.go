@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
@@ -165,14 +166,42 @@ func ChatHandler(c *gin.Context) {
 		if len(cleanedLine) == 0 {
 			return true
 		}
-		var rawChunk map[string]interface{}
-		if err := json.Unmarshal(cleanedLine, &rawChunk); err != nil {
-			fmt.Printf("⚠️ Lỗi giải mã dòng JSON từ Ollama: %v | Data: %s\n", err, string(cleanedLine))
+		// var rawChunk map[string]interface{}
+		// if err := json.Unmarshal(cleanedLine, &rawChunk); err != nil {
+		// 	fmt.Printf("⚠️ Lỗi giải mã dòng JSON từ Ollama: %v | Data: %s\n", err, string(cleanedLine))
+		// 	return true
+		// }
+		// 
+		// responseText, _ := rawChunk["response"].(string)
+		// isDone, _ := rawChunk["done"].(bool)
+
+		cleanedStr := string(cleanedLine)
+		if strings.HasPrefix(cleanedStr, "data: ") {
+			cleanedStr = strings.TrimPrefix(cleanedStr, "data: ")
+		}
+		
+		if cleanedStr == "" {
 			return true
 		}
 
-		responseText, _ := rawChunk["response"].(string)
-		isDone, _ := rawChunk["done"].(bool)
+		var geminiChunk struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+		}
+
+		responseText := ""
+		if err := json.Unmarshal([]byte(cleanedStr), &geminiChunk); err == nil {
+			if len(geminiChunk.Candidates) > 0 && len(geminiChunk.Candidates[0].Content.Parts) > 0 {
+				responseText = geminiChunk.Candidates[0].Content.Parts[0].Text
+			}
+		}
+
+		isDone := false // with standard SSE, stream ends when connection closes or reader EOF
 
 		fullAIResponse += responseText
 

@@ -63,9 +63,17 @@ func getOSSoftware(runningProcs map[string]bool) ([]SoftwareRecord, error) {
 						// [SMART-DELTA] Start of the new logic
 						fileInfo, err := os.Stat(exePath)
 						if err == nil {
+							// [PERFORMANCE] Bỏ qua file > 100MB để tránh treo
+							const maxHashSize = 100 * 1024 * 1024 // 100MB
+
 							oldMeta, found := GetFileMetadata(exePath)
 
-							if !found || fileInfo.ModTime() != oldMeta.ModTime || fileInfo.Size() != oldMeta.Size {
+							if fileInfo.Size() > maxHashSize {
+								// File quá lớn, không hash
+								if found {
+									fileHash = oldMeta.Hash // Sử dụng hash cũ nếu có
+								}
+							} else if !found || fileInfo.ModTime() != oldMeta.ModTime || fileInfo.Size() != oldMeta.Size {
 								// File is new or has changed, so re-hash it.
 								hash, err := calculateSHA256(exePath)
 								if err == nil {

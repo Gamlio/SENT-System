@@ -117,41 +117,61 @@ func SearchRelevantContext(userQuery string) string {
 	return contextBuilder.String()
 }
 
-type OllamaEmbeddingRequest struct {
-	Model string `json:"model"`
-	Input string `json:"input"`
+// type OllamaEmbeddingRequest struct {
+// 	Model string `json:"model"`
+// 	Input string `json:"input"`
+// }
+// 
+// type OllamaEmbeddingResponse struct {
+// 	Embeddings [][]float32 `json:"embeddings"`
+// }
+
+type GeminiEmbeddingRequest struct {
+	Model   string        `json:"model"`
+	Content GeminiContent `json:"content"`
 }
 
-type OllamaEmbeddingResponse struct {
-	Embeddings [][]float32 `json:"embeddings"`
+type GeminiEmbeddingResponse struct {
+	Embedding struct {
+		Values []float32 `json:"values"`
+	} `json:"embedding"`
 }
 
 func GetTextEmbedding(text string) ([]float32, error) {
-	reqBody := OllamaEmbeddingRequest{
-		Model: MODEL_EMBED,
-		Input: text,
+	reqBody := GeminiEmbeddingRequest{
+		Model: "models/" + MODEL_EMBED,
+		Content: GeminiContent{
+			Parts: []GeminiPart{{Text: text}},
+		},
 	}
 
 	jsonData, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/api/embed", strings.TrimRight(OLLAMA_BASE, "/"))
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	url := fmt.Sprintf("%s/v1beta/models/%s:embedContent?key=%s", strings.TrimRight(GEMINI_BASE, "/"), MODEL_EMBED, GEMINI_API_KEY)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("lỗi kết nối Ollama Embeddings: %v", err)
+		return nil, fmt.Errorf("lỗi tạo request embeddings: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("lỗi kết nối Gemini Embeddings: %v", err)
 	}
 	defer resp.Body.Close()
 
-	var embedResp OllamaEmbeddingResponse
+	var embedResp GeminiEmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
 		return nil, fmt.Errorf("lỗi giải mã dữ liệu Vector từ AI: %v", err)
 	}
 
-	// Kiểm tra xem mảng trả về có dữ liệu không và lấy phần tử đầu tiên [0]
-	if len(embedResp.Embeddings) == 0 {
-		return nil, fmt.Errorf("không nhận được dữ liệu vector từ Ollama")
+	if len(embedResp.Embedding.Values) == 0 {
+		return nil, fmt.Errorf("không nhận được dữ liệu vector từ Gemini")
 	}
 
-	return embedResp.Embeddings[0], nil
+	return embedResp.Embedding.Values, nil
 }
 
 func IngestPlaybookMarkdownToVectorDB(mdContent string) error {

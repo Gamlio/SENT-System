@@ -4,12 +4,11 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	"SENT_backend/pkg/websocket"
-	"bytes"
+	datahelpers "SENT_backend/service/assets/internal/service/data"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -145,23 +144,12 @@ func (s *AssetLifecycleService) UpdateDeviceType(hwid string, orgID uint, device
 
 	// 2. TỰ ĐỘNG: Thông báo Behavior Service; Behavior sẽ chịu trách nhiệm kích hoạt Scoring
 	go func(id string) {
-		payload := map[string]interface{}{
-			"org_id":        orgID,
-			"asset_hwid":    id,
-			"category":      "DeviceTypeChange",
-			"value":         "",
-			"title":         "Device type changed",
-			"desc":          "Device type update; request centralized scoring",
-			"base_priority": "P3",
-		}
-		b, _ := json.Marshal(payload)
-		url := "http://behavior-service:8000/api/v1/behaviors/log"
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(b))
-		if err != nil {
-			fmt.Printf("⚠️ Lỗi gọi Behavior Service cho máy %s: %v\n", id, err)
+		// Lấy thông tin asset để tạo payload có trường `asset` lồng
+		var asset models.Asset
+		if err := database.DB.Where("asset_hwid = ? AND org_id = ?", id, orgID).First(&asset).Error; err != nil {
 			return
 		}
-		resp.Body.Close()
+		datahelpers.SendBehaviorLog("DeviceTypeChange", "", "Device type changed", "Device type update; request centralized scoring", "P3", asset)
 	}(hwid)
 
 	return nil

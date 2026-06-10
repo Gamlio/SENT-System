@@ -4,7 +4,7 @@ import (
 	"SENT_backend/pkg/models"
 	"SENT_backend/pkg/models/database"
 	assetService "SENT_backend/service/assets/internal/service"
-	"bytes"
+	datahelpers "SENT_backend/service/assets/internal/service/data"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -92,31 +92,17 @@ func UpdateDepartment(c *gin.Context) {
 
 	// Notify Behavior Service to trigger a centralized recalculation (Behavior will call Scoring)
 	go func(id string) {
-		payload := map[string]interface{}{
-			"org_id":        c.GetUint("org_id"),
-			"asset_hwid":    id,
-			"category":      "DepartmentChange",
-			"value":         "",
-			"title":         "Department tag updated",
-			"desc":          "Department updated, request centralized scoring",
-			"base_priority": "P3",
-		}
-		b, _ := json.Marshal(payload)
-		url := "http://behavior-service:8000/api/v1/behaviors/log"
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(b))
-		if err != nil {
-			log.Printf("⚠️ Lỗi gọi Behavior Service cho máy %s: %v\n", id, err)
+		// load asset to include full asset info in payload
+		var asset models.Asset
+		if err := database.DB.Where("asset_hwid = ? AND org_id = ?", id, orgID).First(&asset).Error; err != nil {
+			log.Printf("⚠️ Không thể load asset %s để thông báo Behavior: %v", id, err)
 			return
 		}
-		resp.Body.Close()
+		datahelpers.SendBehaviorLog("DepartmentChange", "", "Department tag updated", "Department updated, request centralized scoring", "P3", asset)
 	}(hwid)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã cập nhật Nhãn bảo mật (Department)"})
 }
-
-// =========================================================================
-// SERVER-SIDE PAGINATION ENDPOINTS (Cho các Tab Chi tiết Máy trạm)
-// =========================================================================
 
 func GetAssetSoftware(c *gin.Context) {
 	hwid := c.Param("hwid")
@@ -134,7 +120,7 @@ func GetAssetSoftware(c *gin.Context) {
 	limit64 := int64(limit)
 
 	filter := bson.M{"asset_hwid": hwid}
-	// Bắt buộc ép kiểu sang int64 để truy vấn chính xác trên MongoDB
+
 	filter["org_id"] = int64(c.GetUint("org_id"))
 
 	if search != "" {
@@ -154,7 +140,7 @@ func GetAssetSoftware(c *gin.Context) {
 	cursor, err := database.SoftwareCollection.Find(c, filter, &options.FindOptions{
 		Skip:  &skip,
 		Limit: &limit64,
-		Sort:  bson.M{"updated_at": -1}, // Ưu tiên bản ghi mới cập nhật
+		Sort:  bson.M{"updated_at": -1},
 	})
 
 	if err != nil {
@@ -191,7 +177,7 @@ func GetAssetUSB(c *gin.Context) {
 	limit64 := int64(limit)
 
 	filter := bson.M{"asset_hwid": hwid}
-	// Bắt buộc ép kiểu sang int64 để truy vấn chính xác trên MongoDB
+
 	filter["org_id"] = int64(c.GetUint("org_id"))
 
 	if search != "" {
@@ -235,14 +221,14 @@ func GetAssetPorts(c *gin.Context) {
 	limit64 := int64(limit)
 
 	filter := bson.M{"asset_hwid": hwid}
-	// Bắt buộc ép kiểu sang int64 để truy vấn chính xác trên MongoDB
+
 	filter["org_id"] = int64(c.GetUint("org_id"))
 
 	if search != "" {
 		orConditions := []bson.M{
 			{"process_name": primitive.Regex{Pattern: search, Options: "i"}},
 		}
-		// Nếu search là một con số, có thể họ đang tìm số Port
+
 		if portInt, err := strconv.Atoi(search); err == nil {
 			orConditions = append(orConditions, bson.M{"port": portInt})
 		}
@@ -250,7 +236,7 @@ func GetAssetPorts(c *gin.Context) {
 	}
 
 	total, _ := database.OpenPortCollection.CountDocuments(c, filter)
-	// Gom nhóm cổng nào mới cập nhật nhất đưa lên đầu
+
 	cursor, _ := database.OpenPortCollection.Find(c, filter, &options.FindOptions{
 		Skip:  &skip,
 		Limit: &limit64,

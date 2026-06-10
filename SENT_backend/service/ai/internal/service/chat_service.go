@@ -18,19 +18,45 @@ import (
 )
 
 var (
-	OLLAMA_BASE = getEnv("OLLAMA_URL", "http://host.docker.internal:11434")
-	MODEL       = "qwen3.5:2b"
-	MODEL_EMBED = "nomic-embed-text"
+	// OLLAMA_BASE = getEnv("OLLAMA_URL", "http://host.docker.internal:11434")
+	// MODEL       = "qwen3.5:2b"
+	// MODEL_EMBED = "nomic-embed-text"
+
+	// Gemini configuration (used by default)
+	GEMINI_BASE    = getEnv("GEMINI_URL", "https://generativelanguage.googleapis.com")
+	GEMINI_API_KEY = getEnv("GEMINI_API_KEY", "")
+	MODEL          = getEnv("GEMINI_MODEL", "gemini-1.0")
+	MODEL_EMBED    = getEnv("GEMINI_EMBED_MODEL", "gemini-embed-1.0")
 )
 
-type OllamaRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
+// type OllamaRequest struct {
+// 	Model  string `json:"model"`
+// 	Prompt string `json:"prompt"`
+// 	Stream bool   `json:"stream"`
+// }
+
+// type OllamaResponse struct {
+// 	Response string `json:"response"`
+// }
+
+type GeminiRequest struct {
+	Contents []GeminiContent `json:"contents"`
 }
 
-type OllamaResponse struct {
-	Response string `json:"response"`
+type GeminiContent struct {
+	Parts []GeminiPart `json:"parts"`
+}
+
+type GeminiPart struct {
+	Text string `json:"text"`
+}
+
+type GeminiResponse struct {
+	Candidates []GeminiCandidate `json:"candidates"`
+}
+
+type GeminiCandidate struct {
+	Content GeminiContent `json:"content"`
 }
 
 func getEnv(key, fallback string) string {
@@ -47,7 +73,7 @@ func ParseAIResponse(raw string) (thought string, answer string) {
 
 func ChatWithRAG(userQuestion string, orgID uint) (string, string, error) {
 	if len(strings.TrimSpace(userQuestion)) < 10 {
-		return callOllama(MODEL, userQuestion, 2048)
+		return callGemini(MODEL, userQuestion, 2048)
 	}
 
 	var policies, docs string
@@ -74,7 +100,7 @@ func ChatWithRAG(userQuestion string, orgID uint) (string, string, error) {
 		- TUYỆT ĐỐI không bịa đặt. 
 		- Chỉ tư vấn, không hành động.`, policies, docs, userQuestion)
 
-	return callOllama(MODEL, ragPrompt, contextLimit)
+	return callGemini(MODEL, ragPrompt, contextLimit)
 }
 
 // 2. PHÂN TÍCH SỰ CỐ & ĐỘC LOG: Khóa chặt bắt buộc dùng con 2B xử lý tác vụ nặng
@@ -110,7 +136,7 @@ func AnalyzeIncidentWithAI(incidentID string) (string, error) {
 		incident.Asset.Hostname, incident.Asset.IPAddress,
 	)
 
-	_, answer, err := callOllama(MODEL, prompt, 16384)
+	_, answer, err := callGemini(MODEL, prompt, 16384)
 	if err != nil {
 		return "", fmt.Errorf("lỗi kết nối bộ xử lý sự cố nâng cao: %v", err)
 	}
@@ -183,7 +209,7 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 
 		[USER]
 		%s`, trimmedQ)
-		return CallOllamaStream(ctx, MODEL, casualPrompt, 2048)
+		return CallGeminiStream(ctx, MODEL, casualPrompt, 2048)
 	}
 	incidentKeywords := []string{
 		"sự cố", "log", "alert", "cảnh báo", "tấn công", "malware", "virus",
@@ -291,22 +317,95 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 	Hãy giải quyết yêu cầu sau của Quản trị viên: "` + trimmedQ + `"`
 
 	// 8. Kích hoạt luồng truyền tải dữ liệu thời gian thực ra cổng Handler
-	return CallOllamaStream(ctx, MODEL, systemSafetyPrompt, contextLimit)
+	return CallGeminiStream(ctx, MODEL, systemSafetyPrompt, contextLimit)
 }
 
-func CallOllamaStream(ctx context.Context, model string, prompt string, ctxLimit int) (io.ReadCloser, error) {
-	reqBody := map[string]interface{}{
-		"model":  model,
-		"prompt": prompt,
-		"stream": true,
-		"options": map[string]interface{}{
-			"temperature": 0,
-			"num_ctx":     ctxLimit,
+// func CallOllamaStream(ctx context.Context, model string, prompt string, ctxLimit int) (io.ReadCloser, error) {
+// 	reqBody := map[string]interface{}{
+// 		"model":  model,
+// 		"prompt": prompt,
+// 		"stream": true,
+// 		"options": map[string]interface{}{
+// 			"temperature": 0,
+// 			"num_ctx":     ctxLimit,
+// 		},
+// 	}
+// 
+// 	jsonData, _ := json.Marshal(reqBody)
+// 	url := fmt.Sprintf("%s/v1/generate", strings.TrimRight(GEMINI_BASE, "/"))
+// 
+// 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+// 	if err != nil {
+// 		return nil, fmt.Errorf("lỗi tạo request stream: %v", err)
+// 	}
+// 	req.Header.Set("Content-Type", "application/json")
+// 	if GEMINI_API_KEY != "" {
+// 		req.Header.Set("Authorization", "Bearer "+GEMINI_API_KEY)
+// 	}
+// 
+// 	client := &http.Client{}
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("lỗi kết nối Gemini stream (%s): %v", model, err)
+// 	}
+// 
+// 	if resp.StatusCode != http.StatusOK {
+// 		resp.Body.Close()
+// 		return nil, fmt.Errorf("gemini returned status %d", resp.StatusCode)
+// 	}
+// 
+// 	return resp.Body, nil
+// }
+
+// func callGemini(model, prompt string, ctxParam int) (string, string, error) {
+// 	reqBody := map[string]interface{}{
+// 		"model":  model,
+// 		"prompt": prompt,
+// 		"stream": false,
+// 		"options": map[string]interface{}{
+// 			"temperature": 0.0,
+// 			"num_ctx":     ctxParam,
+// 		},
+// 	}
+// 
+// 	jsonData, _ := json.Marshal(reqBody)
+// 	url := fmt.Sprintf("%s/v1/generate", strings.TrimRight(GEMINI_BASE, "/"))
+// 
+// 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+// 	if err != nil {
+// 		return "", "", fmt.Errorf("lỗi tạo request: %v", err)
+// 	}
+// 	req.Header.Set("Content-Type", "application/json")
+// 	if GEMINI_API_KEY != "" {
+// 		req.Header.Set("Authorization", "Bearer "+GEMINI_API_KEY)
+// 	}
+// 
+// 	client := &http.Client{}
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		return "", "", fmt.Errorf("lỗi kết nối Gemini (%s): %v", model, err)
+// 	}
+// 	defer resp.Body.Close()
+// 
+// 	body, _ := io.ReadAll(resp.Body)
+// 	var aiResp OllamaResponse
+// 	if err := json.Unmarshal(body, &aiResp); err != nil {
+// 		return "", "", fmt.Errorf("lỗi đọc phản hồi từ AI")
+// 	}
+// 
+// 	thought, answer := ParseAIResponse(aiResp.Response)
+// 	return thought, answer, nil
+// }
+
+func CallGeminiStream(ctx context.Context, model string, prompt string, ctxLimit int) (io.ReadCloser, error) {
+	reqBody := GeminiRequest{
+		Contents: []GeminiContent{
+			{Parts: []GeminiPart{{Text: prompt}}},
 		},
 	}
-
 	jsonData, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/api/generate", strings.TrimRight(OLLAMA_BASE, "/"))
+	// Example: https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=...
+	url := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse&key=%s", strings.TrimRight(GEMINI_BASE, "/"), model, GEMINI_API_KEY)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -317,43 +416,48 @@ func CallOllamaStream(ctx context.Context, model string, prompt string, ctxLimit
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("lỗi kết nối AI stream (%s): %v", model, err)
+		return nil, fmt.Errorf("lỗi kết nối Gemini stream (%s): %v", model, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("gemini returned status %d", resp.StatusCode)
 	}
 
 	return resp.Body, nil
 }
 
-func callOllama(model, prompt string, ctxParam int) (string, string, error) {
-	reqBody := map[string]interface{}{
-		"model":  model,
-		"prompt": prompt,
-		"stream": false,
-		"options": map[string]interface{}{
-			"temperature": 0.0,
-			"num_ctx":     ctxParam,
+func callGemini(model, prompt string, ctxParam int) (string, string, error) {
+	reqBody := GeminiRequest{
+		Contents: []GeminiContent{
+			{Parts: []GeminiPart{{Text: prompt}}},
 		},
 	}
-
 	jsonData, _ := json.Marshal(reqBody)
-	url := fmt.Sprintf("%s/api/generate", strings.TrimRight(OLLAMA_BASE, "/"))
+	url := fmt.Sprintf("%s/v1beta/models/%s:generateContent?key=%s", strings.TrimRight(GEMINI_BASE, "/"), model, GEMINI_API_KEY)
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", "", fmt.Errorf("lỗi kết nối AI (%s): %v", model, err)
+		return "", "", fmt.Errorf("lỗi tạo request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("lỗi kết nối Gemini (%s): %v", model, err)
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	var aiResp OllamaResponse
+	var aiResp GeminiResponse
 	if err := json.Unmarshal(body, &aiResp); err != nil {
 		return "", "", fmt.Errorf("lỗi đọc phản hồi từ AI")
 	}
 
-	thought, answer := ParseAIResponse(aiResp.Response)
-	return thought, answer, nil
+	if len(aiResp.Candidates) > 0 && len(aiResp.Candidates[0].Content.Parts) > 0 {
+		thought, answer := ParseAIResponse(aiResp.Candidates[0].Content.Parts[0].Text)
+		return thought, answer, nil
+	}
+	return "", "", fmt.Errorf("không nhận được dữ liệu hợp lệ từ Gemini")
 }
