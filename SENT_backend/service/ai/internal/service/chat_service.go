@@ -18,15 +18,15 @@ import (
 )
 
 var (
-	// OLLAMA_BASE = getEnv("OLLAMA_URL", "http://host.docker.internal:11434")
-	// MODEL       = "qwen3.5:2b"
-	// MODEL_EMBED = "nomic-embed-text"
+	OLLAMA_BASE = getEnv("OLLAMA_URL", "http://host.docker.internal:11434")
 
-	// Gemini configuration (used by default)
+	// Gemini configuration (Sử dụng cho luồng Chat LLM)
 	GEMINI_BASE    = getEnv("GEMINI_URL", "https://generativelanguage.googleapis.com")
 	GEMINI_API_KEY = getEnv("GEMINI_API_KEY", "")
-	MODEL          = getEnv("GEMINI_MODEL", "gemini-1.0")
-	MODEL_EMBED    = getEnv("GEMINI_EMBED_MODEL", "gemini-embed-1.0")
+	MODEL          = getEnv("GEMINI_MODEL", "gemini-1.5-flash")
+
+	// Ollama configuration (Chỉ định model embedding của Ollama cho luồng tìm kiếm RAG)
+	MODEL_EMBED = "nomic-embed-text"
 )
 
 // type OllamaRequest struct {
@@ -40,7 +40,13 @@ var (
 // }
 
 type GeminiRequest struct {
-	Contents []GeminiContent `json:"contents"`
+	Contents       []GeminiContent       `json:"contents"`
+	SafetySettings []GeminiSafetySetting `json:"safetySettings,omitempty"`
+}
+
+type GeminiSafetySetting struct {
+	Category  string `json:"category"`
+	Threshold string `json:"threshold"`
 }
 
 type GeminiContent struct {
@@ -76,21 +82,26 @@ func ChatWithRAG(userQuestion string, orgID uint) (string, string, error) {
 		return callGemini(MODEL, userQuestion, 2048)
 	}
 
-	var policies, docs string
+	var policies, docs, playbooks string
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	go func() { defer wg.Done(); policies = getRelatedPolicies(userQuestion) }()
 	go func() { defer wg.Done(); docs = getRelevantPDFContent(userQuestion, orgID) }()
+	go func() { defer wg.Done(); playbooks = SearchPlaybookByVector(userQuestion) }()
 
 	wg.Wait()
 
 	contextLimit := 8192
 
+	var contextBuilder strings.Builder
+	contextBuilder.WriteString(fmt.Sprintf("\nPOLICIES:\n%s", policies))
+	contextBuilder.WriteString(fmt.Sprintf("\nDOCUMENTS:\n%s", docs))
+	if playbooks != "" {
+		contextBuilder.WriteString(fmt.Sprintf("\nPLAYBOOKS & ISO:\n%s", playbooks))
+	}
+
 	ragPrompt := fmt.Sprintf(`[CONTEXT]
-		POLICIES:
-		%s
-		DOCUMENTS:
 		%s
 
 		[INSTRUCTION]
@@ -98,7 +109,7 @@ func ChatWithRAG(userQuestion string, orgID uint) (string, string, error) {
 		Hãy suy nghĩ logic và đưa ra câu trả lời ngắn gọn, chính xác.
 		- Nếu không thấy thông tin trong CONTEXT, hãy nói "Tôi không tìm thấy quy định này trong hệ thống".
 		- TUYỆT ĐỐI không bịa đặt. 
-		- Chỉ tư vấn, không hành động.`, policies, docs, userQuestion)
+		- Chỉ tư vấn, không hành động.`, contextBuilder.String(), userQuestion)
 
 	return callGemini(MODEL, ragPrompt, contextLimit)
 }
@@ -265,7 +276,7 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 		playbooksContext = SearchPlaybookByVector(trimmedQ)
 	}()
 
-	if isPolicyQuery {
+	if isPolicyQuery || isIncidentQuery {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -273,7 +284,7 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 		}()
 	}
 
-	if isDocQuery {
+	if isDocQuery || isIncidentQuery {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -330,10 +341,10 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 // 			"num_ctx":     ctxLimit,
 // 		},
 // 	}
-// 
+//
 // 	jsonData, _ := json.Marshal(reqBody)
 // 	url := fmt.Sprintf("%s/v1/generate", strings.TrimRight(GEMINI_BASE, "/"))
-// 
+//
 // 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 // 	if err != nil {
 // 		return nil, fmt.Errorf("lỗi tạo request stream: %v", err)
@@ -342,18 +353,18 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 // 	if GEMINI_API_KEY != "" {
 // 		req.Header.Set("Authorization", "Bearer "+GEMINI_API_KEY)
 // 	}
-// 
+//
 // 	client := &http.Client{}
 // 	resp, err := client.Do(req)
 // 	if err != nil {
 // 		return nil, fmt.Errorf("lỗi kết nối Gemini stream (%s): %v", model, err)
 // 	}
-// 
+//
 // 	if resp.StatusCode != http.StatusOK {
 // 		resp.Body.Close()
 // 		return nil, fmt.Errorf("gemini returned status %d", resp.StatusCode)
 // 	}
-// 
+//
 // 	return resp.Body, nil
 // }
 
@@ -367,10 +378,10 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 // 			"num_ctx":     ctxParam,
 // 		},
 // 	}
-// 
+//
 // 	jsonData, _ := json.Marshal(reqBody)
 // 	url := fmt.Sprintf("%s/v1/generate", strings.TrimRight(GEMINI_BASE, "/"))
-// 
+//
 // 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 // 	if err != nil {
 // 		return "", "", fmt.Errorf("lỗi tạo request: %v", err)
@@ -379,20 +390,20 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 // 	if GEMINI_API_KEY != "" {
 // 		req.Header.Set("Authorization", "Bearer "+GEMINI_API_KEY)
 // 	}
-// 
+//
 // 	client := &http.Client{}
 // 	resp, err := client.Do(req)
 // 	if err != nil {
 // 		return "", "", fmt.Errorf("lỗi kết nối Gemini (%s): %v", model, err)
 // 	}
 // 	defer resp.Body.Close()
-// 
+//
 // 	body, _ := io.ReadAll(resp.Body)
 // 	var aiResp OllamaResponse
 // 	if err := json.Unmarshal(body, &aiResp); err != nil {
 // 		return "", "", fmt.Errorf("lỗi đọc phản hồi từ AI")
 // 	}
-// 
+//
 // 	thought, answer := ParseAIResponse(aiResp.Response)
 // 	return thought, answer, nil
 // }
@@ -401,6 +412,12 @@ func CallGeminiStream(ctx context.Context, model string, prompt string, ctxLimit
 	reqBody := GeminiRequest{
 		Contents: []GeminiContent{
 			{Parts: []GeminiPart{{Text: prompt}}},
+		},
+		SafetySettings: []GeminiSafetySetting{
+			{Category: "HARM_CATEGORY_HARASSMENT", Threshold: "BLOCK_NONE"},
+			{Category: "HARM_CATEGORY_HATE_SPEECH", Threshold: "BLOCK_NONE"},
+			{Category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", Threshold: "BLOCK_NONE"},
+			{Category: "HARM_CATEGORY_DANGEROUS_CONTENT", Threshold: "BLOCK_NONE"},
 		},
 	}
 	jsonData, _ := json.Marshal(reqBody)
@@ -432,6 +449,12 @@ func callGemini(model, prompt string, ctxParam int) (string, string, error) {
 		Contents: []GeminiContent{
 			{Parts: []GeminiPart{{Text: prompt}}},
 		},
+		SafetySettings: []GeminiSafetySetting{
+			{Category: "HARM_CATEGORY_HARASSMENT", Threshold: "BLOCK_NONE"},
+			{Category: "HARM_CATEGORY_HATE_SPEECH", Threshold: "BLOCK_NONE"},
+			{Category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", Threshold: "BLOCK_NONE"},
+			{Category: "HARM_CATEGORY_DANGEROUS_CONTENT", Threshold: "BLOCK_NONE"},
+		},
 	}
 	jsonData, _ := json.Marshal(reqBody)
 	url := fmt.Sprintf("%s/v1beta/models/%s:generateContent?key=%s", strings.TrimRight(GEMINI_BASE, "/"), model, GEMINI_API_KEY)
@@ -449,10 +472,14 @@ func callGemini(model, prompt string, ctxParam int) (string, string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
 	var aiResp GeminiResponse
 	if err := json.Unmarshal(body, &aiResp); err != nil {
-		return "", "", fmt.Errorf("lỗi đọc phản hồi từ AI")
+		return "", "", fmt.Errorf("lỗi giải mã phản hồi AI: %v", err)
 	}
 
 	if len(aiResp.Candidates) > 0 && len(aiResp.Candidates[0].Content.Parts) > 0 {

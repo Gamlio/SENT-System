@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -25,52 +27,119 @@ func AutoCheckAndLoadPlaybooks() {
 
 	vectorCollection := database.DocumentContentCollection.Database().Collection("playbook_vectors")
 
-	count, err := vectorCollection.CountDocuments(context.TODO(), bson.M{})
-	if err != nil {
-		fmt.Printf("❌ [VECTOR] Error querying playbook vector database: %v\n", err)
-		return
-	}
-
-	if count > 0 {
-		fmt.Printf("✅ [VECTOR] Playbook vector database is operational. Found [%d] playbook vectors.\n", count)
-		return
-	}
-
-	fmt.Println("⚠️ [VECTOR] Playbook vector storage is empty (0 records)! Attempting to find and load playbook file...")
-
-	possiblePaths := []string{
-		"doc/playbook.md",
-		"service/ai/doc/playbook.md",
-		"../doc/playbook.md",
-	}
-
-	var targetPath string
-	for _, p := range possiblePaths {
-		if _, err := os.Stat(p); err == nil {
-			targetPath = p
-			break
+	// 1. Kiểm tra và nạp Playbook
+	pbCount, _ := vectorCollection.CountDocuments(context.TODO(), bson.M{"playbook_id": bson.M{"$ne": "ISO27001"}})
+	if pbCount > 0 {
+		fmt.Printf("✅ [VECTOR] Playbook vector database is operational. Found [%d] playbook vectors.\n", pbCount)
+	} else {
+		fmt.Println("⚠️ [VECTOR] Playbook vector storage is empty! Attempting to load playbook file...")
+		targetPath := findFile([]string{"doc/playbook.md", "service/ai/doc/playbook.md", "../doc/playbook.md"})
+		if targetPath != "" {
+			if contentBytes, err := os.ReadFile(targetPath); err == nil {
+				fmt.Printf("🚀 [VECTOR] Found playbook file at [%s]. Ingesting...\n", targetPath)
+				_ = IngestPlaybookMarkdownToVectorDB(string(contentBytes))
+			}
 		}
 	}
 
-	if targetPath == "" {
-		fmt.Println("❌ [VECTOR] CRITICAL: Could not find 'playbook.md' in any of the expected locations. Vector search will be unavailable.")
-		return
-	}
-
-	contentBytes, err := os.ReadFile(targetPath)
-	if err != nil {
-		fmt.Printf("❌ [VECTOR] Failed to read playbook file content at %s: %v\n", targetPath, err)
-		return
-	}
-
-	fmt.Printf("🚀 [VECTOR] Found valid playbook file at [%s]. Starting ingestion process into Vector DB...\n", targetPath)
-
-	err = IngestPlaybookMarkdownToVectorDB(string(contentBytes))
-	if err != nil {
-		fmt.Printf("❌ [VECTOR] Playbook vector synchronization process failed: %v\n", err)
+	// 2. Kiểm tra và nạp ISO27001
+	isoCount, _ := vectorCollection.CountDocuments(context.TODO(), bson.M{"playbook_id": "ISO27001"})
+	if isoCount > 0 {
+		fmt.Printf("✅ [VECTOR] ISO27001 vector database is operational. Found [%d] ISO chunks.\n", isoCount)
 	} else {
-		fmt.Println("✅ [VECTOR] Semantic structure conversion and ingestion completed successfully!")
+		fmt.Println("⚠️ [VECTOR] ISO27001 vector storage is empty! Attempting to load ISO file...")
+		targetPath := findFile([]string{"doc/ISO27001_2022.md", "service/ai/doc/ISO27001_2022.md", "../doc/ISO27001_2022.md"})
+		if targetPath != "" {
+			if contentBytes, err := os.ReadFile(targetPath); err == nil {
+				fmt.Printf("🚀 [VECTOR] Found ISO file at [%s]. Ingesting...\n", targetPath)
+				_ = IngestISOMarkdownToVectorDB(string(contentBytes))
+			}
+		}
 	}
+}
+
+func findFile(paths []string) string {
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+func IngestISOMarkdownToVectorDB(mdContent string) error {
+	if database.DocumentContentCollection == nil {
+		return fmt.Errorf("chưa kết nối cơ sở dữ liệu MongoDB")
+	}
+
+	vectorCollection := database.DocumentContentCollection.Database().Collection("playbook_vectors")
+
+	// Xóa dữ liệu ISO cũ nếu có
+	_, _ = vectorCollection.DeleteMany(context.TODO(), bson.M{"playbook_id": "ISO27001"})
+
+	successCount := 0
+	// Thay vì cắt bằng \n\n rất dễ dính khối text khổng lồ, ta cắt nhỏ theo từng dòng \n
+	lines := strings.Split(mdContent, "\n")
+
+	var currentChunk strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		// Nếu thêm dòng này vào mà vượt quá 600 ký tự (mức an toàn cao cho Ollama), ta tiến hành sinh vector khối cũ trước
+		if currentChunk.Len()+len(trimmed) > 600 && currentChunk.Len() > 0 {
+			blockText := currentChunk.String()
+			vector, err := GetTextEmbedding(blockText)
+			if err != nil {
+				fmt.Printf("❌ Lỗi sinh vector cho chunk ISO: %v\n", err)
+				currentChunk.Reset() // Reset để bỏ qua block lỗi, tránh nghẽn luồng
+				continue
+			}
+
+			chunkDoc := models.PlaybookVectorChunk{
+				ID:         primitive.NewObjectID(),
+				PlaybookID: "ISO27001",
+				Title:      "Tiêu chuẩn ISO 27001",
+				Content:    blockText,
+				Embedding:  vector,
+			}
+
+			_, err = vectorCollection.InsertOne(context.TODO(), chunkDoc)
+			if err == nil {
+				successCount++
+			}
+			currentChunk.Reset()
+		}
+
+		currentChunk.WriteString(trimmed)
+		currentChunk.WriteString("\n")
+	}
+
+	// Xử lý nốt phần văn bản còn dư lại cuối cùng
+	if currentChunk.Len() > 20 {
+		blockText := currentChunk.String()
+		vector, err := GetTextEmbedding(blockText)
+		if err == nil {
+			chunkDoc := models.PlaybookVectorChunk{
+				ID:         primitive.NewObjectID(),
+				PlaybookID: "ISO27001",
+				Title:      "Tiêu chuẩn ISO 27001",
+				Content:    blockText,
+				Embedding:  vector,
+			}
+			_, err = vectorCollection.InsertOne(context.TODO(), chunkDoc)
+			if err == nil {
+				successCount++
+			}
+		}
+	}
+
+	if successCount > 0 {
+		fmt.Printf("✅ Đã nạp thành công [%d] đoạn dữ liệu ISO27001 vào Vector DB!\n", successCount)
+	}
+	return nil
 }
 
 func SearchRelevantContext(userQuery string) string {
@@ -117,61 +186,58 @@ func SearchRelevantContext(userQuery string) string {
 	return contextBuilder.String()
 }
 
-// type OllamaEmbeddingRequest struct {
-// 	Model string `json:"model"`
-// 	Input string `json:"input"`
-// }
-// 
-// type OllamaEmbeddingResponse struct {
-// 	Embeddings [][]float32 `json:"embeddings"`
-// }
-
-type GeminiEmbeddingRequest struct {
-	Model   string        `json:"model"`
-	Content GeminiContent `json:"content"`
+type OllamaEmbeddingRequest struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
 }
 
-type GeminiEmbeddingResponse struct {
-	Embedding struct {
-		Values []float32 `json:"values"`
-	} `json:"embedding"`
+type OllamaEmbeddingResponse struct {
+	Embedding []float32 `json:"embedding"`
 }
 
 func GetTextEmbedding(text string) ([]float32, error) {
-	reqBody := GeminiEmbeddingRequest{
-		Model: "models/" + MODEL_EMBED,
-		Content: GeminiContent{
-			Parts: []GeminiPart{{Text: text}},
-		},
+	// Ép cấu hình gọi sang model nomic-embed-text của Ollama
+	reqBody := OllamaEmbeddingRequest{
+		Model:  "nomic-embed-text",
+		Prompt: text,
 	}
 
-	jsonData, _ := json.Marshal(reqBody)
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("lỗi mã hóa json payload cho Ollama: %v", err)
+	}
 
-	url := fmt.Sprintf("%s/v1beta/models/%s:embedContent?key=%s", strings.TrimRight(GEMINI_BASE, "/"), MODEL_EMBED, GEMINI_API_KEY)
+	// Chuyển sang endpoint của Ollama
+	url := fmt.Sprintf("%s/api/embeddings", strings.TrimRight(OLLAMA_BASE, "/"))
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("lỗi tạo request embeddings: %v", err)
+		return nil, fmt.Errorf("lỗi tạo request embeddings tới Ollama: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("lỗi kết nối Gemini Embeddings: %v", err)
+		return nil, fmt.Errorf("lỗi kết nối tới Ollama: %v", err)
 	}
 	defer resp.Body.Close()
 
-	var embedResp GeminiEmbeddingResponse
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama embedding error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var embedResp OllamaEmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
-		return nil, fmt.Errorf("lỗi giải mã dữ liệu Vector từ AI: %v", err)
+		return nil, fmt.Errorf("lỗi giải mã dữ liệu Vector từ Ollama: %v", err)
 	}
 
-	if len(embedResp.Embedding.Values) == 0 {
-		return nil, fmt.Errorf("không nhận được dữ liệu vector từ Gemini")
+	if len(embedResp.Embedding) == 0 {
+		return nil, fmt.Errorf("không nhận được dữ liệu vector từ Ollama")
 	}
 
-	return embedResp.Embedding.Values, nil
+	return embedResp.Embedding, nil
 }
 
 func IngestPlaybookMarkdownToVectorDB(mdContent string) error {
@@ -181,9 +247,10 @@ func IngestPlaybookMarkdownToVectorDB(mdContent string) error {
 
 	vectorCollection := database.DocumentContentCollection.Database().Collection("playbook_vectors")
 
-	// 1. DỌN SẠCH KHO CŨ: Xóa bỏ triệt để dữ liệu rác trước đó
-	_, _ = vectorCollection.DeleteMany(context.TODO(), bson.M{})
+	// 1. DỌN SẠCH KHO CŨ: Chỉ xóa các bản ghi không phải là tài liệu ISO27001
+	_, _ = vectorCollection.DeleteMany(context.TODO(), bson.M{"playbook_id": bson.M{"$ne": "ISO27001"}})
 
+	successCount := 0
 	// Tách kịch bản bằng thẻ tiêu đề "## "
 	playbooks := strings.Split(mdContent, "## ")
 
@@ -219,11 +286,15 @@ func IngestPlaybookMarkdownToVectorDB(mdContent string) error {
 
 		_, err = vectorCollection.InsertOne(context.TODO(), chunkDoc)
 		if err != nil {
-			return fmt.Errorf("lỗi lưu trữ bản ghi vào Vector DB: %v", err)
+			fmt.Printf("❌ Lỗi lưu trữ bản ghi Playbook vào MongoDB: %v\n", err)
+			continue
 		}
+		successCount++
 	}
 
-	fmt.Println("✅ Toàn bộ hệ thống Playbooks tối giản đã được nạp thành công!")
+	if successCount > 0 {
+		fmt.Printf("✅ Toàn bộ [%d] kịch bản Playbooks đã được nạp thành công vào Vector DB!\n", successCount)
+	}
 	return nil
 }
 
@@ -256,9 +327,45 @@ func SearchPlaybookByVector(userQuery string) string {
 		return ""
 	}
 	vectorCollection := database.DocumentContentCollection.Database().Collection("playbook_vectors")
+
+	// pipeline := mongo.Pipeline{
+	// 	{{"$vectorSearch", bson.M{
+	// 		"index":         "vector_index",
+	// 		"path":          "embedding",
+	// 		"queryVector":   queryVector,
+	// 		"numCandidates": 100,
+	// 		"limit":         3,
+	// 	}}},
+	// }
+
+	// cursor, err := vectorCollection.Aggregate(context.TODO(), pipeline)
+	// if err != nil {
+	// 	fmt.Printf("⚠️ Lỗi truy vấn playbook vectors bằng $vectorSearch: %v\n", err)
+	// 	// Fallback to basic loop if vector search fails (e.g., index not created or local mongo without Atlas)
+	// 	return searchVectorFallback(queryVector, vectorCollection)
+	// }
+	// defer cursor.Close(context.TODO())
+
+	// var bestContent strings.Builder
+	// for cursor.Next(context.TODO()) {
+	// 	var chunk models.PlaybookVectorChunk
+	// 	if err := cursor.Decode(&chunk); err == nil {
+	// 		bestContent.WriteString(chunk.Content)
+	// 		bestContent.WriteString("\n\n")
+	// 	}
+	// }
+
+	// if bestContent.Len() > 0 {
+	// 	return fmt.Sprintf("\n--- [DỮ LIỆU TỪ HỆ THỐNG PLAYBOOK & ISO] ---\n%s\n", bestContent.String())
+	// }
+
+	// Fallback in case of empty aggregate response
+	return searchVectorFallback(queryVector, vectorCollection)
+}
+
+func searchVectorFallback(queryVector []float32, vectorCollection *mongo.Collection) string {
 	cursor, err := vectorCollection.Find(context.TODO(), bson.M{})
 	if err != nil {
-		fmt.Printf("⚠️ Lỗi truy vấn playbook vectors: %v\n", err)
 		return ""
 	}
 	defer cursor.Close(context.TODO())
@@ -270,7 +377,7 @@ func SearchPlaybookByVector(userQuery string) string {
 		var chunk models.PlaybookVectorChunk
 		if err := cursor.Decode(&chunk); err == nil {
 			similarity := CosineSimilarity(queryVector, chunk.Embedding)
-			if similarity > maxSimilarity && similarity > 0.2 {
+			if similarity > maxSimilarity && similarity > 0.15 {
 				maxSimilarity = similarity
 				bestContent = chunk.Content
 			}
@@ -278,7 +385,7 @@ func SearchPlaybookByVector(userQuery string) string {
 	}
 
 	if bestContent != "" {
-		return fmt.Sprintf("\n--- [QUY TRÌNH PHẢN ỨNG CHUẨN (PLAYBOOK SOP)] ---\n%s\n", bestContent)
+		return fmt.Sprintf("\n--- [DỮ LIỆU TỪ HỆ THỐNG PLAYBOOK & ISO] ---\n%s\n", bestContent)
 	}
 	return ""
 }

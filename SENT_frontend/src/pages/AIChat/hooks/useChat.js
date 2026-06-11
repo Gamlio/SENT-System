@@ -122,13 +122,19 @@ export const useChat = () => {
              const reader = response.body.getReader();
              const decoder = new TextDecoder("utf-8");
              let accumulatedRawText = "";
+             let streamBuffer = "";
  
              while (true) {
                  const { value, done } = await reader.read();
                  if (done) break;
- 
-                 const chunk = decoder.decode(value, { stream: true });
-                 const lines = chunk.split("\n");
+                 // just use when have ollama
+                //  const chunk = decoder.decode(value, { stream: true });
+                //  const lines = chunk.split("\n");
+                 streamBuffer += decoder.decode(value, { stream: true });
+                 const lines = streamBuffer.split("\n");
+                 
+                 // Keep the last incomplete line in the buffer
+                 streamBuffer = lines.pop() || "";
  
                  for (const line of lines) {
                     if (line.trim().startsWith("data:")) {
