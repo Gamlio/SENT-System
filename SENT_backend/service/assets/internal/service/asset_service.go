@@ -120,6 +120,10 @@ func ProcessassetData(payload AssetPayload) error {
 				if err := dataassets.ProcessDataTransfer(asset, modData); err != nil {
 					fmt.Printf("⚠️ Lỗi DataTransfer (%s): %v\n", asset.AssetHWID, err)
 				}
+			case "etw":
+				if err := dataassets.ProcessETW(asset, modData); err != nil {
+					fmt.Printf("⚠️ Lỗi ETW (%s): %v\n", asset.AssetHWID, err)
+				}
 			case "patch":
 				if err := dataassets.ProcessPatch(asset, modData); err != nil {
 					fmt.Printf("⚠️ Lỗi Patch (%s): %v\n", asset.AssetHWID, err)
@@ -164,6 +168,10 @@ func ProcessassetData(payload AssetPayload) error {
 		}
 	case "data_transfer":
 		if err := dataassets.ProcessDataTransfer(asset, payload.Data); err != nil {
+			return err
+		}
+	case "etw":
+		if err := dataassets.ProcessETW(asset, payload.Data); err != nil {
 			return err
 		}
 	case "patch":

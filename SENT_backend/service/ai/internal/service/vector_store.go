@@ -78,18 +78,19 @@ func IngestISOMarkdownToVectorDB(mdContent string) error {
 	_, _ = vectorCollection.DeleteMany(context.TODO(), bson.M{"playbook_id": "ISO27001"})
 
 	successCount := 0
-	// Thay vì cắt bằng \n\n rất dễ dính khối text khổng lồ, ta cắt nhỏ theo từng dòng \n
 	lines := strings.Split(mdContent, "\n")
-
 	var currentChunk strings.Builder
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
 
-		// Nếu thêm dòng này vào mà vượt quá 600 ký tự (mức an toàn cao cho Ollama), ta tiến hành sinh vector khối cũ trước
-		if currentChunk.Len()+len(trimmed) > 600 && currentChunk.Len() > 0 {
+		currentChunk.WriteString(trimmed + " ")
+
+		// Cứ gom được khoảng 800 ký tự thì đóng gói thành 1 Vector Chunk
+		if currentChunk.Len() > 800 {
 			blockText := currentChunk.String()
 			vector, err := GetTextEmbedding(blockText)
 			if err != nil {
@@ -112,13 +113,10 @@ func IngestISOMarkdownToVectorDB(mdContent string) error {
 			}
 			currentChunk.Reset()
 		}
-
-		currentChunk.WriteString(trimmed)
-		currentChunk.WriteString("\n")
 	}
 
 	// Xử lý nốt phần văn bản còn dư lại cuối cùng
-	if currentChunk.Len() > 20 {
+	if currentChunk.Len() > 0 {
 		blockText := currentChunk.String()
 		vector, err := GetTextEmbedding(blockText)
 		if err == nil {
@@ -247,53 +245,91 @@ func IngestPlaybookMarkdownToVectorDB(mdContent string) error {
 
 	vectorCollection := database.DocumentContentCollection.Database().Collection("playbook_vectors")
 
-	// 1. DỌN SẠCH KHO CŨ: Chỉ xóa các bản ghi không phải là tài liệu ISO27001
 	_, _ = vectorCollection.DeleteMany(context.TODO(), bson.M{"playbook_id": bson.M{"$ne": "ISO27001"}})
 
 	successCount := 0
-	// Tách kịch bản bằng thẻ tiêu đề "## "
-	playbooks := strings.Split(mdContent, "## ")
+	lines := strings.Split(mdContent, "\n")
+	var currentChunk strings.Builder
+	var currentPlaybookID string = "UNKNOWN"
 
-	for _, pbBlock := range playbooks {
-		if strings.TrimSpace(pbBlock) == "" || strings.HasPrefix(pbBlock, "# DANH SÁCH") {
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
 			continue
 		}
 
-		fullBlockText := "## " + pbBlock
-		lines := strings.Split(pbBlock, "\n")
+		if strings.HasPrefix(trimmed, "##") {
+			// Đẩy chunk hiện tại vào DB nếu có dữ liệu
+			if currentChunk.Len() > 0 {
+				blockText := currentChunk.String()
+				vector, err := GetTextEmbedding(blockText)
+				if err == nil {
+					chunkDoc := models.PlaybookVectorChunk{
+						ID:         primitive.NewObjectID(),
+						PlaybookID: currentPlaybookID,
+						Title:      "Kịch bản ứng phó sự cố: " + currentPlaybookID,
+						Content:    blockText,
+						Embedding:  vector,
+					}
+					_, _ = vectorCollection.InsertOne(context.TODO(), chunkDoc)
+					successCount++
+				}
+				currentChunk.Reset()
+			}
 
-		// 2. TỰ ĐỘNG TRÍCH XUẤT TIÊU ĐỀ LÀM ID ĐỊNH DANH
-		playbookID := strings.TrimSpace(lines[0])
-		if playbookID == "" {
-			playbookID = "UNKNOWN_" + primitive.NewObjectID().Hex()
+			// Lấy tiêu đề làm ID
+			currentPlaybookID = strings.TrimSpace(strings.TrimPrefix(trimmed, "##"))
+			if currentPlaybookID == "" {
+				currentPlaybookID = "UNKNOWN_" + primitive.NewObjectID().Hex()
+			}
+			fmt.Printf("⏳ Đang nhúng dữ liệu toán học cho kịch bản: [%s]...\n", currentPlaybookID)
 		}
 
-		fmt.Printf("⏳ Đang nhúng dữ liệu toán học cho kịch bản: [%s]...\n", playbookID)
+		currentChunk.WriteString(trimmed + "\n")
 
-		vector, err := GetTextEmbedding(fullBlockText)
-		if err != nil {
-			fmt.Printf("❌ Lỗi sinh vector cho %s: %v\n", playbookID, err)
-			continue
+		// Cứ gom được khoảng 800 ký tự thì đóng gói thành 1 Vector Chunk
+		if currentChunk.Len() > 800 {
+			blockText := currentChunk.String()
+			vector, err := GetTextEmbedding(blockText)
+			if err != nil {
+				fmt.Printf("❌ Lỗi sinh vector cho Playbook chunk: %v\n", err)
+			} else {
+				chunkDoc := models.PlaybookVectorChunk{
+					ID:         primitive.NewObjectID(),
+					PlaybookID: currentPlaybookID,
+					Title:      "Kịch bản ứng phó sự cố: " + currentPlaybookID,
+					Content:    blockText,
+					Embedding:  vector,
+				}
+				_, _ = vectorCollection.InsertOne(context.TODO(), chunkDoc)
+				successCount++
+			}
+			currentChunk.Reset()
+			
+			// Giữ lại tiêu đề cho chunk tiếp theo để không mất ngữ cảnh
+			currentChunk.WriteString("## " + currentPlaybookID + "\n")
 		}
+	}
 
-		chunkDoc := models.PlaybookVectorChunk{
-			ID:         primitive.NewObjectID(),
-			PlaybookID: playbookID, // Lưu trực tiếp tiêu đề sạch làm ID định danh
-			Title:      "Kịch bản ứng phó sự cố: " + playbookID,
-			Content:    fullBlockText,
-			Embedding:  vector,
+	// Xử lý nốt phần text thừa còn sót lại ở cuối file nếu có
+	if currentChunk.Len() > len("## "+currentPlaybookID+"\n") {
+		blockText := currentChunk.String()
+		vector, err := GetTextEmbedding(blockText)
+		if err == nil {
+			chunkDoc := models.PlaybookVectorChunk{
+				ID:         primitive.NewObjectID(),
+				PlaybookID: currentPlaybookID,
+				Title:      "Kịch bản ứng phó sự cố: " + currentPlaybookID,
+				Content:    blockText,
+				Embedding:  vector,
+			}
+			_, _ = vectorCollection.InsertOne(context.TODO(), chunkDoc)
+			successCount++
 		}
-
-		_, err = vectorCollection.InsertOne(context.TODO(), chunkDoc)
-		if err != nil {
-			fmt.Printf("❌ Lỗi lưu trữ bản ghi Playbook vào MongoDB: %v\n", err)
-			continue
-		}
-		successCount++
 	}
 
 	if successCount > 0 {
-		fmt.Printf("✅ Toàn bộ [%d] kịch bản Playbooks đã được nạp thành công vào Vector DB!\n", successCount)
+		fmt.Printf("✅ Toàn bộ [%d] đoạn dữ liệu Playbooks đã được nạp thành công vào Vector DB!\n", successCount)
 	}
 	return nil
 }

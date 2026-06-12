@@ -327,7 +327,6 @@ func StreamChatWithRAG(ctx context.Context, userQuestion string, orgID uint) (io
 	[USER COMMAND]
 	Hãy giải quyết yêu cầu sau của Quản trị viên: "` + trimmedQ + `"`
 
-	// 8. Kích hoạt luồng truyền tải dữ liệu thời gian thực ra cổng Handler
 	return CallGeminiStream(ctx, MODEL, systemSafetyPrompt, contextLimit)
 }
 

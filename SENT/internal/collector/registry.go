@@ -22,6 +22,14 @@ func InitCollectors() {
 	Register(&InventorySensor{})
 	Register(&AntivirusSensor{})
 	Register(&DataTransferSensor{})
+	Register(&ETWSensor{
+		Filter: EventFilter{
+			EnableProcess:  true,
+			EnableNetwork:  true,
+			EnableRegistry: true,
+			EnableFileIO:   true,
+		},
+	})
 
 	// BỔ SUNG: Chốt cấu phần quản lý cấu hình và bản vá lỗi an ninh
 	Register(&PatchSensor{})
