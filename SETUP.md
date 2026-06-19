@@ -96,30 +96,34 @@ $env:GOOS="darwin"; $env:GOARCH="amd64"; go build -ldflags="-s -w" -o dist/SENT_
 
 
 # nếu mà muốn đẩy SENT từ windows qua linux qua ssh làm như sau:
-## Mở file main.go trên máy Windows, di chuyển hàm forkLinuxDaemon() xuống phía dưới (ngay sau khối lệnh config.LoadOrBootstrap).
 
 ## Chạy file build.sh (hoặc chạy lệnh go build) trên Windows để sinh ra file thực thi mới:
 
 Bash
 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/SENT_v4.2.6_linux cmd/main.go
 
-## Bash
-scp "địa chỉ chứa phần mềm\SENT_v4.2.6_linux" thanh@192.168.x.x:~
+
 ## 3. Kích hoạt và Nhập mã trên Debian
 ## SSH vào máy Debian: 
-ssh thanh@192.168.x.x.
+ssh username@192.168.x.x.
 
  ## Di chuyển vào thư mục Home: 
- cd ~.
+ cd ~
 
  ## Cấp lại quyền thực thi cho file mới nhận: 
  chmod +x SENT_v4.2.6_linux.
 
  ## Khởi chạy phần mềm bằng quyền root:
 
-Bash
 sudo ./SENT_v4.2.6_linux
 ## Lúc này màn hình 🛡️ KÍCH HOẠT SENT SENSOR (CLI MODE) sẽ dừng lại và hiển thị dòng chữ bên dưới, bạn tiến hành nhập mã Token của mình vào rồi nhấn Enter:
 
 ## mã này lấy bên assets bên sent
 >> Nhập Mã Cài Đặt (Enrollment Token):
+
+## Bên alpine
+### BẮN TỪ MÁY WINDOWS
+scp SENT_v4.2.6_linux uername@192.168.x.x:/home/thanh/
+### bên máy alpine
+doas -s
+### không khác gì bên debian nhưng thay sudo bằng doas và phải tự cài user, nano,...

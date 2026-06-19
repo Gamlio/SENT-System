@@ -1,7 +1,5 @@
 package collector
 
-// EventFilter defines the categories of events we want to allow through our ETW-like mechanism,
-// simulating kernel-level filtering to avoid redundant logs.
 type EventFilter struct {
 	EnableProcess  bool
 	EnableNetwork  bool
@@ -9,7 +7,6 @@ type EventFilter struct {
 	EnableFileIO   bool
 }
 
-// ETWSensor provides a platform-abstract sensor to capture ETW-like events.
 type ETWSensor struct {
 	Filter EventFilter
 }
@@ -35,7 +32,7 @@ type ETWRegistryEvent struct {
 	PID       int32  `json:"pid"`
 	Name      string `json:"name"`
 	KeyPath   string `json:"key_path"`
-	Action    string `json:"action"` // e.g., "create", "modify", "delete"
+	Action    string `json:"action"`
 	Timestamp int64  `json:"timestamp"`
 }
 
@@ -43,7 +40,7 @@ type ETWFileIOEvent struct {
 	PID       int32  `json:"pid"`
 	Name      string `json:"name"`
 	FilePath  string `json:"file_path"`
-	Operation string `json:"operation"` // e.g. "read", "write", "delete"
+	Operation string `json:"operation"`
 	Timestamp int64  `json:"timestamp"`
 }
 

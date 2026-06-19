@@ -72,7 +72,8 @@ function App() {
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/assets" element={<ProtectedRoute requiredPermission="asset_view"><AssetList /></ProtectedRoute>} />
                     <Route path="/assets/:hwid" element={<ProtectedRoute requiredPermission="asset_view"><AssetDetail /></ProtectedRoute>} /> 
-<Route path="/assets/types" element={<ProtectedRoute requiredPermission="asset_move"><AssetTypeManagement /></ProtectedRoute>} />                    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+                    <Route path="/assets/types" element={<ProtectedRoute requiredPermission="asset_move"><AssetTypeManagement /></ProtectedRoute>} />                   
+                    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/incidents" element={<ProtectedRoute requiredPermission="incident_view"><IncidentList /></ProtectedRoute>} />
                     <Route path="/incidents/:id" element={<IncidentDetail />} />
                     <Route path="/behaviors" element={<ProtectedRoute requiredPermission="incident_view"><BehaviorManager /></ProtectedRoute>} />

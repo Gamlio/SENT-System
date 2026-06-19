@@ -18,7 +18,7 @@ const Sidebar = () => {
 
     const menuItems = [
         { path: '/', icon: <LayoutDashboard size={18}/>, label: 'Tổng quan', show: true },
-    { path: '/assets', icon: <Monitor size={18}/>, label: 'Máy trạm', show: user.permissions?.asset_view },
+    { path: '/assets', icon: <Monitor size={18}/>, label: 'Tài sản', show: user.permissions?.asset_view },
     { path: '/policy-center', icon: <ShieldCheck size={18}/>, label: 'Chính sách', show: user.permissions?.policy_view },
     { path: '/docs', icon: <FileText size={18}/>, label: 'Tài liệu', show: user.permissions?.doc_view },
     { path: '/users', icon: <User size={18}/>, label: 'Nhân sự', show: user.permissions?.user_view }, 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -28,6 +29,17 @@ var (
 	// Ollama configuration (Chỉ định model embedding của Ollama cho luồng tìm kiếm RAG)
 	MODEL_EMBED = "nomic-embed-text"
 )
+
+// Regex để nhận diện địa chỉ IPv4
+var ipRegex = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+
+func anonymizeData(text string) string {
+	if text == "" {
+		return text
+	}
+	// Thay thế địa chỉ IP bằng nhãn ẩn danh
+	return ipRegex.ReplaceAllString(text, "[IP_HIDDEN]")
+}
 
 // type OllamaRequest struct {
 // 	Model  string `json:"model"`
@@ -139,12 +151,14 @@ func AnalyzeIncidentWithAI(incidentID string) (string, error) {
 
 		[DỮ LIỆU SỰ CỐ (INCIDENT #%d)]
 		- Tên sự cố: %s (Mức độ: %s)
-		- Máy trạm: %s (IP: %s)
+		- Máy trạm: [ENDPOINT_ID_%s] (IP: %s)
 
 		[USER]
 		Hãy phân tích sự cố này và cho tôi biết nên làm gì tiếp theo.`,
 		incident.ID, incident.Type, incident.Severity,
-		incident.Asset.Hostname, incident.Asset.IPAddress,
+		// Chỉ gửi 6 ký tự cuối của HWID làm định danh tạm thay vì Hostname thật
+		incident.Asset.AssetHWID[len(incident.Asset.AssetHWID)-6:],
+		anonymizeData(incident.Asset.IPAddress),
 	)
 
 	_, answer, err := callGemini(MODEL, prompt, 16384)

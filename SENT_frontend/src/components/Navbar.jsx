@@ -27,23 +27,22 @@ const Navbar = ({ onOpenCopilot }) => {
     const [showUserDropdown, setShowUserDropdown] = useState(false);
     const userDropdownRef = useRef(null);
 
-    // [FIX-CRASH] An toàn khi parse dữ liệu user từ localStorage
+
     const user = (() => {
         try {
             const userString = localStorage.getItem('user');
             return userString ? JSON.parse(userString) : { full_name: 'SOC Analyst', role: 'admin', department_tag: 'SOC_L1' };
         } catch (error) {
             console.error("Lỗi parse dữ liệu user từ localStorage:", error);
-            return { full_name: 'SOC Analyst', role: 'admin', department_tag: 'SOC_L1' }; // Fallback
+            return { full_name: 'SOC Analyst', role: 'admin', department_tag: 'SOC_L1' }; 
         }
     })();
 
-    // CẬP NHẬT SỐ THÔNG BÁO CHƯA ĐỌC
     useEffect(() => {
         setUnreadCount(notifications.filter(n => n.status === 'UNREAD').length);
     }, [notifications]);
 
-    // ĐÓNG PANEL KHI CLICK RA NGOÀI
+
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (notifRef.current && !notifRef.current.contains(event.target)) { setShowNotifPanel(false); }
@@ -53,27 +52,23 @@ const Navbar = ({ onOpenCopilot }) => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // -----------------------------------------------------------------
-    // LẮNG NGHE SỰ KIỆN LIVE QUA SOCKET (TRUE REAL-TIME)
-    // -----------------------------------------------------------------
+
     const handleNewLiveEvent = useCallback((payload) => {
-        // console.log("🔥 Bắt được sóng Live Event trong Navbar:", payload);
         
         const newNotif = {
             id: Date.now(),
             type: payload.type || 'ALERT',
             status: 'UNREAD',
             title: payload.content || 'Cảnh báo vi phạm mới nhận được',
-            severity: payload.priority || 'Critical', // P1 -> Critical
+            severity: payload.priority || 'Critical', 
             time: 'Vừa xong'
         };
 
-        // Bơm thông báo mới lên đầu danh sách
-        setNotifications(prev => [newNotif, ...prev.slice(0, 19)]); // Giữ tối đa 20 cái
+
+        setNotifications(prev => [newNotif, ...prev.slice(0, 19)]);
     }, []);
 
     useSocketSubscription(['NEW_INCIDENT', 'asset_STATUS_CHANGED'], handleNewLiveEvent);
-    // -----------------------------------------------------------------
 
     const handleLogout = () => {
         localStorage.clear();

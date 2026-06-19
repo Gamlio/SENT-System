@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 )
 
-// SetupAutoStart cấu hình ứng dụng khởi động cùng Linux bằng Systemd
 func SetupAutoStart() {
 	exePath, err := os.Executable()
 	if err != nil {
@@ -26,7 +25,6 @@ func SetupAutoStart() {
 	servicePath := fmt.Sprintf("/etc/systemd/system/%s", serviceName)
 
 	if _, err := os.Stat(servicePath); err == nil {
-		// Đã tồn tại, có thể bổ sung update logic sau, tạm thời bỏ qua nếu đã cài
 		return
 	}
 

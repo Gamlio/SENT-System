@@ -11,12 +11,10 @@ import (
 
 var globalSequence int64
 
-// GetGlobalSequence đảm bảo các module không bị xung đột Sequence Number khi gửi request
 func GetGlobalSequence() int64 {
 	return atomic.AddInt64(&globalSequence, 1)
 }
 
-// CalculateHash: Viết hoa chữ đầu để Public
 func CalculateHash(data interface{}) string {
 	bytes, _ := json.Marshal(data)
 	hash := sha256.Sum256(bytes)
